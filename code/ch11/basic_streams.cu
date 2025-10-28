@@ -2,6 +2,7 @@
 
 #include <cuda_runtime.h>
 #include <cstdio>
+#include <chrono>
 
 #define CUDA_CHECK(call)                                                     \
   do {                                                                       \
@@ -81,7 +82,7 @@ __global__ void __launch_bounds__(256, 8) scale_kernel_async(float* __restrict__
 }
 
 int main() {
-  constexpr int N = 1 << 20;
+  constexpr int N = 1 << 21;
   constexpr size_t BYTES = N * sizeof(float);
 
   float *h_a = nullptr, *h_b = nullptr;
@@ -173,6 +174,50 @@ int main() {
   CUDA_CHECK(cudaStreamSynchronize(stream1));
   CUDA_CHECK(cudaStreamSynchronize(stream2));
 
+  // Measure sequential vs overlapped pipelines
+  auto measure_pipeline = [&](bool overlap) -> double {
+    constexpr int BATCHES = 8;
+
+    CUDA_CHECK(cudaMemsetAsync(d_a, 0, BYTES, stream1));
+    CUDA_CHECK(cudaMemsetAsync(d_b, 0, BYTES, stream2));
+    CUDA_CHECK(cudaStreamSynchronize(stream1));
+    CUDA_CHECK(cudaStreamSynchronize(stream2));
+
+    auto t0 = std::chrono::high_resolution_clock::now();
+    if (!overlap) {
+      for (int i = 0; i < BATCHES; ++i) {
+        CUDA_CHECK(cudaMemcpyAsync(d_a, h_a, BYTES, cudaMemcpyHostToDevice, stream1));
+        scale_kernel_vectorized<<<grid_vec, block, 0, stream1>>>(d_a, N, 1.05f);
+        CUDA_CHECK(cudaMemcpyAsync(h_a, d_a, BYTES, cudaMemcpyDeviceToHost, stream1));
+
+        CUDA_CHECK(cudaMemcpyAsync(d_b, h_b, BYTES, cudaMemcpyHostToDevice, stream1));
+        scale_kernel_vectorized<<<grid_vec, block, 0, stream1>>>(d_b, N, 0.95f);
+        CUDA_CHECK(cudaMemcpyAsync(h_b, d_b, BYTES, cudaMemcpyDeviceToHost, stream1));
+      }
+      CUDA_CHECK(cudaStreamSynchronize(stream1));
+    } else {
+      for (int i = 0; i < BATCHES; ++i) {
+        CUDA_CHECK(cudaMemcpyAsync(d_a, h_a, BYTES, cudaMemcpyHostToDevice, stream1));
+        CUDA_CHECK(cudaMemcpyAsync(d_b, h_b, BYTES, cudaMemcpyHostToDevice, stream2));
+
+        scale_kernel_vectorized<<<grid_vec, block, 0, stream1>>>(d_a, N, 1.05f);
+        scale_kernel_vectorized<<<grid_vec, block, 0, stream2>>>(d_b, N, 0.95f);
+
+        CUDA_CHECK(cudaMemcpyAsync(h_a, d_a, BYTES, cudaMemcpyDeviceToHost, stream1));
+        CUDA_CHECK(cudaMemcpyAsync(h_b, d_b, BYTES, cudaMemcpyDeviceToHost, stream2));
+      }
+      CUDA_CHECK(cudaStreamSynchronize(stream1));
+      CUDA_CHECK(cudaStreamSynchronize(stream2));
+    }
+    auto t1 = std::chrono::high_resolution_clock::now();
+    return std::chrono::duration<double, std::milli>(t1 - t0).count();
+  };
+
+  double sequential_ms = measure_pipeline(false);
+  double overlap_ms = measure_pipeline(true);
+  double overlap_speedup = sequential_ms / overlap_ms;
+  double overlap_pct = (1.0 - overlap_ms / sequential_ms) * 100.0;
+
   std::printf("\n=== Kernel Performance Comparison ===\n");
   std::printf("Original kernel:    %.3f ms (%.2f GB/s)\n", 
               ms_original / ITERS, 2.0f * BYTES / (ms_original / ITERS * 1e6));
@@ -182,8 +227,15 @@ int main() {
   std::printf("Async copy kernel:  %.3f ms (%.2f GB/s) [%.2fx speedup]\n", 
               ms_async / ITERS, 2.0f * BYTES / (ms_async / ITERS * 1e6),
               ms_original / ms_async);
+  std::printf("Stream speedup (vectorized vs original): %.2fx\n", ms_original / ms_vectorized);
   std::printf("\nstream1 result: %.3f\n", h_a[0]);
   std::printf("stream2 result: %.3f\n", h_b[0]);
+  std::printf("\n=== Stream Overlap Benchmark ===\n");
+  std::printf("Sequential pipeline: %.2f ms\n", sequential_ms);
+  std::printf("Overlapped pipeline: %.2f ms\n", overlap_ms);
+  std::printf("Stream overlap speedup: %.2fx (%.1f%% latency reduction)\n",
+              overlap_speedup, overlap_pct);
+  std::printf("Stream overlap percent: %.1f%%\n", overlap_pct);
 
   CUDA_CHECK(cudaEventDestroy(start));
   CUDA_CHECK(cudaEventDestroy(stop));

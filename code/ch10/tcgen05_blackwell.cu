@@ -472,7 +472,7 @@ float benchmark_cublas_fp16_tensor_core(int M, int N, int K, int iterations = 20
 
     printf("cuBLAS Tensor Core GEMM:\n");
     printf("  Time: %.3f ms/iteration\n", avg_ms);
-    printf("  Performance: %.1f TFLOPS\n", tflops);
+    printf("  FP16 Tensor Core throughput: %.1f TFLOPS\n", tflops);
     printf("  (cuBLAS 13.x automatically issues tcgen05.mma on Blackwell)\n");
 
     CUDA_CHECK(cudaEventDestroy(start));

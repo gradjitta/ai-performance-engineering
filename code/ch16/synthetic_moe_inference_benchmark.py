@@ -464,16 +464,9 @@ def main():
         dynamic=False
     )
     
-    compiled_time = eager_time
-    compiled_throughput = eager_throughput
-    fp8_eager_time = fp8_eager_throughput = None
-    fp8_compiled_time = fp8_compiled_throughput = None
-
-    if QUICK_MODE:
-        print("Quick mode: skipping torch.compile and FP8 benchmarks for fast validation.")
-    else:
-        compile_warmup = 50
-        compile_iters = 50
+    compile_warmup = 5 if QUICK_MODE else 50
+    compile_iters = 5 if QUICK_MODE else 50
+    try:
         compiled_time, compiled_throughput = benchmark_inference(
             model_compiled,
             input_ids,
@@ -481,46 +474,58 @@ def main():
             num_warmup=compile_warmup,
             num_iters=compile_iters,
         )
+    except Exception as exc:
+        print(f"\n[Warning] torch.compile benchmark failed ({exc.__class__.__name__}): {exc}")
+        print("Falling back to eager metrics for speedup calculations.")
+        compiled_time, compiled_throughput = eager_time, eager_throughput
+        model_compiled = None
+    
+    fp8_eager_time = fp8_eager_throughput = None
+    fp8_compiled_time = fp8_compiled_throughput = None
+    
+    fp8_supported = getattr(torch, "float8_e4m3fn", None) is not None and model_compiled is not None
+    if fp8_supported:
+        # Free baseline and compiled models to make room for FP8 variants
+        del model_compiled
+        torch.cuda.empty_cache()
+        del model
+        torch.cuda.empty_cache()
 
-        fp8_supported = getattr(torch, "float8_e4m3fn", None) is not None
-        if fp8_supported:
-            # Free baseline and compiled models to make room for FP8 variants
-            del model_compiled
-            torch.cuda.empty_cache()
-            del model
-            torch.cuda.empty_cache()
+        print("\n" + "=" * 80)
+        print("BENCHMARK 3: FP8 Weights (Eager Mode)")
+        print("=" * 80)
+        fp8_config = replace(config, use_fp8=True)
+        fp8_model = SyntheticMoEModel(fp8_config, num_layers=selected_config['layers']).cuda().eval()
+        fp8_warmup = 3 if QUICK_MODE else eager_warmup
+        fp8_iters = 5 if QUICK_MODE else eager_iters
+        fp8_eager_time, fp8_eager_throughput = benchmark_inference(
+            fp8_model,
+            input_ids,
+            "FP8 Eager Mode",
+            num_warmup=fp8_warmup,
+            num_iters=fp8_iters,
+        )
 
-            print("\n" + "=" * 80)
-            print("BENCHMARK 3: FP8 Weights (Eager Mode)")
-            print("=" * 80)
-            fp8_config = replace(config, use_fp8=True)
-            fp8_model = SyntheticMoEModel(fp8_config, num_layers=selected_config['layers']).cuda().eval()
-            fp8_eager_time, fp8_eager_throughput = benchmark_inference(
-                fp8_model,
-                input_ids,
-                "FP8 Eager Mode",
-                num_warmup=eager_warmup,
-                num_iters=eager_iters,
-            )
-
-            print("\n" + "=" * 80)
-            print("BENCHMARK 4: FP8 Weights + torch.compile")
-            print("=" * 80)
-            fp8_model_compiled = torch.compile(
-                fp8_model,
-                mode='max-autotune',
-                fullgraph=True,
-                dynamic=False,
-            )
-            fp8_compiled_time, fp8_compiled_throughput = benchmark_inference(
-                fp8_model_compiled,
-                input_ids,
-                "FP8 Compiled Mode",
-                num_warmup=compile_warmup,
-                num_iters=compile_iters,
-            )
-        else:
-            print("\nPyTorch build does not expose torch.float8_e4m3fn; skipping FP8 benchmarks.")
+        print("\n" + "=" * 80)
+        print("BENCHMARK 4: FP8 Weights + torch.compile")
+        print("=" * 80)
+        fp8_model_compiled = torch.compile(
+            fp8_model,
+            mode='max-autotune',
+            fullgraph=True,
+            dynamic=False,
+        )
+        fp8_compile_warmup = 3 if QUICK_MODE else compile_warmup
+        fp8_compile_iters = 5 if QUICK_MODE else compile_iters
+        fp8_compiled_time, fp8_compiled_throughput = benchmark_inference(
+            fp8_model_compiled,
+            input_ids,
+            "FP8 Compiled Mode",
+            num_warmup=fp8_compile_warmup,
+            num_iters=fp8_compile_iters,
+        )
+    else:
+        print("\nPyTorch build does not expose torch.float8_e4m3fn; skipping FP8 benchmarks.")
     
     # Results
     speedup = eager_time / compiled_time

@@ -738,7 +738,7 @@ class TensorParallelAttention(nn.Module):
     def _ensure_workspaces(
         self,
         batch_size: int,
-        total_k_len: int,
+        required_seq_len: int,
         dtype: torch.dtype,
         device: torch.device,
     ) -> None:
@@ -746,9 +746,9 @@ class TensorParallelAttention(nn.Module):
             raise ValueError(
                 f"Batch size {batch_size} exceeds configured max_batch_size={self.max_batch_size}"
             )
-        if total_k_len > self.max_seq_len:
+        if required_seq_len > self.max_seq_len:
             raise ValueError(
-                f"Sequence length {total_k_len} exceeds configured max_seq_len={self.max_seq_len}"
+                f"Sequence length {required_seq_len} exceeds configured max_seq_len={self.max_seq_len}"
             )
 
         needs_refresh = (
@@ -756,23 +756,25 @@ class TensorParallelAttention(nn.Module):
             or self._attn_k_workspace.device != device
             or self._attn_k_workspace.dtype != dtype
             or self._attn_k_workspace.size(0) < batch_size
-            or self._attn_k_workspace.size(2) < total_k_len
+            or self._attn_k_workspace.size(2) < required_seq_len
         )
 
         if needs_refresh:
-            shape = (batch_size, self.heads_per_gpu, total_k_len, self.head_dim)
+            shape = (batch_size, self.heads_per_gpu, required_seq_len, self.head_dim)
             self._attn_k_workspace = torch.empty(shape, dtype=dtype, device=device)
             self._attn_v_workspace = torch.empty_like(self._attn_k_workspace)
             self._valid_mask_workspace = torch.empty(
-                (batch_size, total_k_len),
+                (batch_size, required_seq_len),
                 dtype=torch.bool,
                 device=device,
             )
-    
+
     def forward(
         self, 
         x: torch.Tensor,
         kv_cache: Optional[List[Optional[Tuple[torch.Tensor, torch.Tensor]]]] = None,
+        *,
+        input_lengths: Optional[List[int]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if self._pending_work is not None:
             self._pending_work.wait()
@@ -791,6 +793,13 @@ class TensorParallelAttention(nn.Module):
         
         scale = 1.0 / (self.head_dim ** 0.5)
 
+        if input_lengths is None:
+            token_lengths = [seq_len] * batch_size
+        else:
+            if len(input_lengths) != batch_size:
+                raise ValueError("input_lengths size must match batch size")
+            token_lengths = [int(v) for v in input_lengths]
+
         if kv_cache is None:
             if _flex_attention_supported(
                 q, key_local, value_local, head_dim=self.head_dim
@@ -806,7 +815,7 @@ class TensorParallelAttention(nn.Module):
                 )
         else:
             cache_entries: List[Tuple[int, Optional[torch.Tensor], Optional[torch.Tensor]]] = []
-            max_cache_len = 0
+            max_total_len = 0
             for idx in range(batch_size):
                 cache_entry = kv_cache[idx] if idx < len(kv_cache) else None
                 if cache_entry is None:
@@ -816,16 +825,19 @@ class TensorParallelAttention(nn.Module):
                 else:
                     cache_k, cache_v = cache_entry
                     cache_len = cache_k.shape[1]
+                total_len = cache_len + token_lengths[idx]
+                if total_len > self.max_seq_len:
+                    raise ValueError(
+                        f"Sequence length {total_len} exceeds configured max_seq_len={self.max_seq_len}"
+                    )
                 cache_entries.append((cache_len, cache_k, cache_v))
-                max_cache_len = max(max_cache_len, cache_len)
+                max_total_len = max(max_total_len, total_len)
 
-            cache_kv_len = key_local.shape[2]
-            total_k_len = max_cache_len + cache_kv_len
-
-            self._ensure_workspaces(batch_size, total_k_len, key_local.dtype, key_local.device)
-            attn_k = self._attn_k_workspace[:batch_size, :, :total_k_len, :]
-            attn_v = self._attn_v_workspace[:batch_size, :, :total_k_len, :]
-            valid_mask = self._valid_mask_workspace[:batch_size, :total_k_len]
+            required_seq_len = max_total_len if max_total_len > 0 else 1
+            self._ensure_workspaces(batch_size, required_seq_len, key_local.dtype, key_local.device)
+            attn_k = self._attn_k_workspace[:batch_size, :, :required_seq_len, :]
+            attn_v = self._attn_v_workspace[:batch_size, :, :required_seq_len, :]
+            valid_mask = self._valid_mask_workspace[:batch_size, :required_seq_len]
             attn_k.zero_()
             attn_v.zero_()
             valid_mask.fill_(False)
@@ -838,15 +850,17 @@ class TensorParallelAttention(nn.Module):
                     attn_k[idx, :, :cache_len, :].copy_(cache_k)
                     attn_v[idx, :, :cache_len, :].copy_(cache_v)
                     write_pos = cache_len
-
-                attn_k[idx, :, write_pos : write_pos + cache_kv_len, :].copy_(key_local[idx])
-                attn_v[idx, :, write_pos : write_pos + cache_kv_len, :].copy_(value_local[idx])
-                valid_mask[idx, : write_pos + cache_kv_len] = True
+                delta_len = token_lengths[idx]
+                if delta_len > 0:
+                    attn_k[idx, :, write_pos : write_pos + delta_len, :].copy_(key_local[idx, :, :delta_len, :])
+                    attn_v[idx, :, write_pos : write_pos + delta_len, :].copy_(value_local[idx, :, :delta_len, :])
+                    valid_mask[idx, : write_pos + delta_len] = True
+                else:
+                    valid_mask[idx, :write_pos] = True
 
             attn_bias = None
-            if not valid_mask.all():
-                attn_bias = valid_mask.view(batch_size, 1, 1, total_k_len)
-            use_causal = True
+            if not bool(valid_mask.all().item()):
+                attn_bias = valid_mask.view(batch_size, 1, 1, required_seq_len)
 
             if _flex_attention_supported(
                 q,
@@ -863,7 +877,7 @@ class TensorParallelAttention(nn.Module):
                     attn_v,
                     dropout_p=0.0,
                     attn_mask=attn_bias,
-                    is_causal=use_causal,
+                    is_causal=True,
                 )
         
         # Reshape and project
@@ -1391,7 +1405,11 @@ class InferenceServer8GPU:
             logits, attn_keys, attn_values = self._run_prefill_graph(input_ids)
         else:
             with torch.inference_mode():
-                logits, attn_keys, attn_values = self.model(input_ids, past_kv=past_kv)
+                logits, attn_keys, attn_values = self.model(
+                    input_ids,
+                    past_kv=past_kv,
+                    input_lengths=token_counts,
+                )
 
         if attn_keys.dtype != self.kv_cache.dtype or attn_values.dtype != self.kv_cache.dtype:
             attn_keys = attn_keys.to(self.kv_cache.dtype)

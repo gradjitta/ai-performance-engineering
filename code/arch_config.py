@@ -107,8 +107,17 @@ class ArchitectureConfig:
                     triton_cfg.cudagraphs = True
             
             # Enable max-autotune GEMM backends (PyTorch 2.9)
+            # CUTLASS provides optimized GEMM kernels for NVIDIA GPUs
             if hasattr(cfg, "max_autotune_gemm_backends"):
-                cfg.max_autotune_gemm_backends = "TRITON,CUTLASS,ATen"
+                cfg.max_autotune_gemm_backends = "CUTLASS,TRITON,ATEN"
+            
+            # Enable CUTLASS for all operations
+            if hasattr(cfg, "cuda") and hasattr(cfg.cuda, "cutlass_enabled_ops"):
+                cfg.cuda.cutlass_enabled_ops = "all"
+            
+            # Enable aggressive Triton optimization for Blackwell
+            if hasattr(cfg, "aggressive_fusion"):
+                cfg.aggressive_fusion = True
         
         # Triton 3.5 configuration for Blackwell
         if self.arch == "blackwell":
@@ -124,6 +133,29 @@ class ArchitectureConfig:
             os.environ.setdefault("TRITON_CUDNN_ALGOS", "1")
             os.environ.setdefault("TRITON_TMA_ENABLE", "1")
             os.environ.setdefault("TRITON_ALWAYS_COMPILE", "0")  # Use kernel cache
+            
+            # Configure CUTLASS paths for torch.compile backend
+            # PyTorch bundles CUTLASS, but we can also use our own version
+            cutlass_path = os.environ.get("CUTLASS_PATH")
+            if not cutlass_path:
+                # Try to find CUTLASS in third_party/cutlass
+                project_root = os.path.dirname(os.path.abspath(__file__))
+                cutlass_candidate = os.path.join(project_root, "third_party", "cutlass")
+                if os.path.isdir(cutlass_candidate):
+                    cutlass_path = cutlass_candidate
+                    os.environ["CUTLASS_PATH"] = cutlass_path
+                    
+                    # Set CUTLASS directory for TorchInductor
+                    if hasattr(cfg, "cuda") and hasattr(cfg.cuda, "cutlass_dir"):
+                        cfg.cuda.cutlass_dir = cutlass_path
+            
+            if cutlass_path:
+                # Set include paths for CUTLASS headers
+                cutlass_include = os.path.join(cutlass_path, "include")
+                if os.path.isdir(cutlass_include):
+                    cplus_include = os.environ.get("CPLUS_INCLUDE_PATH", "")
+                    if cutlass_include not in cplus_include:
+                        os.environ["CPLUS_INCLUDE_PATH"] = f"{cutlass_include}:{cplus_include}"
         
         # PyTorch 2.9: Enable FlashAttention-3 for Blackwell
         if hasattr(torch.backends.cuda, "enable_flash_sdp"):
@@ -140,12 +172,10 @@ class ArchitectureConfig:
         os.environ.pop("PYTORCH_CUDA_ALLOC_CONF", None)
         
         # PyTorch 2.9: Enable TF32 for Blackwell (improves FP32 matmul performance)
-        if hasattr(torch.backends.cuda, "matmul"):
-            matmul_backend = torch.backends.cuda.matmul
-            if hasattr(matmul_backend, "fp32_precision"):
-                matmul_backend.fp32_precision = "tf32"
-            elif hasattr(matmul_backend, "allow_tf32"):
-                matmul_backend.allow_tf32 = True
+        # Use the new API (PyTorch 2.9+)
+        torch.set_float32_matmul_precision('high')  # Enables TF32 for matmul
+        
+        # Set cudnn TF32 using new API if available
         if hasattr(torch.backends.cudnn, "conv") and hasattr(torch.backends.cudnn.conv, "fp32_precision"):
             torch.backends.cudnn.conv.fp32_precision = "tf32"
 

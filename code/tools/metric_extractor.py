@@ -27,6 +27,10 @@ PATTERNS = {
     # Speedup patterns
     "speedup": r"[Ss]peedup[:\s]+(\d+\.?\d*)x",
     "speedup_alt": r"(\d+\.?\d*)x.*?speedup",
+    "stream_speedup": r"Stream speedup.*?(\d+\.?\d*)x",
+    "stream_overlap_percent": r"Stream overlap percent[:\s]+(\d+\.?\d*)\s*%",
+    "fp8_speedup": r"FP8 Speedup.*?(\d+\.?\d*)x",
+    "fp8_compiled_speedup": r"FP8 Compiled Speedup.*?(\d+\.?\d*)x",
     
     # Utilization/efficiency patterns
     "utilization_percent": r"[Uu]tilization[:\s]+(\d+\.?\d*)\s*%",
@@ -407,5 +411,4 @@ def flatten_metrics(nested_results: Dict[str, Any]) -> Dict[str, float]:
                 flattened[key] = value
     
     return flattened
-
 
