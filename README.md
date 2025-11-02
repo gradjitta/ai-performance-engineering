@@ -1,5 +1,7 @@
 # AI Performance Engineering
 
+Interested in a hands-on course for this material? Fill out this [form](https://docs.google.com/forms/d/e/1FAIpQLSf4TMDLsPcfuoLhaDktXu-hhKIGntQm550BY-ov6bRT_VMJhQ/viewform?usp=sharing&ouid=111382272947765737941) to be notified.
+
 ## About This Repo
 
 AI Systems Performance Engineering code, tooling, and resources for the O'Reilly book covering GPU optimization, distributed training, inference scaling, and full-stack performance tuning for modern AI workloads.
