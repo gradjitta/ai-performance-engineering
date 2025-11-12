@@ -320,6 +320,22 @@ else
     echo "Python 3.11 is already the default"
 fi
 
+# Ensure `python` points to python3.11 for convenience
+if ! command -v python >/dev/null 2>&1; then
+    echo "Creating python -> python3.11 alternative..."
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+    update-alternatives --set python /usr/bin/python3.11
+else
+    PYTHON_VERSION_OUTPUT="$(python --version 2>/dev/null || true)"
+    if [[ "$PYTHON_VERSION_OUTPUT" != "Python 3.11."* ]]; then
+        echo "Updating python alternative to point at python3.11..."
+        update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+        update-alternatives --set python /usr/bin/python3.11
+    else
+        echo "python points to $(python --version) (no change needed)"
+    fi
+fi
+
 # Ensure pip is installed for Python 3.11
 if ! python3.11 -m pip --version &> /dev/null; then
     echo "Installing pip for Python 3.11..."
