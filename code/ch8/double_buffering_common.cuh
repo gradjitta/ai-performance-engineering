@@ -41,12 +41,22 @@ __global__ void double_buffer_baseline_kernel(
         return;
     }
 
+    using Vec = float4;
+    const Vec zero_vec = {0.0f, 0.0f, 0.0f, 0.0f};
     for (int tile = 0; tile < max_tiles; ++tile) {
         const int base_idx = tile_base + tile * tile_span + lane_offset;
-#pragma unroll
-        for (int v = 0; v < kValuesPerThread; ++v) {
-            const int idx = base_idx + v;
-            smem[lane_offset + v] = (idx < elements) ? input[idx] : 0.0f;
+        Vec* smem_vec = reinterpret_cast<Vec*>(smem);
+        if (base_idx + kValuesPerThread <= elements) {
+            smem_vec[tid] = *reinterpret_cast<const Vec*>(input + base_idx);
+        } else {
+            Vec tmp = zero_vec;
+            for (int v = 0; v < kValuesPerThread; ++v) {
+                const int idx = base_idx + v;
+                if (idx < elements) {
+                    reinterpret_cast<float*>(&tmp)[v] = input[idx];
+                }
+            }
+            smem_vec[tid] = tmp;
         }
         __syncthreads();
 
@@ -92,6 +102,8 @@ __global__ void double_buffer_optimized_kernel(
     auto block = cg::this_thread_block();
     auto pipe = cuda::make_pipeline(block, &pipeline_state);
 
+    using Vec = float4;
+    const Vec zero_vec = {0.0f, 0.0f, 0.0f, 0.0f};
     for (int tile = 0; tile < max_tiles + kPipelineStages; ++tile) {
         if (tile < max_tiles) {
             const int stage = tile % kPipelineStages;
@@ -107,16 +119,18 @@ __global__ void double_buffer_optimized_kernel(
                     pipe);
             } else if (load_idx < elements) {
 #pragma unroll
-                for (int v = 0; v < kValuesPerThread; ++v) {
-                    const int idx = load_idx + v;
-                    stage_ptr[lane_offset + v] =
-                        (idx < elements) ? input[idx] : 0.0f;
+                {
+                    Vec tmp = zero_vec;
+                    for (int v = 0; v < kValuesPerThread; ++v) {
+                        const int idx = load_idx + v;
+                        if (idx < elements) {
+                            reinterpret_cast<float*>(&tmp)[v] = input[idx];
+                        }
+                    }
+                    reinterpret_cast<Vec*>(stage_ptr)[tid] = tmp;
                 }
             } else {
-#pragma unroll
-                for (int v = 0; v < kValuesPerThread; ++v) {
-                    stage_ptr[lane_offset + v] = 0.0f;
-                }
+                reinterpret_cast<Vec*>(stage_ptr)[tid] = zero_vec;
             }
             pipe.producer_commit();
         }
@@ -127,10 +141,10 @@ __global__ void double_buffer_optimized_kernel(
                 const int consume_stage = consume_tile % kPipelineStages;
                 float* stage_ptr = smem + consume_stage * tile_span;
                 pipe.consumer_wait();
+                Vec vec = reinterpret_cast<Vec*>(stage_ptr)[tid];
                 float values[kValuesPerThread];
-#pragma unroll
                 for (int v = 0; v < kValuesPerThread; ++v) {
-                    values[v] = stage_ptr[lane_offset + v];
+                    values[v] = reinterpret_cast<float*>(&vec)[v];
                 }
 #pragma unroll
                 for (int loop = 0; loop < kDoubleBufferInnerLoops; ++loop) {
