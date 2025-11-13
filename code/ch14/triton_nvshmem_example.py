@@ -3,7 +3,7 @@ Triton 3.5.0 + NVSHMEM Plugin Example
 Demonstrates custom multi-GPU kernels using Triton with NVSHMEM for direct GPU-GPU communication.
 
 Requirements:
-- PyTorch 2.9+
+- PyTorch 2.10+
 - Triton 3.5.0+ (pytorch-triton)
 - CUDA 13.0+
 - NVSHMEM 3.4+
@@ -131,7 +131,7 @@ def triton_multi_gpu_operation(tensors: list[torch.Tensor]) -> torch.Tensor:
 
 def pytorch_symmetric_memory_approach():
     """
-    Demonstrate the recommended PyTorch 2.9 approach using symmetric memory.
+    Demonstrate the recommended PyTorch 2.10 approach using symmetric memory.
     This is more portable than Triton NVSHMEM until NVSHMEM plugin is widely available.
     """
     if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
@@ -139,7 +139,7 @@ def pytorch_symmetric_memory_approach():
         return
     
     n_gpus = min(torch.cuda.device_count(), 2)
-    print(f"\nPyTorch 2.9 Symmetric Memory Approach (recommended):")
+    print(f"\nPyTorch 2.10 Symmetric Memory Approach (recommended):")
     print(f"Using {n_gpus} GPUs")
     
     # Create tensors on each GPU
@@ -149,7 +149,7 @@ def pytorch_symmetric_memory_approach():
     ]
     
     try:
-        # Allocate symmetric memory (PyTorch 2.9+)
+        # Allocate symmetric memory (PyTorch 2.10+)
         # This enables direct cross-GPU access
         sym_mem = torch.distributed.nn.SymmetricMemory(
             tensors[0],
@@ -163,7 +163,7 @@ def pytorch_symmetric_memory_approach():
         
     except (AttributeError, RuntimeError) as e:
         print(f" Symmetric memory not available: {e}")
-        print("  This feature requires PyTorch 2.9+ with proper NVSHMEM support")
+        print("  This feature requires PyTorch 2.10+ with proper NVSHMEM support")
 
 
 def triton_nvshmem_example():
@@ -180,7 +180,7 @@ def triton_nvshmem_example():
         print("1. Build Triton with NVSHMEM support enabled")
         print("2. Ensure NVSHMEM 3.4+ is installed on the system")
         print("3. Set appropriate environment variables for NVSHMEM initialization")
-        print("\nFor most use cases, PyTorch 2.9's symmetric memory is recommended.")
+        print("\nFor most use cases, PyTorch 2.10's symmetric memory is recommended.")
     else:
         print("\nNVSHMEM plugin status: AVAILABLE")
         print("NVSHMEM functions accessible via triton.nvshmem module")
@@ -221,7 +221,7 @@ def triton_nvshmem_example():
     print("Key Takeaways:")
     print("=" * 80)
     print("1. Triton NVSHMEM plugin enables direct GPU-GPU communication in kernels")
-    print("2. Combine with PyTorch 2.9 symmetric memory for memory allocation")
+    print("2. Combine with PyTorch 2.10 symmetric memory for memory allocation")
     print("3. Use for custom multi-GPU algorithms with fine-grained control")
     print("4. For most cases, PyTorch's distributed primitives are sufficient")
     print("5. NVSHMEM shines for latency-sensitive, irregular communication patterns")

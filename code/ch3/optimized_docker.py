@@ -13,13 +13,8 @@ if str(repo_root) not in sys.path:
 import torch
 import torch.nn as nn
 
-from common.python.benchmark_harness import Benchmark, BenchmarkConfig
-
-
-def resolve_device() -> torch.device:
-    if not torch.cuda.is_available():
-        raise RuntimeError("CUDA required for ch3 docker example")
-    return torch.device("cuda")
+from common.python.allocator_tuning import log_allocator_guidance
+from common.python.benchmark_harness import BaseBenchmark, Benchmark, BenchmarkConfig
 
 
 class Prefetcher:
@@ -60,11 +55,11 @@ class Prefetcher:
         return self.buffers[self.cur_slot], self.target_bufs[self.cur_slot]
 
 
-class OptimizedDockerBenchmark(Benchmark):
-    """Pinned memory, asynchronous copies, and fused training step."""
+class OptimizedDockerBenchmark(BaseBenchmark):
+    """Pinned memory prefetch with half-precision training."""
 
     def __init__(self):
-        self.device = resolve_device()
+        super().__init__()
         self.model: Optional[nn.Module] = None
         self.optimizer: Optional[torch.optim.Optimizer] = None
         self.host_batches: List[torch.Tensor] = []
@@ -73,11 +68,12 @@ class OptimizedDockerBenchmark(Benchmark):
 
     def setup(self) -> None:
         torch.manual_seed(101)
+        log_allocator_guidance("ch3/optimized_docker", optimized=True)
         self.model = nn.Sequential(
             nn.Linear(2048, 4096),
             nn.GELU(),
             nn.Linear(4096, 1024),
-        ).to(self.device)
+        ).to(self.device).half()
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-2, momentum=0.9)
 
         for _ in range(4):
@@ -91,13 +87,16 @@ class OptimizedDockerBenchmark(Benchmark):
 
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
-        assert self.model is not None and self.optimizer is not None and self.prefetcher is not None
+        assert (
+            self.model is not None
+            and self.optimizer is not None
+            and self.prefetcher is not None
+        )
 
         inputs, targets = self.prefetcher.next()
         with nvtx_range("optimized_docker", enable=enable_nvtx):
-            with torch.autocast("cuda", dtype=torch.float16):
-                out = self.model(inputs)
-                loss = torch.nn.functional.mse_loss(out, targets)
+            out = self.model(inputs)
+            loss = torch.nn.functional.mse_loss(out, targets)
             self.optimizer.zero_grad(set_to_none=True)
             loss.backward()
             self.optimizer.step()

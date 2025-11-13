@@ -34,6 +34,8 @@ from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence, TYPE
 import numpy as np
 import torch
 
+from common.python.compile_utils import enable_tf32
+
 if TYPE_CHECKING:
     from common.python.benchmark_models import (
         BenchmarkResult as PydanticBenchmarkResult,
@@ -122,6 +124,25 @@ except ImportError:
     LOGGER_AVAILABLE = False
     import logging
     logger = logging.getLogger(__name__)
+
+_QUICK_WINS_CONFIGURED = False
+
+
+def _configure_quick_wins() -> None:
+    """Apply global TF32 configuration once per process."""
+    global _QUICK_WINS_CONFIGURED
+    if _QUICK_WINS_CONFIGURED:
+        return
+    if torch.cuda.is_available():
+        try:
+            enable_tf32()
+        except Exception as exc:  # pragma: no cover - defensive
+            if LOGGER_AVAILABLE:
+                logger.warning("TF32 enablement failed: %s", exc)
+    _QUICK_WINS_CONFIGURED = True
+
+
+_configure_quick_wins()
 
 
 def _extract_skip_reason_from_messages(messages: Sequence[str]) -> Optional[str]:
@@ -526,6 +547,27 @@ class BaseBenchmark:
             return int(base_size * 0.25)
         else:
             return int(base_size * 0.1)
+
+    def to_device(
+        self,
+        tensor: torch.Tensor,
+        *,
+        non_blocking: Optional[bool] = None,
+        device: Optional[torch.device] = None,
+    ) -> torch.Tensor:
+        """
+        Copy ``tensor`` to ``device`` while defaulting to non_blocking=True when the
+        source resides in pinned host memory. Benchmarks can override ``device`` or
+        ``non_blocking`` for synchronous copies.
+        """
+
+        target = device if device is not None else getattr(self, "device", None)
+        if target is None:
+            target = self._resolve_device()
+        if target.type == "cuda" and hasattr(tensor, "is_pinned") and not tensor.is_cuda:
+            blocking = tensor.is_pinned() if non_blocking is None else non_blocking
+            return tensor.to(target, non_blocking=bool(blocking))
+        return tensor.to(target)
     
     @contextmanager
     def _nvtx_range(self, name: str):

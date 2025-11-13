@@ -4,8 +4,48 @@ Verify PyTorch installation and CUDA functionality.
 Tests basic PyTorch operations and CUDA availability.
 """
 
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
+import os
 import sys
+
+# CRITICAL: PyTorch was compiled against cuDNN 9.15.1, but bundles cuDNN 9.13.0
+# We MUST use system cuDNN 9.15.1 (installed via apt) instead of PyTorch's bundled 9.13.0
+# Filter out PyTorch's bundled cuDNN path and ensure system cuDNN 9.15.1 is found first
+PYTORCH_CUDNN_LIB = "/usr/local/lib/python3.12/dist-packages/nvidia/cudnn/lib"
+SYSTEM_CUDNN_LIB = "/usr/lib/aarch64-linux-gnu"  # System cuDNN 9.15.1 location
+
+current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
+filtered_paths = []
+
+if current_ld_path:
+    for path in current_ld_path.split(":"):
+        if path:
+            # Remove PyTorch's bundled cuDNN path (contains 9.13.0)
+            if PYTORCH_CUDNN_LIB in path:
+                continue
+            # Keep other paths
+            filtered_paths.append(path)
+
+# Build LD_LIBRARY_PATH: System cuDNN 9.15.1 FIRST, then CUDA libs, then other paths
+CUDA_LIB_DIR = "/usr/local/cuda-13.0/lib64"
+cuda_stubs = f"{CUDA_LIB_DIR}/stubs" if os.path.isdir(f"{CUDA_LIB_DIR}/stubs") else ""
+
+new_ld_parts = []
+# Add system cuDNN 9.15.1 FIRST (matches PyTorch's compile-time version)
+if os.path.isdir(SYSTEM_CUDNN_LIB):
+    new_ld_parts.append(SYSTEM_CUDNN_LIB)
+# Add CUDA libs
+if os.path.isdir(CUDA_LIB_DIR):
+    new_ld_parts.append(CUDA_LIB_DIR)
+if cuda_stubs:
+    new_ld_parts.append(cuda_stubs)
+# Add other filtered paths (but NOT PyTorch's bundled cuDNN)
+if filtered_paths:
+    new_ld_parts.extend(filtered_paths)
+
+new_ld_path = ":".join(new_ld_parts)
+os.environ["LD_LIBRARY_PATH"] = new_ld_path
+
+from common.python import compile_utils as _compile_utils_patch  # noqa: F401
 
 
 def print_section(title):
@@ -36,7 +76,15 @@ def check_cuda_availability(torch):
     if torch.cuda.is_available():
         print("[OK] CUDA is available")
         print(f"   CUDA Version: {torch.version.cuda}")
-        print(f"   cuDNN Version: {torch.backends.cudnn.version()}")
+        try:
+            cudnn_version = torch.backends.cudnn.version()
+            print(f"   cuDNN Version: {cudnn_version}")
+        except RuntimeError as e:
+            if "version incompatibility" in str(e):
+                print(f"   ERROR: cuDNN version incompatibility: {e}")
+                print("   Fix: Ensure PyTorch's bundled cuDNN is in LD_LIBRARY_PATH before system cuDNN")
+                raise RuntimeError(f"cuDNN version incompatibility: {e}") from e
+            raise
         print(f"   Number of GPUs: {torch.cuda.device_count()}")
         
         for i in range(torch.cuda.device_count()):

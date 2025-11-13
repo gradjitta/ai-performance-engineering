@@ -29,6 +29,10 @@ repo_root = Path(__file__).resolve().parent.parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
+from arch_config import configure_optimizations as _configure_arch_optimizations
+
+_configure_arch_optimizations()
+
 from common.python import compile_utils as _compile_utils_patch  # noqa: F401
 
 from common.python.env_defaults import apply_env_defaults, dump_environment_and_capabilities

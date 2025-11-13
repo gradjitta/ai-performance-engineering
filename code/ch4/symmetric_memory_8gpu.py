@@ -1,5 +1,5 @@
 """
-PyTorch 2.9 Symmetric Memory for 8 GPUs
+PyTorch 2.10 Symmetric Memory for 8 GPUs
 ========================================
 
 Demonstrates torch.distributed.nn.SymmetricMemory API for ultra-low
@@ -24,7 +24,7 @@ Use Cases:
 - Low-latency parameter server patterns
 
 Requirements:
-- PyTorch 2.9+
+- PyTorch 2.10+
 - CUDA 13.0+
 - 8 GPUs (graceful degradation on fewer)
 
@@ -227,7 +227,7 @@ def benchmark_symmetric_memory_access(
     
     try:
         # Try to use symmetric memory API
-        # This is PyTorch 2.9+ specific and may not be available
+        # This is PyTorch 2.10+ specific and may not be available
         
         # For now, demonstrate the pattern with standard operations
         # Real symmetric memory would be faster
@@ -419,7 +419,7 @@ def main():
     
     if rank == 0:
         print("=" * 80)
-        print("PyTorch 2.9 Symmetric Memory for 8 GPUs")
+        print("PyTorch 2.10 Symmetric Memory for 8 GPUs")
         print("=" * 80)
         print(f"World size: {world_size} GPUs")
         print(f"Device: {torch.cuda.get_device_name(device)}")

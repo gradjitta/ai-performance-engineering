@@ -33,30 +33,36 @@ warnings.filterwarnings("ignore", message=".*Minimum and Maximum cuda capability
 # Suppress TF32 API deprecation warnings
 warnings.filterwarnings("ignore", message=".*Please use the new API settings to control TF32.*", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*TensorFloat32 tensor cores.*available but not enabled.*", category=UserWarning)
+# Suppress FlashAttention kernel override warnings (harmless - happens when FlashAttention is imported multiple times)
+warnings.filterwarnings("ignore", message=".*Overriding a previously registered kernel.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*Warning only once for all operators.*", category=UserWarning)
 
 import torch
 
 from common.python.compile_utils import enable_tf32
 
-# Configure TF32 using new API (PyTorch 2.9+)
+# Configure TF32 using new API (PyTorch 2.10+)
 # Enable TF32 for optimal performance on Ampere+ GPUs using the shared helper
 if torch.cuda.is_available():
     enable_tf32()
 
+# FAIL FAST: Transformer Engine is REQUIRED
 try:
     import transformer_engine.pytorch as te
     import transformer_engine.pytorch.constants as te_constants
-    TE_AVAILABLE = True
-    FP8_AVAILABLE = hasattr(te, 'fp8_autocast')
-    FP4_AVAILABLE = hasattr(te_constants, 'NVFP4_BLOCK_SCALING_SIZE')
-    FP6_AVAILABLE = hasattr(te_constants, 'NVFP6_BLOCK_SCALING_SIZE')
-except ImportError:
-    te = None
-    te_constants = None
-    TE_AVAILABLE = False
-    FP8_AVAILABLE = False
-    FP4_AVAILABLE = False
-    FP6_AVAILABLE = False
+except ImportError as e:
+    raise ImportError(
+        f"Transformer Engine is REQUIRED but not available: {e}\n"
+        "Install with: pip install transformer-engine"
+    ) from e
+
+TE_AVAILABLE = True
+FP8_AVAILABLE = hasattr(te, 'fp8_autocast')
+FP4_AVAILABLE = hasattr(te_constants, 'NVFP4_BLOCK_SCALING_SIZE')
+FP6_AVAILABLE = hasattr(te_constants, 'NVFP6_BLOCK_SCALING_SIZE')
+
+if not FP8_AVAILABLE:
+    raise RuntimeError("Transformer Engine FP8 support is REQUIRED but not available")
 
 
 def measure_hbm_bandwidth(device: torch.device = None, size_gb: float = 4.0, iterations: int = 20) -> dict:
@@ -65,7 +71,7 @@ def measure_hbm_bandwidth(device: torch.device = None, size_gb: float = 4.0, ite
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     if not torch.cuda.is_available():
-        return {"peak_bandwidth_tbs": None, "peak_utilization_percent": None, "error": "CUDA not available"}
+        raise RuntimeError("CUDA not available - cannot measure HBM bandwidth")
     
     print(f"\nMeasuring HBM memory bandwidth...")
     print(f"  Test size: {size_gb} GB")
@@ -114,7 +120,7 @@ def measure_hbm_bandwidth(device: torch.device = None, size_gb: float = 4.0, ite
             "peak_utilization_percent": utilization,
         }
     except Exception as e:
-        return {"peak_bandwidth_tbs": None, "peak_utilization_percent": None, "error": str(e)}
+        raise RuntimeError(f"HBM bandwidth measurement failed: {e}") from e
 
 
 def measure_fp16_compute(device: torch.device = None, matrix_size: int = 8192, iterations: int = 20) -> dict:
@@ -123,7 +129,7 @@ def measure_fp16_compute(device: torch.device = None, matrix_size: int = 8192, i
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     if not torch.cuda.is_available():
-        return {"peak_tflops": None, "error": "CUDA not available"}
+        raise RuntimeError("CUDA not available - cannot measure compute TFLOPS")
     
     print(f"\nMeasuring FP16 compute performance...")
     print(f"  Matrix size: {matrix_size}x{matrix_size}")
@@ -165,7 +171,7 @@ def measure_fp16_compute(device: torch.device = None, matrix_size: int = 8192, i
             "matrix_size": matrix_size,
         }
     except Exception as e:
-        return {"peak_tflops": None, "error": str(e)}
+        raise RuntimeError(f"Compute measurement failed: {e}") from e
 
 
 def measure_bf16_compute(device: torch.device = None, matrix_size: int = 8192, iterations: int = 20) -> dict:
@@ -174,7 +180,7 @@ def measure_bf16_compute(device: torch.device = None, matrix_size: int = 8192, i
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     if not torch.cuda.is_available():
-        return {"peak_tflops": None, "error": "CUDA not available"}
+        raise RuntimeError("CUDA not available - cannot measure compute TFLOPS")
     
     is_bf16_supported = getattr(torch.cuda, "is_bf16_supported", lambda: False)
     if not is_bf16_supported():
@@ -217,7 +223,7 @@ def measure_bf16_compute(device: torch.device = None, matrix_size: int = 8192, i
             "matrix_size": matrix_size,
         }
     except Exception as e:
-        return {"peak_tflops": None, "error": str(e)}
+        raise RuntimeError(f"Compute measurement failed: {e}") from e
 
 
 def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, iterations: int = 20) -> dict:
@@ -226,10 +232,10 @@ def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, it
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     if not torch.cuda.is_available():
-        return {"peak_tflops": None, "error": "CUDA not available"}
+        raise RuntimeError("CUDA not available - cannot measure compute TFLOPS")
     
     if not FP4_AVAILABLE:
-        return {"peak_tflops": None, "error": "Transformer Engine FP4 (NVFP4) not available"}
+        raise RuntimeError("Transformer Engine FP4 (NVFP4) is REQUIRED but not available")
     
     print(f"\nMeasuring FP4 compute performance...")
     print(f"  Matrix size: {matrix_size}x{matrix_size}")
@@ -253,37 +259,32 @@ def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, it
             params_dtype=torch.float16,
         ).to(device)
         
-        # Create and initialize FP4 recipe if available
-        fp4_recipe = None
-        if hasattr(te, 'fp8') and hasattr(te.fp8, 'Recipe'):
-            try:
-                fp4_recipe = te.fp8.Recipe.override(FP4=True)
-            except (AttributeError, TypeError):
-                fp4_recipe = None
+        # Create FP4 recipe using DelayedScaling with NVFP4BlockScaling
+        from transformer_engine.common.recipe import DelayedScaling, NVFP4BlockScaling
+        
+        try:
+            # Create FP4 recipe with NVFP4BlockScaling
+            fp4_recipe = DelayedScaling(
+                float8_block_scaling=NVFP4BlockScaling()
+            )
+            print(f"  Created FP4 recipe: {type(fp4_recipe).__name__} with NVFP4BlockScaling")
+        except (AttributeError, TypeError, ImportError) as e:
+            error_msg = f"Failed to create FP4 recipe: {e}. FP4 measurement requires NVFP4BlockScaling support."
+            print(f"  ERROR: {error_msg}")
+            raise RuntimeError(error_msg) from e
         
         # Initialize the layer INSIDE autocast context with FP4 recipe
         # This ensures parameters are properly initialized for FP4
-        if fp4_recipe is not None:
-            with te.fp8_autocast(enabled=True, fp8_recipe=fp4_recipe):
-                # Do initial forward pass to initialize FP4 weights properly
-                _ = fp4_linear(x)
-        else:
-            with te.fp8_autocast():
-                # Fallback if Recipe API not available
-                _ = fp4_linear(x)
+        with te.fp8_autocast(enabled=True, fp8_recipe=fp4_recipe):
+            # Do initial forward pass to initialize FP4 weights properly
+            _ = fp4_linear(x)
         
         torch.cuda.synchronize(device)
         
-        # Warmup - FP4 uses fp8_autocast API (name is historical, supports FP4/FP8)
-        # Use the same recipe for consistency
-        if fp4_recipe is not None:
-            with te.fp8_autocast(enabled=True, fp8_recipe=fp4_recipe):
-                for _ in range(10):
-                    _ = fp4_linear(x)
-        else:
-            with te.fp8_autocast():
-                for _ in range(10):
-                    _ = fp4_linear(x)
+        # Warmup - FP4 uses fp8_autocast API with FP4 recipe
+        with te.fp8_autocast(enabled=True, fp8_recipe=fp4_recipe):
+            for _ in range(10):
+                _ = fp4_linear(x)
         torch.cuda.synchronize(device)
         
         # Benchmark
@@ -291,14 +292,9 @@ def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, it
         end_event = torch.cuda.Event(enable_timing=True)
         
         start_event.record()
-        if fp4_recipe is not None:
-            with te.fp8_autocast(enabled=True, fp8_recipe=fp4_recipe):
-                for _ in range(iterations):
-                    _ = fp4_linear(x)
-        else:
-            with te.fp8_autocast():
-                for _ in range(iterations):
-                    _ = fp4_linear(x)
+        with te.fp8_autocast(enabled=True, fp8_recipe=fp4_recipe):
+            for _ in range(iterations):
+                _ = fp4_linear(x)
         end_event.record()
         torch.cuda.synchronize(device)
         
@@ -318,7 +314,7 @@ def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, it
             "matrix_size": matrix_size,
         }
     except Exception as e:
-        return {"peak_tflops": None, "error": f"FP4 measurement failed: {str(e)}"}
+        raise RuntimeError(f"FP4 measurement failed: {e}") from e
 
 
 def measure_fp6_compute(device: torch.device = None, matrix_size: int = 8192, iterations: int = 20) -> dict:
@@ -327,10 +323,11 @@ def measure_fp6_compute(device: torch.device = None, matrix_size: int = 8192, it
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     if not torch.cuda.is_available():
-        return {"peak_tflops": None, "error": "CUDA not available"}
+        raise RuntimeError("CUDA not available - cannot measure compute TFLOPS")
     
+    # FP6 is optional - skip if not available
     if not FP6_AVAILABLE:
-        return {"peak_tflops": None, "error": "Transformer Engine FP6 (NVFP6) not available"}
+        return {"peak_tflops": None, "error": "Transformer Engine FP6 (NVFP6) not available (optional)"}
     
     print(f"\nMeasuring FP6 compute performance...")
     print(f"  Matrix size: {matrix_size}x{matrix_size}")
@@ -349,22 +346,25 @@ def measure_fp6_compute(device: torch.device = None, matrix_size: int = 8192, it
             params_dtype=torch.float16,
         ).to(device)
         
-        fp6_recipe = None
-        if hasattr(te, "fp8") and hasattr(te.fp8, "Recipe"):
-            try:
-                fp6_recipe = te.fp8.Recipe.override(FP6=True)
-            except (AttributeError, TypeError):
-                fp6_recipe = None
+        # Create FP6 recipe - check if NVFP6BlockScaling is available
+        from transformer_engine.common.recipe import DelayedScaling
+        
+        # Check if NVFP6BlockScaling exists (may not be available in all TE versions)
+        try:
+            from transformer_engine.common.recipe import NVFP6BlockScaling
+            fp6_recipe = DelayedScaling(
+                float8_block_scaling=NVFP6BlockScaling()
+            )
+            print(f"  Created FP6 recipe: {type(fp6_recipe).__name__} with NVFP6BlockScaling")
+        except (AttributeError, ImportError) as e:
+            error_msg = f"FP6 (NVFP6) is not available in this Transformer Engine version: {e}. NVFP6BlockScaling not found."
+            print(f"  Skipping FP6: {error_msg}")
+            return {"peak_tflops": None, "error": error_msg}
         
         def _run(iterations_to_run: int) -> None:
-            if fp6_recipe is not None:
-                with te.fp8_autocast(enabled=True, fp8_recipe=fp6_recipe):
-                    for _ in range(iterations_to_run):
-                        _ = fp6_linear(x)
-            else:
-                with te.fp8_autocast():
-                    for _ in range(iterations_to_run):
-                        _ = fp6_linear(x)
+            with te.fp8_autocast(enabled=True, fp8_recipe=fp6_recipe):
+                for _ in range(iterations_to_run):
+                    _ = fp6_linear(x)
         
         _run(10)
         torch.cuda.synchronize(device)
@@ -392,7 +392,7 @@ def measure_fp6_compute(device: torch.device = None, matrix_size: int = 8192, it
             "matrix_size": matrix_size,
         }
     except Exception as e:
-        return {"peak_tflops": None, "error": f"FP6 measurement failed: {str(e)}"}
+        raise RuntimeError(f"FP6 measurement failed: {e}") from e
 
 
 def measure_fp8_compute(device: torch.device = None, matrix_size: int = 8192, iterations: int = 20) -> dict:
@@ -401,10 +401,10 @@ def measure_fp8_compute(device: torch.device = None, matrix_size: int = 8192, it
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     if not torch.cuda.is_available():
-        return {"peak_tflops": None, "error": "CUDA not available"}
+        raise RuntimeError("CUDA not available - cannot measure compute TFLOPS")
     
     if not FP8_AVAILABLE:
-        return {"peak_tflops": None, "error": "Transformer Engine FP8 not available"}
+        raise RuntimeError("Transformer Engine FP8 is REQUIRED but not available")
     
     print(f"\nMeasuring FP8 compute performance...")
     print(f"  Matrix size: {matrix_size}x{matrix_size}")
@@ -461,7 +461,7 @@ def measure_fp8_compute(device: torch.device = None, matrix_size: int = 8192, it
             "matrix_size": matrix_size,
         }
     except Exception as e:
-        return {"peak_tflops": None, "error": str(e)}
+        raise RuntimeError(f"Compute measurement failed: {e}") from e
 
 
 def measure_l2_cache_bandwidth(device: torch.device = None, size_mb: float = 50.0, iterations: int = 20) -> dict:
@@ -525,7 +525,7 @@ def measure_l2_cache_bandwidth(device: torch.device = None, size_mb: float = 50.
             "test_size_mb": test_size_mb,
         }
     except Exception as e:
-        return {"peak_bandwidth_gbs": None, "error": str(e)}
+        raise RuntimeError(f"L2 cache bandwidth measurement failed: {e}") from e
 
 
 def measure_shared_memory_info(device: torch.device = None) -> dict:
@@ -557,7 +557,7 @@ def measure_shared_memory_info(device: torch.device = None) -> dict:
             "total_shared_memory_mb": shared_mem_per_sm * num_sms / 1024,
         }
     except Exception as e:
-        return {"error": str(e)}
+        raise RuntimeError(f"Measurement failed: {e}") from e
 
 
 def measure_nvlink_bandwidth(device: torch.device = None, iterations: int = 20) -> dict:
@@ -618,7 +618,7 @@ def measure_nvlink_bandwidth(device: torch.device = None, iterations: int = 20) 
             "gpu_count": gpu_count,
         }
     except Exception as e:
-        return {"peak_bandwidth_gbs": None, "error": str(e)}
+        raise RuntimeError(f"NVLink bandwidth measurement failed: {e}") from e
 
 
 def capture_gpu_hardware_info(device: torch.device = None) -> dict:
@@ -657,7 +657,7 @@ def capture_gpu_hardware_info(device: torch.device = None) -> dict:
         
         return info
     except Exception as e:
-        return {"error": str(e)}
+        raise RuntimeError(f"Measurement failed: {e}") from e
 
 
 def measure_torch_compile_speedup(device: torch.device = None, matrix_size: int = 4096, iterations: int = 20) -> dict:
@@ -735,7 +735,7 @@ def measure_torch_compile_speedup(device: torch.device = None, matrix_size: int 
             "compiled_time_ms": compiled_time_ms / iterations,
         }
     except Exception as e:
-        return {"speedup": None, "error": str(e)}
+        raise RuntimeError(f"torch.compile speedup measurement failed: {e}") from e
 
 
 def run_all_benchmarks(output_dir: Path = None) -> dict:
@@ -780,13 +780,19 @@ def run_all_benchmarks(output_dir: Path = None) -> dict:
     # Measure HBM memory bandwidth
     results["hbm"] = measure_hbm_bandwidth(device, iterations=iterations)
     
-    # Measure FP4 compute (if available)
+    # Measure FP4 compute (REQUIRED - no fallback)
     results["fp4_compute"] = measure_fp4_compute(device, iterations=iterations)
     
-    # Measure FP6 compute (if available)
-    results["fp6_compute"] = measure_fp6_compute(device, iterations=iterations)
+    # Measure FP6 compute (OPTIONAL - skip if not available)
+    try:
+        results["fp6_compute"] = measure_fp6_compute(device, iterations=iterations)
+    except RuntimeError as e:
+        if "not available" in str(e).lower() or "NVFP6" in str(e):
+            results["fp6_compute"] = {"peak_tflops": None, "error": str(e)}
+        else:
+            raise  # Re-raise if it's a real error, not just "not available"
     
-    # Measure FP8 compute (if available)
+    # Measure FP8 compute (REQUIRED - no fallback)
     results["fp8_compute"] = measure_fp8_compute(device, iterations=iterations)
     
     # Measure FP16 compute
@@ -818,20 +824,24 @@ def run_all_benchmarks(output_dir: Path = None) -> dict:
     if results["hbm"].get("peak_bandwidth_tbs"):
         print(f"HBM Memory Bandwidth: {results['hbm']['peak_bandwidth_tbs']:.3f} TB/s")
     
+    # REQUIRED measurements - if they failed, exceptions were already raised
     if results["fp4_compute"].get("peak_tflops"):
         print(f"FP4 Compute: {results['fp4_compute']['peak_tflops']:.2f} TFLOPS")
-    elif results["fp4_compute"].get("error"):
-        print(f"FP4 Compute: Not available ({results['fp4_compute']['error']})")
+    else:
+        raise RuntimeError("FP4 compute measurement failed - this should not happen (exception should have been raised)")
     
+    # FP6 is optional - skip if not available
     if results["fp6_compute"].get("peak_tflops"):
         print(f"FP6 Compute: {results['fp6_compute']['peak_tflops']:.2f} TFLOPS")
     elif results["fp6_compute"].get("error"):
         print(f"FP6 Compute: Not available ({results['fp6_compute']['error']})")
+    else:
+        print("FP6 Compute: Not available (optional)")
     
     if results["fp8_compute"].get("peak_tflops"):
         print(f"FP8 Compute: {results['fp8_compute']['peak_tflops']:.2f} TFLOPS")
-    elif results["fp8_compute"].get("error"):
-        print(f"FP8 Compute: Not available ({results['fp8_compute']['error']})")
+    else:
+        raise RuntimeError("FP8 compute measurement failed - this should not happen (exception should have been raised)")
     
     if results["fp16_compute"].get("peak_tflops"):
         print(f"FP16 Compute: {results['fp16_compute']['peak_tflops']:.2f} TFLOPS")

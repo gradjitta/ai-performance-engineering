@@ -8,7 +8,7 @@ if str(_EXTRAS_REPO_ROOT) not in sys.path:
 
 from pathlib import Path
 
-"""High-throughput DataLoader patterns for storage-bound training (PyTorch 2.9)."""
+"""High-throughput DataLoader patterns for storage-bound training (PyTorch 2.10)."""
 
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

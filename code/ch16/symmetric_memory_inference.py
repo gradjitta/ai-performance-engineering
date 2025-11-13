@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Symmetric Memory Inference Patterns for 8x B200.
 
-Extends the inference serving stack with PyTorch 2.9 symmetric memory
+Extends the inference serving stack with PyTorch 2.10 symmetric memory
 primitives (backed by NVSHMEM on Blackwell) to achieve <5 µs cross-GPU
 access for latency-sensitive workloads.
 

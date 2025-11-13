@@ -13,6 +13,10 @@ repo_root = Path(__file__).parent.parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
+from arch_config import configure_optimizations as _configure_arch_optimizations
+
+_configure_arch_optimizations()
+
 import torch
 
 def precompile_extensions():

@@ -109,8 +109,7 @@ _probe_cache: Optional[Dict[str, Any]] = None
 
 
 def _run_probe_if_needed() -> None:
-    force = os.environ.get("AIPERF_FORCE_PROBE") == "1"
-    if force or not PROBE_FILE.exists():
+    if not PROBE_FILE.exists():
         ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
         subprocess.run([sys.executable, str(PROBE_SCRIPT)], check=True)
 
@@ -150,6 +149,13 @@ def _entry_to_capabilities(entry: Dict[str, Any]) -> HardwareCapabilities:
     tensor_cores = entry.get("tensor_cores") or (
         "5th Gen" if entry.get("architecture", "").startswith("blackwell") else "Hopper/Ampere"
     )
+    tma_supported_flag = bool(entry.get("tma", {}).get("supported", False))
+    tma_compiler_supported_flag = bool(entry.get("tma", {}).get("compiler_support", False))
+    if tma_supported_flag and not tma_compiler_supported_flag:
+        # Older cache entries recorded hardware-level support even when the
+        # current toolchain rejects TMA (e.g. GB10 / sm_121). Clamp the value
+        # so logs, guards, and human-readable reports stay consistent.
+        tma_supported_flag = False
     return HardwareCapabilities(
         key=entry["key"],
         name=entry.get("name", entry["key"]),
@@ -171,8 +177,8 @@ def _entry_to_capabilities(entry: Dict[str, Any]) -> HardwareCapabilities:
         max_unified_memory_tb=entry.get("max_unified_memory_tb"),
         nvlink_c2c=bool(entry.get("nvlink_c2c")),
         grace_coherence=bool(entry.get("grace_coherence")),
-        tma_supported=bool(entry.get("tma", {}).get("supported", False)),
-        tma_compiler_supported=bool(entry.get("tma", {}).get("compiler_support", False)),
+        tma_supported=tma_supported_flag,
+        tma_compiler_supported=tma_compiler_supported_flag,
         tma_limits=tma_limits,
         cluster=cluster,
         driver_version=entry.get("driver_version"),

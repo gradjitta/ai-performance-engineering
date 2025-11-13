@@ -239,6 +239,29 @@ class ArchitectureConfig:
     def get_profiling_tools(self) -> list:
         return self.config["profiling_tools"]
 
+    def _sanitize_arch_value(self, value: Optional[str]) -> Optional[str]:
+        if not value:
+            return value
+        sanitized = value
+        replacements = {
+            "sm_121a": "sm_120",
+            "sm121a": "sm120",
+            "121a": "120",
+            "12.1a": "12.0",
+        }
+        for needle, repl in replacements.items():
+            sanitized = sanitized.replace(needle, repl)
+        return sanitized
+
+    def _set_arch_env(self, key: str, fallback: str) -> None:
+        current = os.environ.get(key)
+        if current:
+            sanitized = self._sanitize_arch_value(current)
+            if sanitized and sanitized != current:
+                os.environ[key] = sanitized
+        else:
+            os.environ[key] = fallback
+
     def configure_pytorch_optimizations(self) -> None:
         if not torch.cuda.is_available():
             return
@@ -249,30 +272,27 @@ class ArchitectureConfig:
             if "CMAKE_CUDA_ARCHITECTURES" not in os.environ:
                 os.environ["CMAKE_CUDA_ARCHITECTURES"] = "100;103"
         elif self.arch == "grace_blackwell":
-            # CUDA 13.0's ptxas refuses tcgen05/tensormap opcodes for sm_121, so clamp to sm_120.
-            arch_list = os.environ.get("TORCH_CUDA_ARCH_LIST")
-            if not arch_list or "12.1" in arch_list:
-                os.environ["TORCH_CUDA_ARCH_LIST"] = "12.0"
-            cmake_arch = os.environ.get("CMAKE_CUDA_ARCHITECTURES")
-            if not cmake_arch or "121" in cmake_arch:
-                os.environ["CMAKE_CUDA_ARCHITECTURES"] = "120"
+            # CUDA 13.0's ptxas refuses tcgen05/tensormap opcodes for sm_121/121a, so clamp to sm_120.
+            self._set_arch_env("TORCH_CUDA_ARCH_LIST", "12.0")
+            self._set_arch_env("CMAKE_CUDA_ARCHITECTURES", "120")
+            self._set_arch_env("CUDAARCHS", "120")
         
         # PyTorch Inductor configuration
         inductor = getattr(torch, "_inductor", None)
         if inductor and hasattr(inductor, "config"):
             cfg = inductor.config
-            # Enable PyTorch 2.9 features
+            # Enable PyTorch 2.10 features
             if hasattr(cfg, "triton"):
                 triton_cfg = cfg.triton
                 if hasattr(triton_cfg, "unique_kernel_names"):
                     triton_cfg.unique_kernel_names = True
-                # NEW in PyTorch 2.9: CUDA graph trees for better performance
+                # NEW in PyTorch 2.10: CUDA graph trees for better performance
                 if hasattr(triton_cfg, "cudagraph_trees"):
                     triton_cfg.cudagraph_trees = True
                 if hasattr(triton_cfg, "cudagraphs"):
                     triton_cfg.cudagraphs = True
             
-            # Enable max-autotune GEMM backends (PyTorch 2.9)
+            # Enable max-autotune GEMM backends (PyTorch 2.10)
             # CUTLASS provides optimized GEMM kernels for NVIDIA GPUs
             if hasattr(cfg, "max_autotune_gemm_backends"):
                 cfg.max_autotune_gemm_backends = "CUTLASS,TRITON,ATEN"
@@ -404,12 +424,12 @@ def _install_symmetric_memory_shim() -> None:
     Bridge PyTorch symmetric memory APIs when they are hidden under experimental modules.
     
     WHY THIS EXISTS:
-    PyTorch 2.9+ includes symmetric memory (backed by NVSHMEM) but the API may be
+    PyTorch 2.10+ includes symmetric memory (backed by NVSHMEM) but the API may be
     located in experimental modules. This shim provides a stable interface until
     PyTorch stabilizes the API location.
     
     WHAT IT DOES:
-    - Checks if torch.distributed.nn.SymmetricMemory exists (PyTorch 2.9+ stable API)
+    - Checks if torch.distributed.nn.SymmetricMemory exists (PyTorch 2.10+ stable API)
     - If not, attempts to bridge from torch.distributed._symmetric_memory (experimental)
     - Creates a wrapper that matches the stable API semantics
     
@@ -439,19 +459,19 @@ def _install_symmetric_memory_shim() -> None:
             print("WARNING: Symmetric memory shim: torch.distributed not available")
         return
 
-    # Version detection: PyTorch 2.9+ should have stable API
+    # Version detection: PyTorch 2.10+ should have stable API
     # Check PyTorch version to determine which API to use
     pytorch_version_str = torch.__version__
     pytorch_version = _parse_version_tuple(pytorch_version_str)
     
-    # Check if stable API already exists (PyTorch 2.9+)
+    # Check if stable API already exists (PyTorch 2.10+)
     if hasattr(dist.nn, "SymmetricMemory"):
         _SYMMETRIC_SHIM_INSTALLED = True
         if VERBOSE_EXPERIMENTAL_FEATURES:
             print(f"PASSED: Symmetric memory: Using stable PyTorch API (PyTorch {pytorch_version_str})")
         return
     
-    # PyTorch 2.9+ should have stable API - warn if missing
+    # PyTorch 2.10+ should have stable API - warn if missing
     if pytorch_version >= (2, 9, 0):
         if VERBOSE_EXPERIMENTAL_FEATURES:
             print(f"WARNING: Symmetric memory: PyTorch {pytorch_version_str} detected but stable API not found, using experimental API")
@@ -482,7 +502,7 @@ def _install_symmetric_memory_shim() -> None:
         Minimal wrapper that mirrors torch.distributed.nn.SymmetricMemory semantics.
         
         This wrapper bridges the experimental _symmetric_memory module to provide
-        a stable API compatible with PyTorch 2.9+ stable symmetric memory.
+        a stable API compatible with PyTorch 2.10+ stable symmetric memory.
         """
 
         __slots__ = ("buffer", "_group", "_handle")
@@ -588,3 +608,4 @@ def configure_optimizations() -> None:
 
 arch_config = ArchitectureConfig()
 configure_optimizations()
+

@@ -15,7 +15,7 @@ Usage:
 Requirements:
     - Grace-Blackwell GB10 GPU (SM 12.1)
     - CUDA 13.0+
-    - PyTorch 2.9+
+    - PyTorch 2.10+
     - Triton 3.5+
 """
 

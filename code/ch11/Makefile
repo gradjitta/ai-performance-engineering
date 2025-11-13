@@ -4,7 +4,11 @@ NVCC_FLAGS = $(CUDA_NVCC_ARCH_FLAGS)
 SUFFIX = $(TARGET_SUFFIX)
 
 # Base targets
-BASE_TARGETS = baseline_streams optimized_streams_ordered optimized_streams_warp_specialized warp_specialized_two_pipelines_multistream warp_specialized_cluster_pipeline_multistream
+BASE_TARGETS = baseline_streams optimized_streams_ordered optimized_streams_warp_specialized \
+               baseline_warp_specialized_multistream optimized_warp_specialized_multistream \
+               optimized_warp_specialized_two_pipelines_multistream_enhanced \
+               warp_specialized_cluster_pipeline_multistream optimized_cluster_reduction_enhanced \
+               optimized_kv_prefetch_pipeline_enhanced
 TARGETS = $(addsuffix $(SUFFIX), $(BASE_TARGETS))
 
 # Default target
@@ -16,8 +20,9 @@ all: $(TARGETS)
 %$(SUFFIX): %.cu
 	$(NVCC) $(NVCC_FLAGS) -o $@ $<
 
-# Special rule for warp_specialized_two_pipelines_multistream (uses _driver.cu)
-warp_specialized_two_pipelines_multistream$(SUFFIX): warp_specialized_two_pipelines_multistream_driver.cu warp_specialized_kernel_two_pipelines_multistream.cu
+# Special rule for enhanced two-pipeline launcher (uses driver)
+optimized_warp_specialized_two_pipelines_multistream_enhanced$(SUFFIX): \
+	optimized_warp_specialized_two_pipelines_driver_enhanced.cu optimized_warp_specialized_two_pipelines_multistream_enhanced.cu
 	$(NVCC) $(NVCC_FLAGS) -o $@ $<
 
 # Architecture-specific targets

@@ -21,7 +21,7 @@ Performance on B200:
 - Model capacity: 2x larger models in same memory
 
 Requirements:
-- PyTorch 2.9+ with CUDA 13.0
+- PyTorch 2.10+ with CUDA 13.0
 - Blackwell GPU (B200/B300)
 - torch._scaled_mm support
 

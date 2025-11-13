@@ -3,7 +3,7 @@ Inference Optimization Suite for Blackwell B200/B300
 ====================================================
 
 This module provides comprehensive inference optimizations leveraging:
-- PyTorch 2.9 FlexAttention
+- PyTorch 2.10 FlexAttention
 - FP8 quantization for Blackwell
 - Dynamic batching with conditional CUDA graphs
 - KV cache optimization for long context
@@ -17,7 +17,7 @@ Performance Targets (B200):
 - <10ms latency per token
 
 Requirements:
-- PyTorch 2.9+
+- PyTorch 2.10+
 - Blackwell B200/B300
 - CUDA 13.0+
 
@@ -252,7 +252,7 @@ class OptimizedDecoderLayer(nn.Module):
     Optimized decoder layer with FlexAttention
     
     Features:
-    - PyTorch 2.9 FlexAttention (2x faster)
+    - PyTorch 2.10 FlexAttention (2x faster)
     - Sliding window attention for long context
     - KV cache integration
     - Compiled with torch.compile
@@ -402,7 +402,7 @@ class BlackwellInferencePipeline:
             device=str(self.device),
         )
         
-        # Compile model with torch.compile (PyTorch 2.9)
+        # Compile model with torch.compile (PyTorch 2.10)
         if compile:
             print("Compiling model with torch.compile...")
             self.model = compile_model(
@@ -971,7 +971,7 @@ if __name__ == "__main__":
     if FP8_AVAILABLE:
         print("FP8 support available")
     else:
-        print("ℹ FP8 not available (requires PyTorch 2.9+)")
+        print("ℹ FP8 not available (requires PyTorch 2.10+)")
     
     print()
     

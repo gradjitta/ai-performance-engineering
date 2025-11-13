@@ -1,0 +1,49 @@
+# QoS configuration for Chapter 18 examples
+profiles:
+  default:
+    target_latency_ms: 60
+    max_tokens_per_s: 2500
+    burst_tokens: 512
+  realtime:
+    target_latency_ms: 20
+    max_tokens_per_s: 4000
+    burst_tokens: 1024
+  batch:
+    target_latency_ms: 120
+    max_tokens_per_s: 5000
+    burst_tokens: 4096
+
+queues:
+  vip:
+    profile: realtime
+    priority: 0
+    max_concurrent_requests: 32
+    reserve_gpus: 2
+  standard:
+    profile: default
+    priority: 1
+    max_concurrent_requests: 128
+  background:
+    profile: batch
+    priority: 2
+    max_concurrent_requests: 512
+    allow_preemption: false
+
+slo_monitors:
+  - name: ttft
+    metric: time_to_first_token_ms
+    warning_threshold: 25
+    critical_threshold: 40
+  - name: throughput
+    metric: tokens_per_second
+    warning_threshold: 2000
+    critical_threshold: 1500
+
+routing:
+  rules:
+    - match: {tenant: "vip"}
+      queue: vip
+    - match: {request_type: "batch"}
+      queue: background
+    - match: {}
+      queue: standard

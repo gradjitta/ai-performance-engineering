@@ -43,8 +43,11 @@ class BaselineStreamsBenchmark(Benchmark):
     def __init__(self):
         self.device = resolve_device()
         self.model = None
-        self.input1 = None
-        self.input2 = None
+        self.host_batches = []
+        self.num_chunks = 6
+        self.chunk_size = 256
+        self.input_dim = 4096
+        self.hidden_dim = 4096
     
     def setup(self) -> None:
         """Setup: Initialize model without streams."""
@@ -54,13 +57,15 @@ class BaselineStreamsBenchmark(Benchmark):
         # This baseline does not use streams
         
         self.model = nn.Sequential(
-            nn.Linear(1024, 2048),
-            nn.ReLU(),
-            nn.Linear(2048, 1024),
-        ).to(self.device).eval()
+            nn.Linear(self.input_dim, self.hidden_dim, bias=False),
+            nn.GELU(),
+            nn.Linear(self.hidden_dim, self.input_dim, bias=False),
+        ).to(self.device).half().eval()
         
-        self.input1 = torch.randn(32, 1024, device=self.device)
-        self.input2 = torch.randn(32, 1024, device=self.device)
+        self.host_batches = [
+            torch.randn(self.chunk_size, self.input_dim, dtype=torch.float16, pin_memory=True)
+            for _ in range(self.num_chunks)
+        ]
         torch.cuda.synchronize()
     
     def benchmark_fn(self) -> None:
@@ -79,36 +84,33 @@ class BaselineStreamsBenchmark(Benchmark):
                 # Baseline: Sequential execution (no streams)
                 # Operations execute one after another
                 # No overlap - poor GPU utilization
-                output1 = self.model(self.input1)
+                reductions = []
+                for host_batch in self.host_batches:
+                    device_batch = host_batch.to(self.device, non_blocking=False)
+                    output = self.model(device_batch)
+                    reductions.append(output.sum(dtype=torch.float32))
                 torch.cuda.synchronize()  # Wait for completion
-                
-                output2 = self.model(self.input2)
-                torch.cuda.synchronize()  # Wait for completion
-                
-                # Baseline: No streams benefits
-                # Sequential execution (inefficient)
-                _ = output1 + output2
+                _ = torch.stack(reductions).sum()
 
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         self.model = None
-        self.input1 = None
-        self.input2 = None
+        self.host_batches = []
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark configuration."""
         return BenchmarkConfig(
-            iterations=50,
-            warmup=5,
+            iterations=20,
+            warmup=3,
         )
     
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.model is None:
             return "Model not initialized"
-        if self.input1 is None or self.input2 is None:
+        if not self.host_batches:
             return "Inputs not initialized"
         return None
 

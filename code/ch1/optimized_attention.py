@@ -14,6 +14,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 try:
+    from flash_attn import flash_attn_func  # type: ignore[attr-defined]
+    _FLASH_ATTN_AVAILABLE = True
+except ImportError:
+    flash_attn_func = None  # type: ignore[assignment]
+    _FLASH_ATTN_AVAILABLE = False
+
+try:
+    from torch.nn.attention import sdpa_kernel as _sdpa_kernel
+    from torch.nn.attention import SDPBackend as _SDPBackend
+    _SDPA_BACKEND_AVAILABLE = True
+except ImportError:
+    _sdpa_kernel = None  # type: ignore[assignment]
+    _SDPBackend = None  # type: ignore[assignment]
+    _SDPA_BACKEND_AVAILABLE = False
+
+try:
     import ch1.arch_config  # noqa: F401 - Apply chapter defaults
 except ImportError:
     pass
@@ -71,10 +87,27 @@ class OptimizedAttention(nn.Module):
         # - Tiled computation to avoid storing full attention matrix
         # - Better performance for long sequences
         # Use is_causal=True for efficient causal masking
-        attn_output = F.scaled_dot_product_attention(
-            q, k, v,
-            is_causal=True
-        )  # (batch, heads, seq, head_dim)
+        if _FLASH_ATTN_AVAILABLE and flash_attn_func is not None:
+            q_flash = q.transpose(1, 2).contiguous()
+            k_flash = k.transpose(1, 2).contiguous()
+            v_flash = v.transpose(1, 2).contiguous()
+            attn_output = flash_attn_func(q_flash, k_flash, v_flash, causal=True)
+            attn_output = attn_output.transpose(1, 2)
+        elif _SDPA_BACKEND_AVAILABLE and _sdpa_kernel is not None and _SDPBackend is not None:
+            preferred = []
+            for name in ("FLASH_ATTENTION", "EFFICIENT_ATTENTION", "CUDNN"):
+                if hasattr(_SDPBackend, name):
+                    preferred.append(getattr(_SDPBackend, name))
+            with _sdpa_kernel(preferred):
+                attn_output = F.scaled_dot_product_attention(
+                    q, k, v,
+                    is_causal=True
+                )
+        else:
+            attn_output = F.scaled_dot_product_attention(
+                q, k, v,
+                is_causal=True
+            )
         
         # Reshape and project output
         attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.hidden_dim)
@@ -93,13 +126,24 @@ class OptimizedAttentionBenchmark(Benchmark):
     
     def setup(self) -> None:
         """Setup: initialize optimized attention model and data."""
-        
+
         # Optimization: Enable cuDNN benchmarking for optimal kernel selection
         if torch.cuda.is_available():
             torch.backends.cudnn.benchmark = True
             torch.backends.cudnn.deterministic = False
             # Enable TF32 for faster matmul on Ampere+ GPUs
             enable_tf32()
+            # Ensure FlashAttention backend is enabled for scaled dot product attention
+            if hasattr(torch.backends, "cuda") and hasattr(torch.backends.cuda, "enable_flash_sdp"):
+                try:
+                    torch.backends.cuda.enable_flash_sdp(True)
+                    if hasattr(torch.backends.cuda, "enable_math_sdp"):
+                        torch.backends.cuda.enable_math_sdp(False)
+                    if hasattr(torch.backends.cuda, "enable_mem_efficient_sdp"):
+                        torch.backends.cuda.enable_mem_efficient_sdp(False)
+                except RuntimeError:
+                    # Flash SDP backend missing; fall back to default behavior.
+                    pass
         
         from common.python.compile_utils import compile_model
         
@@ -130,7 +174,7 @@ class OptimizedAttentionBenchmark(Benchmark):
         # Optimization: Use longer sequence length - FlashAttention benefits more from longer sequences
         # FlashAttention's O(N) memory complexity vs O(N^2) becomes more beneficial with longer sequences
         # Use FP16 for faster computation (FlashAttention optimized for FP16)
-        seq_len = 256  # Longer sequence to show FlashAttention benefits
+        seq_len = 1024  # Longer sequence to show FlashAttention benefits
         self.data = torch.randn(4, seq_len, 256, device=self.device, dtype=dtype).contiguous()  # (batch, seq_len, hidden_dim)
     
     def benchmark_fn(self) -> None:

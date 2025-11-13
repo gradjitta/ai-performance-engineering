@@ -475,7 +475,7 @@ def benchmark_fp8_vs_fp16() -> None:
             mean_diff = (C_fp16 - C_fp8).abs().mean().item()
             print(f"  Numerical error: max={max_diff:.6f}, mean={mean_diff:.6f}")
         else:
-            print(f"  FP8:  Not available (requires PyTorch 2.9+)")
+            print(f"  FP8:  Not available (requires PyTorch 2.10+)")
     
     print("\n" + "=" * 80)
 

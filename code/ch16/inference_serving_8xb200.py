@@ -33,7 +33,7 @@ Hardware:
 - NCCL 2.28 + NVLS for optimal collectives
 
 Requirements:
-- PyTorch 2.9+
+- PyTorch 2.10+
 - CUDA 13.0+
 - 8 GPUs (Blackwell recommended)
 

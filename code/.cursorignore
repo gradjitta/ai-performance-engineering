@@ -1,0 +1,60 @@
+# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
+third_party/*
+vendor/*
+
+# Python bytecode and cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+
+# Generated artifacts and build outputs
+artifacts/
+*.o
+*.so
+*.a
+*.cubin
+*.fatbin
+*.ptx
+dist/
+build/
+
+# Log files
+*.log
+
+# PDFs and documentation (large files)
+*.pdf
+book/
+
+# Python wheels
+*.whl
+*.whl.part*
+
+# Benchmark result JSON files (generated data)
+benchmark_peak_results_*.json
+benchmark_results_*.json
+benchmark_test_results_*.json
+
+# Large third-party JSON configs (in third_party, but also catch any others)
+**/third_party/**/*.json
+**/vendor/**/*.json
+
+# CUDA compiled binaries
+*_sm100
+*_sm121
+
+# Profiling outputs
+*.nsys-rep
+*.ncu-rep
+*.sqlite
+*.qdrep
+*.pt.trace.json
+perf.data*
+
+# Test results and temporary files
+tmp_*/
+results_*/
+profiles/
+profiling_results*/

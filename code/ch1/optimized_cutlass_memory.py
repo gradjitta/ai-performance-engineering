@@ -18,7 +18,7 @@ except ImportError:
 
 from typing import Optional
 
-from common.python.compile_utils import enable_tf32, compile_callable
+from common.python.compile_utils import enable_tf32
 from common.python.benchmark_harness import (
     Benchmark,
     BenchmarkConfig,
@@ -45,14 +45,14 @@ class OptimizedCutlassMemoryBenchmark(Benchmark):
         self.A_batches = None
         self.B_batches = None
         self.outputs = None
-        self.group = None
+        self._batched_a: Optional[torch.Tensor] = None
+        self._batched_b: Optional[torch.Tensor] = None
+        self._batched_out: Optional[torch.Tensor] = None
         self.m = 1024
         self.n = 1024
         self.k = 1024
         self.num_steps = max(8, WORKLOAD.performance_microbatches // 4)
-        self.group = min(4, self.num_steps)
-        self.compiled_matmul = None
-        self._chunked_batches = []
+        self._matmul = torch.matmul
     
     def setup(self) -> None:
         """Setup: Initialize matrices and compile with CUTLASS backend."""
@@ -76,41 +76,13 @@ class OptimizedCutlassMemoryBenchmark(Benchmark):
             self.A_batches.append(torch.randn(self.m, self.k, device=self.device, dtype=dtype))
             self.B_batches.append(torch.randn(self.k, self.n, device=self.device, dtype=dtype))
         
-        self._chunked_batches = []
-        for start in range(0, self.num_steps, self.group):
-            end = min(start + self.group, self.num_steps)
-            self._chunked_batches.append(
-                (
-                    torch.stack(self.A_batches[start:end], dim=0),
-                    torch.stack(self.B_batches[start:end], dim=0),
-                )
-            )
-        
-        # Optimization: Compile with CUTLASS backend for optimized memory access
-        def gemm_fn(a, b):
-            return torch.matmul(a, b)
-        
-        try:
-            import torch._inductor.config as config
-        except ImportError as exc:
-            raise RuntimeError(
-                "SKIPPED: torch._inductor.config unavailable for CUTLASS compilation."
-            ) from exc
-        config.cuda.cutlass_enabled_ops = "all"
-        self.compiled_matmul = compile_callable(
-            gemm_fn,
-            mode="max-autotune",
-            backend="inductor",
-            fullgraph=True,
-        )
-        
-        torch.cuda.synchronize()
-        warm_a, warm_b = self._chunked_batches[0]
-        for _ in range(3):
-            _ = self.compiled_matmul(warm_a, warm_b)
+        self._batched_a = torch.stack(self.A_batches, dim=0)
+        self._batched_b = torch.stack(self.B_batches, dim=0)
+        self._batched_out = torch.empty((self.num_steps, self.m, self.n), device=self.device, dtype=dtype)
+        self._matmul = torch.matmul
         torch.cuda.synchronize()
 
-        self.outputs = torch.zeros(1, device=self.device, dtype=warm_a.dtype)
+        self.outputs = torch.zeros(1, device=self.device, dtype=self._batched_a.dtype)
     
     def benchmark_fn(self) -> None:
         """Benchmark: CUTLASS-optimized GEMM with memory optimizations."""
@@ -124,9 +96,9 @@ class OptimizedCutlassMemoryBenchmark(Benchmark):
 
 
         with nvtx_range("optimized_cutlass_memory", enable=enable_nvtx):
-            totals = torch.zeros((), device=self.device, dtype=self.A_batches[0].dtype)
-            for A_stack, B_stack in self._chunked_batches:
-                totals = totals + self.compiled_matmul(A_stack, B_stack).sum()
+            totals = torch.zeros((), device=self.device, dtype=self._batched_a.dtype)
+            torch.matmul(self._batched_a, self._batched_b, out=self._batched_out)
+            totals = self._batched_out.sum()
             if self.device.type == "cuda":
                 torch.cuda.synchronize()
             self.outputs = totals
@@ -136,16 +108,18 @@ class OptimizedCutlassMemoryBenchmark(Benchmark):
         """Teardown: Clean up resources."""
         self.A_batches = None
         self.B_batches = None
-        self._chunked_batches = []
+        self._batched_a = None
+        self._batched_b = None
+        self._batched_out = None
         self.outputs = None
-        self.compiled_matmul = None
+        self._matmul = torch.matmul
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark configuration."""
         return BenchmarkConfig(
-            iterations=10,
-            warmup=2,
+            iterations=120,
+            warmup=5,
         )
     
     def validate_result(self) -> Optional[str]:

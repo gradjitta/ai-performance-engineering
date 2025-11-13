@@ -8,7 +8,7 @@ if str(_EXTRAS_REPO_ROOT) not in sys.path:
 
 from pathlib import Path
 
-"""NUMA-aware affinity helpers for Chapter 3 examples (CUDA 13 / PyTorch 2.9)."""
+"""NUMA-aware affinity helpers for Chapter 3 examples (CUDA 13 / PyTorch 2.10)."""
 
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

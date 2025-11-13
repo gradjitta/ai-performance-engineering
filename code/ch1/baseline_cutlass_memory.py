@@ -84,8 +84,8 @@ class BaselineCutlassMemoryBenchmark(Benchmark):
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark configuration."""
         return BenchmarkConfig(
-            iterations=10,
-            warmup=2,
+            iterations=120,
+            warmup=5,
         )
 
     def validate_result(self) -> Optional[str]:

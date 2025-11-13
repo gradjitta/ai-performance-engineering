@@ -73,7 +73,7 @@ def benchmark_quick(model, x, name, num_iters=20):
     return avg_ms
 
 def main():
-    # NEW PyTorch 2.9 API (fixes warnings!)
+    # NEW PyTorch 2.10 API (fixes warnings!)
     enable_tf32()
     
     print("=" * 80)

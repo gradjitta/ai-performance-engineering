@@ -53,7 +53,7 @@ class BaselineMoEBenchmark(Benchmark):
         self.hidden_dim = 768
         self.num_experts = 12
         self.batch = 4
-        self.seq = 128
+        self.seq = 512
         self.model: Optional[nn.Module] = None
         self.inputs: Optional[torch.Tensor] = None
 

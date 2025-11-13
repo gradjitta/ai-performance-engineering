@@ -423,7 +423,7 @@ if torch.cuda.is_available():
     #     torch._inductor.config.triton.hbm3e_optimizations = True
     #     torch._inductor.config.triton.tma_support = True
     
-    # Enable latest PyTorch 2.9 features (if available)
+    # Enable latest PyTorch 2.10 features (if available)
     try:
         torch._inductor.config.triton.unique_kernel_names = True
     except AttributeError:

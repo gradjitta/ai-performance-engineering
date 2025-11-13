@@ -2,7 +2,7 @@
 """Transformer Engine FP8 training demo for Chapter 19.
 
 Highlights current (Oct 2025) best practices on NVIDIA Blackwell with
-CUDA 13 + PyTorch 2.9:
+CUDA 13 + PyTorch 2.10:
   * Prefer BF16 when using AMP; rely on Transformer Engine (TE) for MXFP8/NVFP4 paths.
   * Switch to cudaMallocAsync allocator without respawning when possible.
   * Pair FP8 paths with torch.compile(mode="reduce-overhead") for steady decode shapes.

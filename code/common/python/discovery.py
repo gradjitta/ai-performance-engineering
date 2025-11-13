@@ -20,7 +20,17 @@ def discover_benchmarks(chapter_dir: Path) -> List[Tuple[Path, List[Path], str]]
         Example: (Path('ch16/baseline_moe_dense.py'), [Path('ch16/optimized_moe_sparse.py')], 'moe')
     """
     pairs = []
-    baseline_files = list(chapter_dir.glob("baseline_*.py"))
+    baseline_files = []
+    for pattern in ("baseline_*.py", "baseline_*.cu"):
+        baseline_files.extend(chapter_dir.glob(pattern))
+    # Deduplicate when both globs overlap (unlikely but safe) while preserving order.
+    seen = set()
+    unique_baselines = []
+    for path in baseline_files:
+        if path not in seen:
+            unique_baselines.append(path)
+            seen.add(path)
+    baseline_files = unique_baselines
     example_names = {
         baseline_file.stem.replace("baseline_", "")
         for baseline_file in baseline_files
@@ -31,23 +41,28 @@ def discover_benchmarks(chapter_dir: Path) -> List[Tuple[Path, List[Path], str]]
         # This preserves variants like "moe_dense" instead of collapsing everything to "moe".
         example_name = baseline_file.stem.replace("baseline_", "")
         optimized_files: List[Path] = []
+        variant_aliases: List[Tuple[str, Path]] = []
+        ext = baseline_file.suffix or ".py"
         
-        # Pattern 1: optimized_{name}_*.py (e.g., optimized_moe_sparse.py)
-        pattern1 = chapter_dir / f"optimized_{example_name}_*.py"
+        # Pattern 1: optimized_{name}_*.{ext} (e.g., optimized_moe_sparse.py)
+        pattern1 = chapter_dir / f"optimized_{example_name}_*{ext}"
         for opt_path in pattern1.parent.glob(pattern1.name):
             suffix = opt_path.stem.replace(f"optimized_{example_name}_", "", 1)
             candidate_name = f"{example_name}_{suffix}"
             if candidate_name in example_names:
                 continue
             optimized_files.append(opt_path)
+            variant_aliases.append((candidate_name, opt_path))
         
-        # Pattern 2: optimized_{name}.py (e.g., optimized_moe.py)
-        pattern2 = chapter_dir / f"optimized_{example_name}.py"
+        # Pattern 2: optimized_{name}.{ext} (e.g., optimized_moe.py / optimized_moe.cu)
+        pattern2 = chapter_dir / f"optimized_{example_name}{ext}"
         if pattern2.exists():
             optimized_files.append(pattern2)
         
         if optimized_files:
             pairs.append((baseline_file, optimized_files, example_name))
+            for variant_name, opt_path in variant_aliases:
+                pairs.append((baseline_file, [opt_path], variant_name))
     
     return pairs
 

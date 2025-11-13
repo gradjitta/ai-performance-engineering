@@ -59,7 +59,7 @@ def demonstrate_custom_allocator():
 
         try:
             if allocator_config and "PYTORCH_CUDA_ALLOC_CONF" in allocator_config:
-                # Prefer CUDA-scoped allocator variable on PyTorch 2.9+
+                # Prefer CUDA-scoped allocator variable on PyTorch 2.10+
                 os.environ.pop("PYTORCH_ALLOC_CONF", None)
                 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = allocator_config["PYTORCH_CUDA_ALLOC_CONF"]
             else:

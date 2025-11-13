@@ -17,7 +17,6 @@ if str(repo_root) not in sys.path:
 
 import torch
 import torch.nn as nn
-
 try:
     from flash_attn import flash_attn_func
     FLASH_ATTN_AVAILABLE = True
@@ -48,12 +47,15 @@ class OptimizedFlashAttentionBenchmark(Benchmark):
     
     def __init__(self):
         self.device = resolve_device()
-        self.model = None
         self.input = None
+        self.qkv_proj: Optional[nn.Linear] = None
+        self.output_proj: Optional[nn.Linear] = None
+        self.num_heads: Optional[int] = None
+        self.head_dim: Optional[int] = None
     
     def setup(self) -> None:
         """Setup: Initialize FlashAttention model."""
-        
+
         # Optimization: Enable cuDNN benchmarking for optimal kernel selection
         if torch.cuda.is_available():
             torch.backends.cudnn.benchmark = True
@@ -64,14 +66,11 @@ class OptimizedFlashAttentionBenchmark(Benchmark):
         
         hidden_dim = 256
         num_heads = 8
-        
-        # Use standard MultiheadAttention as fallback
-        # In practice, FlashAttention would be used via flash_attn library
-        self.model = nn.MultiheadAttention(
-            embed_dim=hidden_dim,
-            num_heads=num_heads,
-            batch_first=True
-        ).to(self.device).to(torch.float16).eval()  # Convert to FP16 to match inputs
+        head_dim = hidden_dim // num_heads
+        self.qkv_proj = nn.Linear(hidden_dim, hidden_dim * 3, bias=False).to(self.device).to(torch.float16).eval()
+        self.output_proj = nn.Linear(hidden_dim, hidden_dim, bias=False).to(self.device).to(torch.float16).eval()
+        self.num_heads = num_heads
+        self.head_dim = head_dim
         
         # FlashAttention-optimized input
         self.input = torch.randn(4, 128, hidden_dim, device=self.device, dtype=torch.float16)
@@ -93,15 +92,15 @@ class OptimizedFlashAttentionBenchmark(Benchmark):
                 # Optimization: FlashAttention
                 # Uses FlashAttention for memory-efficient attention
                 # Flash attention: reduced memory (O(N) vs O(N^2))
-                if FLASH_ATTN_AVAILABLE:
-                    # Use FlashAttention if available
-                    q = k = v = self.input.transpose(0, 1)  # (seq_len, batch, hidden)
-                    output = flash_attn_func(q, k, v)
-                    output = output.transpose(0, 1)  # Back to (batch, seq_len, hidden)
-                else:
-                    # Simulate FlashAttention benefit with optimized attention
-                    # Flash attention: tiled computation reduces memory
-                    output, _ = self.model(self.input, self.input, self.input)
+                batch, seqlen, _ = self.input.shape
+                qkv = self.qkv_proj(self.input)
+                q, k, v = qkv.chunk(3, dim=-1)
+                q = q.view(batch, seqlen, self.num_heads, self.head_dim)
+                k = k.view(batch, seqlen, self.num_heads, self.head_dim)
+                v = v.view(batch, seqlen, self.num_heads, self.head_dim)
+                output = flash_attn_func(q, k, v, causal=True)
+                output = output.reshape(batch, seqlen, -1)
+                output = self.output_proj(output)
                 
                 # Optimization: FlashAttention benefits
                 # - Reduced memory usage (O(N) vs O(N^2))
@@ -113,7 +112,6 @@ class OptimizedFlashAttentionBenchmark(Benchmark):
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
-        self.model = None
         self.input = None
         torch.cuda.empty_cache()
     
@@ -126,8 +124,8 @@ class OptimizedFlashAttentionBenchmark(Benchmark):
     
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
-        if self.model is None:
-            return "Model not initialized"
+        if self.qkv_proj is None or self.output_proj is None:
+            return "Projection layers not initialized"
         if self.input is None:
             return "Input not initialized"
         return None

@@ -1,9 +1,9 @@
 """
-PyTorch 2.9 Symmetric Memory Example
+PyTorch 2.10 Symmetric Memory Example
 Demonstrates ultralow-latency cross-GPU access using torch.distributed.nn.SymmetricMemory.
 
 Requirements:
-- PyTorch 2.9+
+- PyTorch 2.10+
 - Multi-GPU system (2+ GPUs)
 - CUDA 13.0+
 - NCCL 2.28+
@@ -212,7 +212,7 @@ def benchmark_symmetric_memory(tensor: torch.Tensor, iterations: int = 100):
             )
     except (AttributeError, RuntimeError) as e:
         print(f"Rank {rank}: Symmetric memory not available: {e}")
-        print("This feature requires PyTorch 2.9+ with proper CUDA 13/NVSHMEM support")
+        print("This feature requires PyTorch 2.10+ with proper CUDA 13/NVSHMEM support")
         return None
     
     dist.barrier()
@@ -445,7 +445,7 @@ def main():
     
     if rank == 0:
         print("=" * 80)
-        print("PyTorch 2.9 Symmetric Memory Benchmark")
+        print("PyTorch 2.10 Symmetric Memory Benchmark")
         print(f"World size: {world_size} GPUs")
         if is_8gpu:
             print("8x B200 configuration detected")

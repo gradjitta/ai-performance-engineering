@@ -20,7 +20,7 @@ Expected Results:
 - Small message latency: <2 μs
 
 Requirements:
-- PyTorch 2.9+
+- PyTorch 2.10+
 - 8 GPUs (requires torchrun)
 
 Usage:

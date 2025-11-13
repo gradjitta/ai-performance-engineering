@@ -143,7 +143,9 @@ FROM [file]/nvidia/pytorch:[file]-py3
 
 # Set allocator + arch flags for NVIDIA GPU (modern compute capability + PTX fallback)
 ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
-ENV TORCH_CUDA_ARCH_LIST="[file]+PTX"
+ENV TORCH_CUDA_ARCH_LIST="10.0;10.3;12.0;12.1+PTX"
+ENV CMAKE_CUDA_ARCHITECTURES="100;103;120;121"
+ENV CUTLASS_NVCC_ARCHS="100;103;120;121"
 ENV CUDA_DEVICE_ORDER=PCI_BUS_ID
 
 # Install NUMA tooling and utilities
@@ -163,6 +165,15 @@ docker run --gpus all --ipc=host --ulimit memlock=-1 gpu-optimized
 - `--gpus all`: GPU access
 - `--ipc=host`: Shared memory for multi-process (NCCL)
 - `--ulimit memlock=-1`: Unlimited pinned memory
+
+**Allocator tuning demo**:
+- `ch3/baseline_docker.py`: runs with the host's default allocator and prints the current settings.
+- `ch3/optimized_docker.py`: expects jemalloc + tuning knobs. If they are missing it prints a ready-made command (e.g.\
+  `env LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libjemalloc.so.2 ${LD_PRELOAD:-}" \
+  MALLOC_CONF="narenas:8,dirty_decay_ms:10000,muzzy_decay_ms:10000,background_thread:true" \
+  TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES=536870912 \
+  TCMALLOC_RELEASE_RATE=16 \
+  python ch3/optimized_docker.py`) so you can reproduce the container behaviour on bare metal.
 
 ---
 

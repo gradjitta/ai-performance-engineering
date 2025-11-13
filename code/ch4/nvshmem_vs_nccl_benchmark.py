@@ -13,7 +13,7 @@ from pathlib import Path
 NVSHMEM vs NCCL Benchmark (Conceptual)
 =====================================
 
-Micro-benchmark comparing NCCL collectives against PyTorch 2.9 symmetric
+Micro-benchmark comparing NCCL collectives against PyTorch 2.10 symmetric
 memory (NVSHMEM-backed) operations on 8x Blackwell B200 GPUs.
 
 Measurements:

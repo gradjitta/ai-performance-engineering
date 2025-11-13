@@ -1,12 +1,12 @@
 # AI Performance Engineering - Blackwell Requirements
-# Target: Blackwell B200/B300 (SM100) with PyTorch 2.9 (cu130), CUDA 13.0, Triton 3.5.0
+# Target: Blackwell B200/B300 (SM100) with PyTorch 2.10-dev (cu130 nightly), CUDA 13.0, Triton 3.5.0
 
-# Core PyTorch ecosystem (CUDA 13 wheels). If you need CPU-only or ROCm builds,
+# Core PyTorch ecosystem (CUDA 13 nightly wheels). If you need CPU-only or ROCm builds,
 # remove the +cu130 suffix and install from the platform-appropriate index.
---index-url https://download.pytorch.org/whl/cu130
+--index-url https://download.pytorch.org/whl/nightly/cu130
 --extra-index-url https://pypi.org/simple
-torch==2.9.*+cu130
-torchvision==0.24.*+cu130
+torch==2.10.0.dev*+cu130
+torchvision==0.25.0.dev*+cu130
 
 # Optional: install upstream Triton if you author custom GPU kernels outside of
 # TorchInductor (PyTorch ships a bundled runtime already).

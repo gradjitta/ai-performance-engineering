@@ -26,7 +26,7 @@ Python or from other chapters.
 * CUDA 13.0+ with driver ≥ 580.
 * Compute capability 12.1 (GB10 / B100 / B200). The build script passes
   `-gencode=arch=compute_121,code=sm_121`.
-* PyTorch 2.9 w/ CUDA 13 wheels (already part of this workspace).
+* PyTorch 2.10 w/ CUDA 13 wheels (already part of this workspace).
 
 ## Layout
 

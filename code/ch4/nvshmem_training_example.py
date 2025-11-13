@@ -12,7 +12,7 @@ Patterns:
 
 Hardware assumptions:
 - 8x Blackwell B200 GPUs (NVLink 5.0 @ 1800 GB/s per pair)
-- CUDA 13.0+, PyTorch 2.9+, NVSHMEM 3.4+
+- CUDA 13.0+, PyTorch 2.10+, NVSHMEM 3.4+
 
 Usage (conceptual):
     torchrun --nproc_per_node=8 nvshmem_training_example.py --demo gradient

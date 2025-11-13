@@ -16,7 +16,9 @@ BASE_TARGETS = baseline_cluster_group optimized_cluster_group \
                optimized_cluster_group_dram_partial_cluster_sync_no_dsmem \
                baseline_cooperative_persistent optimized_cooperative_persistent \
                baseline_double_buffered_pipeline optimized_double_buffered_pipeline \
-               warp_specialized_cluster_pipeline
+               baseline_warp_specialized_pipeline optimized_warp_specialized_pipeline \
+               optimized_warp_specialized_pipeline_enhanced \
+               baseline_warp_specialized_cluster_pipeline optimized_warp_specialized_cluster_pipeline
 
 TARGETS = $(addsuffix $(SUFFIX), $(BASE_TARGETS))
 
@@ -62,7 +64,19 @@ baseline_double_buffered_pipeline$(SUFFIX): baseline_double_buffered_pipeline.cu
 optimized_double_buffered_pipeline$(SUFFIX): optimized_double_buffered_pipeline.cu $(COMMON_HEADERS)
 	$(NVCC) $(NVCC_FLAGS) $(INCLUDES) -o $@ $<
 
-warp_specialized_cluster_pipeline$(SUFFIX): warp_specialized_cluster_pipeline.cu $(COMMON_HEADERS)
+baseline_warp_specialized_pipeline$(SUFFIX): baseline_warp_specialized_pipeline.cu $(COMMON_HEADERS)
+	$(NVCC) $(NVCC_FLAGS) $(INCLUDES) -o $@ $<
+
+optimized_warp_specialized_pipeline$(SUFFIX): optimized_warp_specialized_pipeline.cu $(COMMON_HEADERS)
+	$(NVCC) $(NVCC_FLAGS) $(INCLUDES) -o $@ $<
+
+optimized_warp_specialized_pipeline_enhanced$(SUFFIX): optimized_warp_specialized_pipeline_enhanced.cu $(COMMON_HEADERS)
+	$(NVCC) $(NVCC_FLAGS) $(INCLUDES) -o $@ $<
+
+baseline_warp_specialized_cluster_pipeline$(SUFFIX): baseline_warp_specialized_cluster_pipeline.cu $(COMMON_HEADERS)
+	$(NVCC) $(NVCC_FLAGS) $(INCLUDES) -o $@ $<
+
+optimized_warp_specialized_cluster_pipeline$(SUFFIX): optimized_warp_specialized_cluster_pipeline.cu $(COMMON_HEADERS)
 	$(NVCC) $(NVCC_FLAGS) $(INCLUDES) -o $@ $<
 
 # Legacy target name for double_buffered_pipeline (without suffix)

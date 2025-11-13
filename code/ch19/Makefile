@@ -5,7 +5,7 @@ include ../common/cuda_arch.mk
 NVCC_FLAGS = $(CUDA_NVCC_ARCH_FLAGS) -lineinfo
 SUFFIX = $(TARGET_SUFFIX)
 
-BASE_TARGETS = fp4_hardware_kernel fp8_hardware_kernel kv_prefetch_overlap
+BASE_TARGETS = fp4_hardware_kernel fp8_hardware_kernel baseline_kv_prefetch_overlap optimized_kv_prefetch_overlap
 TARGETS = $(addsuffix $(SUFFIX), $(BASE_TARGETS))
 
 .PHONY: all clean test compare b200 gb10 b300 gb300 profile-nsys profile-ncu profile-hta profile-perf profile-all $(TARGETS)
@@ -21,7 +21,10 @@ fp4_hardware_kernel$(SUFFIX): fp4_hardware_kernel.cu
 fp8_hardware_kernel$(SUFFIX): fp8_hardware_kernel.cu
 	$(NVCC) $(NVCC_FLAGS) -o $@ $< -lcuda
 
-kv_prefetch_overlap$(SUFFIX): kv_prefetch_overlap.cu
+baseline_kv_prefetch_overlap$(SUFFIX): baseline_kv_prefetch_overlap.cu
+	$(NVCC) $(NVCC_FLAGS) -o $@ $< -lcuda
+
+optimized_kv_prefetch_overlap$(SUFFIX): optimized_kv_prefetch_overlap.cu
 	$(NVCC) $(NVCC_FLAGS) -o $@ $< -lcuda
 
 test: all

@@ -23,7 +23,18 @@ CACHE_PATH = ARTIFACTS_DIR / "hardware_capabilities.json"
 CUDA_ATTR_CLUSTER_LAUNCH = 164
 
 
-def _run_command(cmd: List[str], *, timeout: int = 60) -> Tuple[int, str, str]:
+def _run_command(
+    cmd: List[str], *, timeout: int = 60, env: Optional[Dict[str, str]] = None
+) -> Tuple[int, str, str]:
+    """Run a subprocess command with a sanitized environment."""
+    run_env = os.environ.copy()
+    # Strip LD_PRELOAD – on aarch64 host images we occasionally inherit an x86
+    # NCCL preload value from the container, which causes noisy warnings when
+    # probing toolchain support. Removing it keeps the probe output clean while
+    # still honouring LD_LIBRARY_PATH for CUDA/NVCC discovery.
+    run_env.pop("LD_PRELOAD", None)
+    if env:
+        run_env.update(env)
     proc = subprocess.run(
         cmd,
         stdout=subprocess.PIPE,
@@ -31,6 +42,7 @@ def _run_command(cmd: List[str], *, timeout: int = 60) -> Tuple[int, str, str]:
         text=True,
         timeout=timeout,
         check=False,
+        env=run_env,
     )
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 
@@ -205,6 +217,9 @@ def _probe_device(device_index: int) -> Dict[str, Any]:
     tma_note = None
     if tma_supported:
         tma_compiler_supported, tma_note = _probe_tma_compiler_support(sm_tag)
+        if not tma_compiler_supported:
+            # Treat missing compiler/toolchain support as effectively unsupported.
+            tma_supported = False
     else:
         tma_note = "Compute capability < 9.0"
     max_1d, max_2d_w, max_2d_h = _derive_tma_limits(props)

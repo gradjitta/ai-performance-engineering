@@ -1,5 +1,5 @@
 from __future__ import annotations
-"""GPU occupancy heuristics with PyTorch (CUDA 13.0 / PyTorch 2.9).
+"""GPU occupancy heuristics with PyTorch (CUDA 13.0 / PyTorch 2.10).
 
 The focus is on sizing work to keep SMs busy, batching small ops, fusing chains,
 and choosing tensor layouts that map to efficient kernels.

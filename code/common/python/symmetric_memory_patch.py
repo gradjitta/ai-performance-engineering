@@ -1,6 +1,6 @@
 """Compatibility layer for torch.distributed.nn.SymmetricMemory.
 
-PyTorch 2.9 exposes symmetric memory primitives through the private
+PyTorch 2.10 exposes symmetric memory primitives through the private
 ``torch.distributed._symmetric_memory`` namespace.  Older builds (and
 minimal installs) do not register ``torch.distributed.nn.SymmetricMemory``
 even though the underlying primitives exist.  Several chapter-4 examples
@@ -80,7 +80,7 @@ class SymmetricMemory:
         if _symm_mem is None:
             raise RuntimeError(
                 "torch.distributed._symmetric_memory is not available. "
-                "Install PyTorch 2.9+ with symmetric memory support."
+                "Install PyTorch 2.10+ with symmetric memory support."
             )
         if not tensor.is_cuda:
             raise ValueError("SymmetricMemory tensors must live on CUDA devices")

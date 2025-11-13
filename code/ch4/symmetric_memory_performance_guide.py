@@ -29,7 +29,7 @@ Hardware Context:
 - NVLink 5.0: 1800 GB/s per link, 18 links per GPU
 - HBM3e: 8 TB/s bandwidth per GPU
 - L2 Cache: 256 MB per GPU
-- CUDA 13.0+, PyTorch 2.9+
+- CUDA 13.0+, PyTorch 2.10+
 
 Performance Characteristics:
 - NVSHMEM/symmetric memory: < 1μs base latency, best for < 1MB

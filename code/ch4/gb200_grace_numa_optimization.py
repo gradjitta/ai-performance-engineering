@@ -10,7 +10,7 @@ if str(_EXTRAS_REPO_ROOT) not in sys.path:
 from pathlib import Path
 
 """
-GB200/GB300 Grace CPU NUMA Optimization for PyTorch 2.9
+GB200/GB300 Grace CPU NUMA Optimization for PyTorch 2.10
 =======================================================
 
 Demonstrates optimal NUMA topology configuration and CPU-GPU affinity
@@ -31,7 +31,7 @@ Key Optimizations:
 
 Requirements:
 - GB200/GB300 system (gracefully degrades on non-Grace)
-- PyTorch 2.9+
+- PyTorch 2.10+
 - Python 3.10+
 
 Usage:

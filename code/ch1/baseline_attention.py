@@ -121,7 +121,7 @@ class BaselineAttentionBenchmark(Benchmark):
         
         self.model.eval()
         # Match optimized sequence length for fair comparison
-        seq_len = 256  # Match optimized sequence length
+        seq_len = 1024  # Match optimized sequence length
         self.data = torch.randn(4, seq_len, 256, device=self.device)  # (batch, seq_len, hidden_dim)
     
     def benchmark_fn(self) -> None:

@@ -12,6 +12,7 @@ if str(repo_root) not in sys.path:
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from common.python.benchmark_harness import Benchmark, BenchmarkConfig
 
@@ -22,19 +23,6 @@ def resolve_device() -> torch.device:
     return torch.device("cuda")
 
 
-class RoutedExpert(nn.Module):
-    def __init__(self, hidden_dim: int):
-        super().__init__()
-        self.ff = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim * 2, bias=False),
-            nn.GELU(),
-            nn.Linear(hidden_dim * 2, hidden_dim, bias=False),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.ff(x)
-
-
 class SparseRouter(nn.Module):
     def __init__(self, hidden_dim: int, num_experts: int, top_k: int = 2):
         super().__init__()
@@ -42,24 +30,50 @@ class SparseRouter(nn.Module):
         self.num_experts = num_experts
         self.top_k = top_k
         self.router = nn.Linear(hidden_dim, num_experts, bias=False)
-        self.experts = nn.ModuleList(RoutedExpert(hidden_dim) for _ in range(num_experts))
+        self.w1 = nn.Parameter(torch.empty(num_experts, hidden_dim * 2, hidden_dim, dtype=torch.float16))
+        self.w2 = nn.Parameter(torch.empty(num_experts, hidden_dim, hidden_dim * 2, dtype=torch.float16))
+        nn.init.xavier_uniform_(self.w1)
+        nn.init.xavier_uniform_(self.w2)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         bsz, seq, hidden = x.shape
-        tokens = x.view(-1, hidden)
+        tokens = x.view(-1, hidden).half()
         logits = self.router(tokens)
-        topk_vals, topk_idx = torch.topk(logits, self.top_k, dim=-1)
-        weights = torch.softmax(topk_vals, dim=-1)
-        output = torch.zeros_like(tokens)
+        topk_vals, topk_idx = torch.topk(logits.float(), self.top_k, dim=-1)
+        weights = F.softmax(topk_vals, dim=-1).to(tokens.dtype)
+
+        expanded_tokens = tokens.repeat_interleave(self.top_k, dim=0)
+        token_ids = torch.arange(tokens.shape[0], device=tokens.device).repeat_interleave(self.top_k)
+        expert_indices = topk_idx.reshape(-1)
+        weights_flat = weights.reshape(-1, 1)
+
+        counts = torch.bincount(expert_indices, minlength=self.num_experts)
+        max_count = counts.max().item()
+
+        padded_tokens = torch.zeros(self.num_experts, max_count, hidden, dtype=tokens.dtype, device=tokens.device)
+        padded_weights = torch.zeros(self.num_experts, max_count, 1, dtype=tokens.dtype, device=tokens.device)
+        padded_indices = torch.full((self.num_experts, max_count), -1, dtype=torch.int64, device=tokens.device)
+
         for expert_id in range(self.num_experts):
-            assigned = (topk_idx == expert_id)
-            if not assigned.any():
+            count = counts[expert_id].item()
+            if count == 0:
                 continue
-            token_mask = assigned.any(dim=-1)
-            routed = tokens[token_mask]
-            routed_out = self.experts[expert_id](routed)
-            expert_weights = (weights[token_mask] * assigned[token_mask].float()).sum(dim=-1)
-            output[token_mask] += routed_out * expert_weights.unsqueeze(-1)
+            positions = torch.nonzero(expert_indices == expert_id, as_tuple=False).squeeze(-1)
+            padded_tokens[expert_id, :count] = expanded_tokens[positions]
+            padded_weights[expert_id, :count, 0] = weights_flat[positions, 0]
+            padded_indices[expert_id, :count] = token_ids[positions]
+
+        hidden_1 = torch.matmul(padded_tokens, self.w1.transpose(1, 2))
+        hidden_1 = F.gelu(hidden_1)
+        expert_outputs = torch.matmul(hidden_1, self.w2.transpose(1, 2))
+        expert_outputs = expert_outputs * padded_weights
+
+        output = torch.zeros_like(tokens, dtype=torch.float16)
+        flat_outputs = expert_outputs.reshape(-1, hidden)
+        flat_indices = padded_indices.reshape(-1)
+        valid_mask = flat_indices >= 0
+        output.index_add_(0, flat_indices[valid_mask], flat_outputs[valid_mask])
+
         return output.view(bsz, seq, hidden)
 
 
@@ -72,7 +86,7 @@ class OptimizedMoEBenchmark(Benchmark):
         self.num_experts = 12
         self.top_k = 2
         self.batch = 4
-        self.seq = 128
+        self.seq = 512
         self.model: Optional[nn.Module] = None
         self.inputs: Optional[torch.Tensor] = None
 

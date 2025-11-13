@@ -13,6 +13,9 @@ from capstone import optimized_matmul_tcgen05_cta2
 from capstone.capstone_benchmarks import CapstoneMatmulBenchmark
 from capstone.gpu_requirements import ensure_tcgen05_supported
 
+EXAMPLE_NAME = "cluster_gemm_tcgen05_cta2"
+BASELINE_ALIAS = "cluster_gemm_tcgen05"
+
 
 class OptimizedCapstoneGemmTCGen05CTA2Benchmark(CapstoneMatmulBenchmark):
     def __init__(self) -> None:
@@ -25,6 +28,10 @@ class OptimizedCapstoneGemmTCGen05CTA2Benchmark(CapstoneMatmulBenchmark):
             timeout_seconds=360,
             validate_against_baseline=False,
         )
+        # Metadata for discovery/expectation tooling: reuse the tcgen05 baseline
+        # but expose a distinct example name for CTA-group::2 kernels.
+        self.example_name = EXAMPLE_NAME
+        self.baseline_alias = BASELINE_ALIAS
 
 
 def get_benchmark() -> OptimizedCapstoneGemmTCGen05CTA2Benchmark:

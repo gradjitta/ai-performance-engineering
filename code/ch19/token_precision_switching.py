@@ -128,7 +128,7 @@ class TokenPrecisionController:
 # ----------------------------
 # Optional global toggles (B200 best practices)
 # ----------------------------
-# NEW PyTorch 2.9 API (no warnings!)
+# NEW PyTorch 2.10 API (no warnings!)
 enable_tf32()
 # If you compile models elsewhere, keep it outside this loop; don't pay compile cost per-step.
 
@@ -239,7 +239,7 @@ def decode_with_dynamic_precision(
                 use_fp8 = True
             elif use_fp8 and (conf_value < exit_fp8_threshold):
                 use_fp8 = False
-            # torch.autocast (AMP) in PyTorch 2.9 does not manage FP8/FP4; TE handles MXFP8/NVFP4 paths.
+            # torch.autocast (AMP) in PyTorch 2.10 does not manage FP8/FP4; TE handles MXFP8/NVFP4 paths.
 
         # 5) EOS handling
         if eos_id is not None:

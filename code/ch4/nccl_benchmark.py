@@ -8,7 +8,7 @@ if str(_EXTRAS_REPO_ROOT) not in sys.path:
 
 from pathlib import Path
 
-"""Comprehensive NCCL benchmark for PyTorch 2.9 + CUDA 13.0."""
+"""Comprehensive NCCL benchmark for PyTorch 2.10 + CUDA 13.0."""
 
 
 import argparse

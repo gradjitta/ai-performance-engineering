@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Blackwell validation suite covering PyTorch 2.9, CUDA 13.0, and Triton 3.5 features.
+Blackwell validation suite covering PyTorch 2.10, CUDA 13.0, and Triton 3.5 features.
 """
 
 import torch
@@ -79,8 +79,8 @@ def test_architecture_detection():
         print(f" Non-Blackwell GPU detected (compute capability {compute_capability})")
 
 def test_pytorch_29_features():
-    """Test PyTorch 2.9 features."""
-    print("\n=== PyTorch 2.9 Features Test ===")
+    """Test PyTorch 2.10 features."""
+    print("\n=== PyTorch 2.10 Features Test ===")
 
     if not ensure_cuda("torch.compile tests"):
         return

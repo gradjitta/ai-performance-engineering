@@ -68,7 +68,7 @@ BENCH_ITERS = 10 if QUICK_MODE else 50
 
 def configure_for_flex_attention():
     """Configure PyTorch for FlexAttention peak performance"""
-    # NEW PyTorch 2.9 API (no warnings!)
+    # NEW PyTorch 2.10 API (no warnings!)
     enable_tf32()
     torch.backends.cuda.enable_flash_sdp(True)
     torch.backends.cuda.enable_mem_efficient_sdp(True)

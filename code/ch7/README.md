@@ -18,8 +18,8 @@ After completing this chapter, you can:
 ## Prerequisites
 
 **Previous chapters**:
-- [Chapter 2: NVIDIA GPU Hardware](.[executable]/README.md) - memory hierarchy
-- [Chapter 6: CUDA Basics](.[executable]/README.md) - thread indexing
+- Chapter 2 (GPU hardware) – memory hierarchy refresher
+- Chapter 6 (CUDA basics) – thread/block indexing patterns
 
 **Required**: Understanding of memory hierarchy and cache behavior
 
@@ -35,6 +35,16 @@ HBM3e (Global):   ~400 cycles  ← Most data lives here
 ```
 
 **Key insight**: Accessing global memory is 400x slower than registers. Optimization goal: minimize global memory accesses, maximize reuse.
+
+---
+
+## Running the Benchmarks
+
+- Python benchmarks: `python tools/cli/benchmark_cli.py run --chapter ch7 --example [example] --variant [baseline|optimized]`
+- CUDA samples: `make [baseline_target] [optimized_target] && ./[built_binary]`
+- Nsight profiles: `nsys profile -t cuda,nvtx ./[binary]` (use `[binary]` from the Makefile targets)
+
+All commands above intentionally keep `[placeholder]` markers so they stay valid even when file names change.
 
 ---
 
@@ -95,7 +105,7 @@ __global__ void copyVectorized8(const Float8* in, Float8* out, int n) {
 
 **How to run**:
 ```bash
-make scalar_copy vectorized_copy
+make [baseline_target] [optimized_target]
 ```
 
 ---
@@ -119,7 +129,9 @@ __global__ void copyUncoalesced(const float* in, float* out, int n) {
 
 **Why it's slow**: Each thread in warp accesses different cache line → 32 transactions instead of 1!
 
-**Bandwidth**: ~150 GB/s (2% of peak!) ERROR: #### Optimized: `[CUDA file]` (see source files for implementation)
+**Bandwidth**: ~150 GB/s (2% of peak!)
+
+#### Optimized: `[CUDA file]` (see source files for implementation)
 
 **Solution**: Sequential access pattern within warp.
 
@@ -141,7 +153,7 @@ __global__ void copyCoalesced(const float* in, float* out, int n) {
 
 **How to run**:
 ```bash
-make uncoalesced_copy coalesced_copy
+make [baseline_target] [optimized_target]
 ```
 
 **Key rule**: Threads in a warp should access consecutive memory addresses.
@@ -206,7 +218,7 @@ __global__ void transposePadded(const float* in, float* out, int width, int heig
 
 **How to run**:
 ```bash
-make transpose_naive transpose_padded
+make [baseline_target] [optimized_target]
 ```
 
 ---
@@ -275,7 +287,7 @@ __global__ void matmulTiled(const float* A, const float* B, float* C,
 
 **How to run**:
 ```bash
-make naive_matmul tiled_matmul
+make [baseline_target] [optimized_target]
 [executable] 1024 1024 1024
 [executable] 1024 1024 1024
 ```
@@ -293,7 +305,7 @@ make naive_matmul tiled_matmul
 
 **How to run**:
 ```bash
-make naive_lookup optimized_lookup
+make [baseline_target] [optimized_target]
 ```
 
 ---

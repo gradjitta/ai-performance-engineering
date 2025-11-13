@@ -13,7 +13,7 @@ from pathlib import Path
 Advanced Symmetric Memory Training Techniques for 8x B200
 =========================================================
 
-Production-grade advanced training patterns leveraging PyTorch 2.9
+Production-grade advanced training patterns leveraging PyTorch 2.10
 torch.distributed.nn.SymmetricMemory for ultra-low latency cross-GPU access.
 
 This file demonstrates sophisticated patterns that go beyond basic gradient sync:
@@ -26,7 +26,7 @@ This file demonstrates sophisticated patterns that go beyond basic gradient sync
 
 Hardware Requirements:
 - 8x NVIDIA Blackwell B200 GPUs (NVLink 5.0 @ 1800 GB/s per pair)
-- CUDA 13.0+, PyTorch 2.9+
+- CUDA 13.0+, PyTorch 2.10+
 - torch.distributed.nn.SymmetricMemory support
 
 Performance Targets:
@@ -111,7 +111,7 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, ShardingStr
 
 
 def symmetric_memory_available() -> bool:
-    """Check if torch.distributed.nn.SymmetricMemory is available (PyTorch 2.9+)."""
+    """Check if torch.distributed.nn.SymmetricMemory is available (PyTorch 2.10+)."""
     return hasattr(dist, "nn") and hasattr(dist.nn, "SymmetricMemory")
 
 

@@ -185,7 +185,7 @@ def enable_tf32(
     set_global_precision: bool = True,
 ) -> None:
     """
-    Configure TF32 execution using the new PyTorch 2.9 APIs only.
+    Configure TF32 execution using the new PyTorch 2.10 APIs only.
 
     Parameters
     ----------
@@ -197,6 +197,9 @@ def enable_tf32(
         When True, call ``torch.set_float32_matmul_precision('high')`` to
         ensure matmul kernels fall back to TF32-capable tensor cores.
     """
+    if not torch.cuda.is_available():
+        return
+
     # Suppress TF32 API deprecation warnings
     # PyTorch internally uses deprecated APIs when set_float32_matmul_precision is called
     with warnings.catch_warnings():

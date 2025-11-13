@@ -17,6 +17,7 @@ if str(repo_root) not in sys.path:
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from typing import Optional
 
@@ -25,12 +26,46 @@ from common.python.benchmark_harness import (
     BenchmarkConfig,
 )
 
+try:
+    import transformer_engine.pytorch as te
+    from transformer_engine.pytorch import fp8_autocast
+    TE_AVAILABLE = True
+except ImportError:
+    TE_AVAILABLE = False
+
 
 def resolve_device() -> torch.device:
     """Return CUDA device if available."""
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA required for ch9")
     return torch.device("cuda")
+
+
+class FP8MLP(nn.Module):
+    def __init__(self, input_dim: int, hidden_dim: int):
+        super().__init__()
+        assert TE_AVAILABLE
+        self.fc1 = te.Linear(
+            input_dim,
+            hidden_dim,
+            bias=False,
+            params_dtype=torch.float16,
+            device="cuda",
+        )
+        self.fc2 = te.Linear(
+            hidden_dim,
+            input_dim,
+            bias=False,
+            params_dtype=torch.float16,
+            device="cuda",
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        with fp8_autocast(enabled=True):
+            out = self.fc1(x)
+            out = F.gelu(out)
+            out = self.fc2(out)
+        return out
 
 
 class OptimizedQuantizationBenchmark(Benchmark):
@@ -42,8 +77,9 @@ class OptimizedQuantizationBenchmark(Benchmark):
     
     def __init__(self):
         self.device = resolve_device()
-        self.model = None
-        self.input = None
+        self.model: Optional[nn.Module] = None
+        self.input: Optional[torch.Tensor] = None
+        self.use_te = TE_AVAILABLE
     
     def setup(self) -> None:
         """Setup: Initialize quantized model."""
@@ -53,41 +89,41 @@ class OptimizedQuantizationBenchmark(Benchmark):
             torch.backends.cudnn.benchmark = True
             torch.backends.cudnn.deterministic = False
         torch.manual_seed(42)
-        # Optimization: Quantization - FP8 quantization on CUDA (native support on GB10/H100+)
-        # FP8 provides 2x memory reduction vs FP16, 4x vs FP32
-        # This is the proper way to do quantization on CUDA, not CPU-only qint8
-        from common.python.quantization_utils import quantize_model_to_fp8, get_quantization_dtype
-        
-        self.model = nn.Sequential(
-            nn.Linear(1024, 2048),
-            nn.ReLU(),
-            nn.Linear(2048, 1024),
-        )
-        
-        # Quantize model to FP8 for CUDA-native quantization
-        self.model = quantize_model_to_fp8(self.model, self.device, precision='fp8')
-        input_dtype = get_quantization_dtype('fp8')
-        self.input = torch.randn(32, 1024, device=self.device, dtype=input_dtype)
+
+        if self.use_te:
+            self.model = FP8MLP(1024, 2048).to(self.device).eval()
+            self.input = torch.randn(32, 1024, device=self.device, dtype=torch.float16)
+        else:
+            from common.python.quantization_utils import quantize_model_to_fp8, get_quantization_dtype
+            self.model = nn.Sequential(
+                nn.Linear(1024, 2048),
+                nn.ReLU(),
+                nn.Linear(2048, 1024),
+            )
+            self.model = quantize_model_to_fp8(self.model, self.device, precision='fp8')
+            input_dtype = get_quantization_dtype('fp8')
+            self.input = torch.randn(32, 1024, device=self.device, dtype=input_dtype)
+
         torch.cuda.synchronize()
     
     def benchmark_fn(self) -> None:
         """Benchmark: Quantized operations."""
         # Use conditional NVTX ranges - only enabled when profiling
-
+    
         from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
-
+    
         config = self.get_config()
-
+    
         enable_nvtx = get_nvtx_enabled(config) if config else False
-
-
+    
+    
         with nvtx_range("optimized_quantization", enable=enable_nvtx):
             with torch.no_grad():
-                # Optimization: FP8 Quantization on CUDA
-                # Uses FP8 quantized model (native CUDA support on GB10/H100+)
-                # FP8 provides 2x memory reduction vs FP16, 4x vs FP32
-                # Better memory bandwidth utilization and faster computation
-                output = self.model(self.input)
+                if self.use_te:
+                    assert self.model is not None
+                    output = self.model(self.input)  # type: ignore[arg-type]
+                else:
+                    output = self.model(self.input)  # type: ignore[operator]
                 
                 # Optimization: FP8 Quantization benefits
                 # - Reduced memory usage (FP8: 2x vs FP16, 4x vs FP32)

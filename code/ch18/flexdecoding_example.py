@@ -9,7 +9,7 @@ if str(_EXTRAS_REPO_ROOT) not in sys.path:
 from pathlib import Path
 
 # Environment (Oct-2025): CUDA 13.x r580+, torch 2.9.0+cu130, triton 3.5.0, optional TE 2.8+
-"""FlexDecoding showcase aligned with PyTorch 2.9 (CUDA 13.0)."""
+"""FlexDecoding showcase aligned with PyTorch 2.10 (CUDA 13.0)."""
 
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -275,7 +275,7 @@ def paged_attention_demo() -> None:
 
 def main() -> None:
     device = _device()
-    print("FlexDecoding example (PyTorch 2.9 / CUDA 13.0)")
+    print("FlexDecoding example (PyTorch 2.10 / CUDA 13.0)")
     print(f"Device: {device}")
     if torch.cuda.is_available():
         print(f"GPU: {torch.cuda.get_device_name()}")

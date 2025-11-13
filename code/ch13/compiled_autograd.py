@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from common.python import compile_utils as _compile_utils_patch  # noqa: F401
 """
-Compiled Autograd with PyTorch 2.9
+Compiled Autograd with PyTorch 2.10
 
-PyTorch 2.9 can compile the backward pass for improved training efficiency.
-Requires PyTorch 2.9+ and CUDA 13.0+.
+PyTorch 2.10 can compile the backward pass for improved training efficiency.
+Requires PyTorch 2.10+ and CUDA 13.0+.
 """
 
 import pathlib
@@ -36,7 +36,7 @@ try:
     COMPILED_AUTOGRAD_AVAILABLE = True
 except ImportError:
     COMPILED_AUTOGRAD_AVAILABLE = False
-    print("WARNING: Compiled autograd not available. Requires PyTorch 2.9+")
+    print("WARNING: Compiled autograd not available. Requires PyTorch 2.10+")
 
 
 class BenchmarkModel(nn.Module):
@@ -309,14 +309,14 @@ def main() -> None:
     if not COMPILED_AUTOGRAD_AVAILABLE:
         print("\n" + "!" * 80)
         print("Compiled autograd not available in your PyTorch installation.")
-        print("This feature requires PyTorch 2.9 or later.")
-        print("\nTo install PyTorch 2.9:")
-        print("  pip install torch==2.9.0+cu130 --index-url https://download.pytorch.org/whl/cu130")
+        print("This feature requires PyTorch 2.10-dev or later.")
+        print("\nTo install PyTorch 2.10 nightly:")
+        print("  pip install torch==2.10.0.dev*+cu130 --index-url https://download.pytorch.org/whl/nightly/cu130")
         print("!" * 80)
         return
     
     print("=" * 80)
-    print("Compiled Autograd Benchmark (PyTorch 2.9)")
+    print("Compiled Autograd Benchmark (PyTorch 2.10-dev)")
     print("=" * 80)
     print()
     
@@ -349,7 +349,7 @@ def main() -> None:
     print("\n" + "=" * 80)
     print("Summary: Compiled Autograd")
     print("=" * 80)
-    print("PyTorch 2.9 compiled autograd provides:")
+    print("PyTorch 2.10 compiled autograd provides:")
     print(" 20-30% faster backward pass")
     print(" Better kernel fusion")
     print(" Reduced Python overhead")

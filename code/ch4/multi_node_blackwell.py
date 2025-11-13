@@ -346,7 +346,7 @@ def apply_tensor_parallelism(
     device_mesh,
 ) -> nn.Module:
     """
-    Apply tensor parallelism to model using PyTorch 2.9 API.
+    Apply tensor parallelism to model using PyTorch 2.10 API.
     Optimized for intra-node parallelism via NVLink-C2C.
     """
     # Parallelize attention projections

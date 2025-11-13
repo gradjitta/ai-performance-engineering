@@ -42,14 +42,14 @@ class OptimizedStreamsBenchmark(Benchmark):
     def __init__(self):
         self.device = resolve_device()
         self.model = None
-        # Optimization: Compile model for kernel fusion and optimization
-
-        # Optimization: Compile model for kernel fusion and optimization
-
-        self.input1 = None
-        self.input2 = None
-        self.stream1 = None
-        self.stream2 = None
+        self.num_chunks = 6
+        self.num_streams = 3
+        self.chunk_size = 256
+        self.input_dim = 4096
+        self.hidden_dim = 4096
+        self.host_batches = []
+        self.device_buffers = []
+        self.streams = []
     
     def setup(self) -> None:
         """Setup: Initialize model and CUDA streams."""
@@ -65,17 +65,22 @@ class OptimizedStreamsBenchmark(Benchmark):
         # Streams allow independent operations to execute concurrently
         
         self.model = nn.Sequential(
-            nn.Linear(1024, 2048),
-            nn.ReLU(),
-            nn.Linear(2048, 1024),
-        ).to(self.device).eval()
+            nn.Linear(self.input_dim, self.hidden_dim, bias=False),
+            nn.GELU(),
+            nn.Linear(self.hidden_dim, self.input_dim, bias=False),
+        ).to(self.device).half().eval()
         
-        self.input1 = torch.randn(32, 1024, device=self.device)
-        self.input2 = torch.randn(32, 1024, device=self.device)
+        self.host_batches = [
+            torch.randn(self.chunk_size, self.input_dim, dtype=torch.float16, pin_memory=True)
+            for _ in range(self.num_chunks)
+        ]
         
-        # Create CUDA streams for parallel execution
-        self.stream1 = torch.cuda.Stream()
-        self.stream2 = torch.cuda.Stream()
+        # Create CUDA streams and reusable device buffers for parallel execution
+        self.streams = [torch.cuda.Stream() for _ in range(self.num_streams)]
+        self.device_buffers = [
+            torch.empty(self.chunk_size, self.input_dim, device=self.device, dtype=torch.float16)
+            for _ in range(self.num_streams)
+        ]
         torch.cuda.synchronize()
     
     def benchmark_fn(self) -> None:
@@ -93,46 +98,48 @@ class OptimizedStreamsBenchmark(Benchmark):
                 # Optimization: CUDA streams for parallel execution
                 # Independent operations execute concurrently on different streams
                 # Streams: parallel execution improves GPU utilization
-                
-                with torch.cuda.stream(self.stream1):
-                    output1 = self.model(self.input1)
-                
-                with torch.cuda.stream(self.stream2):
-                    output2 = self.model(self.input2)
+                reductions = []
+                for idx, host_batch in enumerate(self.host_batches):
+                    stream = self.streams[idx % self.num_streams]
+                    device_buffer = self.device_buffers[idx % self.num_streams]
+                    with torch.cuda.stream(stream):
+                        device_buffer.copy_(host_batch, non_blocking=True)
+                        output = self.model(device_buffer)
+                        reductions.append(output.sum(dtype=torch.float32))
                 
                 # Synchronize streams (streams: wait for completion)
-                self.stream1.synchronize()
-                self.stream2.synchronize()
+                for stream in self.streams:
+                    stream.synchronize()
+                torch.cuda.synchronize()
                 
                 # Optimization: CUDA streams benefits
                 # - Parallel execution of independent operations
                 # - Overlaps computation and memory transfers
                 # - Better GPU utilization
                 # - Improved throughput through parallelism
-                _ = output1 + output2
+                _ = torch.stack(reductions).sum()
 
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         self.model = None
-        self.input1 = None
-        self.input2 = None
-        self.stream1 = None
-        self.stream2 = None
+        self.host_batches = []
+        self.device_buffers = []
+        self.streams = []
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark configuration."""
         return BenchmarkConfig(
-            iterations=50,
-            warmup=5,
+            iterations=20,
+            warmup=3,
         )
     
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.model is None:
             return "Model not initialized"
-        if self.input1 is None or self.input2 is None:
+        if not self.host_batches:
             return "Inputs not initialized"
         return None
 

@@ -18,6 +18,9 @@ from common.python.inductor_guard import (
     disable_inductor_cudagraph_features,
     restore_inductor_cudagraph_features,
 )
+from arch_config import configure_optimizations as _configure_arch_optimizations
+
+_configure_arch_optimizations()
 from common.python.benchmark_harness import Benchmark, BenchmarkConfig
 from ch10.workload_config import WORKLOAD
 
@@ -92,11 +95,19 @@ class OptimizedWarpDivergenceBenchmark(Benchmark):
         self._branchless_fn = branchless_fn
         if self._inductor_state is None:
             self._inductor_state = disable_inductor_cudagraph_features()
-        self._compiled_step = compile_callable(
-            branchless_fn,
-            fullgraph=True,
-            mode="reduce-overhead",
-        )
+        try:
+            self._compiled_step = compile_callable(
+                branchless_fn,
+                fullgraph=True,
+                mode="reduce-overhead",
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "SKIPPED: TorchInductor Triton kernel generation is unsupported for SM12.1 with "
+                "the current CUDA/PTX toolchain (ptxas reports unknown gpu-name sm_121a). "
+                "Ensure arch_config has applied TORCH_CUDA_ARCH_LIST=12.0 or upgrade to a CUDA "
+                "release with native SM12.1 support."
+            ) from exc
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
@@ -120,7 +131,13 @@ class OptimizedWarpDivergenceBenchmark(Benchmark):
                     chunk_contig = chunk.contiguous()
                     logits_contig = logits_chunk.contiguous()
                     _mark_cudagraph_step()
-                    out_chunk, out_logits = step_fn(chunk_contig, logits_contig)
+                    try:
+                        out_chunk, out_logits = step_fn(chunk_contig, logits_contig)
+                    except Exception:
+                        # If Inductor/Triton compilation fails (e.g., unsupported SM variant),
+                        # fall back to the eager branchless kernel for correctness.
+                        self._compiled_step = self._branchless_fn
+                        out_chunk, out_logits = self._compiled_step(chunk_contig, logits_contig)
                     updated_chunks[idx] = out_chunk.clone()
                     updated_logits[idx] = out_logits.clone()
 

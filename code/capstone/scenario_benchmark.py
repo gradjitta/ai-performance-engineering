@@ -62,6 +62,8 @@ class PhaseSpec:
     chapter: str
     description: str
     max_iterations: int = DEFAULT_PHASE_ITERATIONS
+    min_iterations: int = 1
+    preserve_warmup: bool = False
 
 
 @dataclass(frozen=True)
@@ -96,6 +98,8 @@ def _phase(
     description: str,
     *,
     max_iterations: int = DEFAULT_PHASE_ITERATIONS,
+    min_iterations: int = 1,
+    preserve_warmup: bool = False,
 ) -> PhaseSpec:
     return PhaseSpec(
         name=name,
@@ -103,6 +107,8 @@ def _phase(
         chapter=chapter,
         description=description,
         max_iterations=max(1, max_iterations),
+        min_iterations=max(1, min_iterations),
+        preserve_warmup=preserve_warmup,
     )
 
 
@@ -329,18 +335,27 @@ SCENARIO_SPECS: Dict[str, ScenarioSpec] = {
                 "ch11.baseline_streams",
                 "ch11",
                 "Single-stream kernels",
+                max_iterations=48,
+                min_iterations=24,
+                preserve_warmup=True,
             ),
             _phase(
                 "ch11_baseline_stream_ordered",
                 "ch11.baseline_stream_ordered",
                 "ch11",
                 "Stream-ordered allocator baseline",
+                max_iterations=48,
+                min_iterations=24,
+                preserve_warmup=True,
             ),
             _phase(
                 "ch12_baseline_cuda_graphs",
                 "ch12.baseline_cuda_graphs",
                 "ch12",
                 "Naive CUDA Graph capture",
+                max_iterations=48,
+                min_iterations=24,
+                preserve_warmup=True,
             ),
         ),
         optimized_phases=(
@@ -349,18 +364,27 @@ SCENARIO_SPECS: Dict[str, ScenarioSpec] = {
                 "ch11.optimized_streams",
                 "ch11",
                 "Warp-specialized multistream pipeline",
+                max_iterations=48,
+                min_iterations=24,
+                preserve_warmup=True,
             ),
             _phase(
                 "ch11_optimized_stream_ordered",
                 "ch11.optimized_stream_ordered",
                 "ch11",
                 "Stream-ordered pipeline with overlap",
+                max_iterations=48,
+                min_iterations=24,
+                preserve_warmup=True,
             ),
             _phase(
                 "ch12_optimized_cuda_graphs",
                 "ch12.optimized_cuda_graphs",
                 "ch12",
                 "Graph replay with device-side launches",
+                max_iterations=48,
+                min_iterations=24,
+                preserve_warmup=True,
             ),
         ),
     ),
@@ -691,12 +715,16 @@ class CapstoneScenarioBenchmark(BaseBenchmark):
             config = copy.deepcopy(original)
 
         max_allowed = max(1, min(spec.max_iterations, self.max_phase_iterations))
-        config.iterations = min(
-            max_allowed,
-            max(config.iterations, self._phase_iteration_floor),
-        )
+        phase_min = max(1, spec.min_iterations)
+        floor = max(self._phase_iteration_floor, phase_min)
+        requested_iterations = config.iterations if config.iterations is not None else floor
+        config.iterations = min(max_allowed, max(requested_iterations, floor))
         if config.warmup is None:
             config.warmup = 0
+        elif spec.preserve_warmup:
+            # Honor the benchmark's native warmup requirements for graph capture /
+            # multi-stream steady state phases.
+            config.warmup = max(0, config.warmup)
         else:
             config.warmup = min(config.warmup, 1)
         config.enable_profiling = False

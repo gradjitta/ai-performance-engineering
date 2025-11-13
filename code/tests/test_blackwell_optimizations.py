@@ -13,7 +13,7 @@ Test Categories:
 
 Requirements:
 - pytest
-- PyTorch 2.9+
+- PyTorch 2.10+
 - Blackwell B200/B300 (for full tests)
 
 Usage:

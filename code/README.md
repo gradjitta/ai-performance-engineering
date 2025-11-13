@@ -6,7 +6,7 @@ Production playbook for validating, tuning, and documenting PyTorch/CUDA/Triton 
 
 ## 1. Overview
 - **Target hardware**: NVIDIA Blackwell (B200/B300, sm100), Grace Blackwell (GB200/GB300, sm103), and DGX Spark (GB10, sm121).
-- **Reference stack**: CUDA 13+, PyTorch 2.9+, Triton 3.5+, Python 3.10+.
+- **Reference stack**: CUDA 13+, PyTorch 2.10-dev+, Triton 3.5+, Python 3.10+.
 - **What’s inside**: 20 chapters of baseline/optimized benchmark pairs, harness tooling, profiling scripts, workload configs, and production-ready setup automation.
 - **Primary goals**: stand up consistent lab machines, capture comparable artifacts (JSON/MD/CSV), and keep proof-of-benefit (PoB) reports current as kernels evolve.
 

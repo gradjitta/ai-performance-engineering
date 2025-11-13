@@ -27,7 +27,7 @@ This file demonstrates the most common and impactful NVSHMEM training patterns:
 
 Hardware Requirements:
 - 8x NVIDIA Blackwell B200 GPUs (NVLink 5.0 @ 1800 GB/s per pair)
-- CUDA 13.0+, PyTorch 2.9+, NVSHMEM 3.4+ or PyTorch SymmetricMemory
+- CUDA 13.0+, PyTorch 2.10+, NVSHMEM 3.4+ or PyTorch SymmetricMemory
 
 Performance Targets:
 - Gradient sync latency: < 100μs (vs ~500μs NCCL for small models)

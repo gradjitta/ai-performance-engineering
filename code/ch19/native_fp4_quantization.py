@@ -23,7 +23,7 @@ Performance on B200:
 - Best for inference where accuracy is less critical
 
 Requirements:
-- PyTorch 2.9+ with CUDA 13.0
+- PyTorch 2.10+ with CUDA 13.0
 - Blackwell GPU (B200/B300)
 - torch._scaled_mm support
 

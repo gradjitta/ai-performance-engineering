@@ -81,7 +81,7 @@ def configure_for_flex_attention():
     if QUICK_MODE:
         print(" Quick mode active (reduced problem size / iterations)")
     
-    # PyTorch 2.9 TF32 controls (deprecates allow_tf32 flags)
+    # PyTorch 2.10 TF32 controls (deprecates allow_tf32 flags)
     enable_tf32()
     
     # Enable Flash Attention (FlexAttention builds on this)

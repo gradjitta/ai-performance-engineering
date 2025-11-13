@@ -28,7 +28,7 @@ The script:
   * runs a few warm-up/training steps while logging overlap-friendly timings.
 
 Async-TP currently requires:
-  * CUDA build of PyTorch 2.9+ (nightly or stable with CUDA 13),
+  * CUDA build of PyTorch 2.10+ (nightly or stable with CUDA 13),
   * TorchTitan >= 0.2.0 (pip install torchtitan),
   * NCCL backend (infers symmetric memory collectives automatically),
   * torch.compile mode that includes the model ("max-autotune" by default below).
@@ -149,10 +149,10 @@ def enable_async_tp(tp_mesh, compile_mode: str) -> JobConfig:
     job_cfg.compile.components = ["model"]
     job_cfg.compile.backend = "inductor"
     
-    # PyTorch 2.9: Enhanced compilation options
+    # PyTorch 2.10: Enhanced compilation options
     job_cfg.compile.mode = compile_mode
     if hasattr(job_cfg.compile, "inductor_config"):
-        # Enable CUDA graph trees (PyTorch 2.9)
+        # Enable CUDA graph trees (PyTorch 2.10)
         job_cfg.compile.inductor_config.triton_cudagraphs = True
         job_cfg.compile.inductor_config.triton_cudagraph_trees = True
 

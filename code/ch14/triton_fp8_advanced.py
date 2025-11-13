@@ -9,7 +9,7 @@ This module demonstrates advanced FP8 optimizations using Triton 3.5:
 4. TMA (Tensor Memory Accelerator) integration
 
 Requirements:
-- PyTorch 2.9+
+- PyTorch 2.10+
 - Triton 3.5+
 - Blackwell B200/B300 (for optimal performance)
 
@@ -531,7 +531,7 @@ if __name__ == "__main__":
     
     if not FP8_AVAILABLE:
         print("\n  Native FP8 not available")
-        print("Requires PyTorch 2.9+ and Blackwell GPU")
+        print("Requires PyTorch 2.10+ and Blackwell GPU")
         print("Running with FP16 fallback...\n")
     
     benchmark_fp8_attention()

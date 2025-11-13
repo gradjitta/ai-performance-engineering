@@ -6,7 +6,7 @@ NVCC_FLAGS = $(CUDA_NVCC_ARCH_FLAGS) $(CUDA_NVTX_CFLAGS)
 NVCC_LIBS = -lcuda $(CUDA_NVTX_LDFLAGS)
 SUFFIX = $(TARGET_SUFFIX)
 
-BASE_TARGETS = baseline_work_queue optimized_work_queue baseline_cuda_graphs optimized_cuda_graphs baseline_cuda_graphs_conditional optimized_cuda_graphs_conditional baseline_cuda_graphs_conditional_enhanced optimized_cuda_graphs_conditional_enhanced dynamic_parallelism baseline_kernel_fusion optimized_kernel_fusion baseline_graph_bandwidth optimized_graph_bandwidth baseline_uneven_partition optimized_uneven_partition baseline_dynamic_parallelism optimized_dynamic_parallelism
+BASE_TARGETS = baseline_work_queue optimized_work_queue baseline_cuda_graphs optimized_cuda_graphs baseline_cuda_graphs_conditional optimized_cuda_graphs_conditional baseline_cuda_graphs_conditional_enhanced optimized_cuda_graphs_conditional_enhanced dynamic_parallelism baseline_kernel_fusion optimized_kernel_fusion baseline_graph_bandwidth optimized_graph_bandwidth baseline_uneven_static optimized_uneven_static baseline_dynamic_parallelism_host optimized_dynamic_parallelism_host
 TARGETS = $(addsuffix $(SUFFIX), $(BASE_TARGETS))
 
 $(TARGETS): $(CUDA_NVTX_DEPS)
@@ -23,16 +23,16 @@ baseline_work_queue$(SUFFIX): baseline_work_queue.cu
 optimized_work_queue$(SUFFIX): optimized_work_queue.cu
 	$(NVCC) $(NVCC_FLAGS) -o $@ $< $(NVCC_LIBS)
 
-baseline_uneven_partition$(SUFFIX): baseline_uneven_partition.cu
+baseline_uneven_static$(SUFFIX): baseline_uneven_static.cu
 	$(NVCC) $(NVCC_FLAGS) -o $@ $< $(NVCC_LIBS)
 
-optimized_uneven_partition$(SUFFIX): optimized_uneven_partition.cu
+optimized_uneven_static$(SUFFIX): optimized_uneven_static.cu
 	$(NVCC) $(NVCC_FLAGS) -rdc=true -o $@ $< -lcudadevrt $(NVCC_LIBS)
 
-baseline_dynamic_parallelism$(SUFFIX): baseline_dynamic_parallelism.cu
+baseline_dynamic_parallelism_host$(SUFFIX): baseline_dynamic_parallelism_host.cu
 	$(NVCC) $(NVCC_FLAGS) -o $@ $< $(NVCC_LIBS)
 
-optimized_dynamic_parallelism$(SUFFIX): optimized_dynamic_parallelism.cu
+optimized_dynamic_parallelism_host$(SUFFIX): optimized_dynamic_parallelism_host.cu
 	$(NVCC) $(NVCC_FLAGS) -rdc=true -o $@ $< -lcudadevrt $(NVCC_LIBS)
 
 baseline_cuda_graphs$(SUFFIX): baseline_cuda_graphs.cu

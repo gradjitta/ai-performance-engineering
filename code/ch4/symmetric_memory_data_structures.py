@@ -13,7 +13,7 @@ from pathlib import Path
 Distributed Data Structures with Symmetric Memory for 8x B200
 ============================================================
 
-Production-ready distributed data structures using PyTorch 2.9
+Production-ready distributed data structures using PyTorch 2.10
 torch.distributed.nn.SymmetricMemory for zero-copy cross-GPU access.
 
 This file implements common distributed data structures optimized for
@@ -27,7 +27,7 @@ ultra-low latency access patterns on Blackwell B200:
 
 Hardware Requirements:
 - 8x NVIDIA Blackwell B200 GPUs (NVLink 5.0 @ 1800 GB/s)
-- CUDA 13.0+, PyTorch 2.9+
+- CUDA 13.0+, PyTorch 2.10+
 - torch.distributed.nn.SymmetricMemory support
 
 Performance Targets:
@@ -116,7 +116,7 @@ import torch.nn as nn
 
 
 def symmetric_memory_available() -> bool:
-    """Check if PyTorch 2.9+ symmetric memory is available."""
+    """Check if PyTorch 2.10+ symmetric memory is available."""
     return hasattr(dist, "nn") and hasattr(dist.nn, "SymmetricMemory")
 
 

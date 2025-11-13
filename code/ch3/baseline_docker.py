@@ -13,20 +13,15 @@ if str(repo_root) not in sys.path:
 import torch
 import torch.nn as nn
 
-from common.python.benchmark_harness import Benchmark, BenchmarkConfig
+from common.python.allocator_tuning import log_allocator_guidance
+from common.python.benchmark_harness import BaseBenchmark, Benchmark, BenchmarkConfig
 
 
-def resolve_device() -> torch.device:
-    if not torch.cuda.is_available():
-        raise RuntimeError("CUDA required for ch3 docker example")
-    return torch.device("cuda")
-
-
-class BaselineDockerBenchmark(Benchmark):
+class BaselineDockerBenchmark(BaseBenchmark):
     """Simulates a non-containerized setup with blocking H2D copies."""
 
     def __init__(self):
-        self.device = resolve_device()
+        super().__init__()
         self.model: Optional[nn.Module] = None
         self.optimizer: Optional[torch.optim.Optimizer] = None
         self.host_batches: List[torch.Tensor] = []
@@ -35,6 +30,7 @@ class BaselineDockerBenchmark(Benchmark):
 
     def setup(self) -> None:
         torch.manual_seed(101)
+        log_allocator_guidance("ch3/baseline_docker", optimized=False)
         self.model = nn.Sequential(
             nn.Linear(2048, 4096),
             nn.ReLU(),
@@ -60,8 +56,8 @@ class BaselineDockerBenchmark(Benchmark):
         self.batch_idx += 1
 
         with nvtx_range("baseline_docker", enable=enable_nvtx):
-            x = host_x.to(self.device)  # blocking copy
-            y = host_y.to(self.device)
+            x = self.to_device(host_x)  # blocking copy (tensor not pinned)
+            y = self.to_device(host_y)
             out = self.model(x)
             loss = torch.nn.functional.mse_loss(out, y)
             loss.backward()

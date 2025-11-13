@@ -11,14 +11,14 @@ if str(_EXTRAS_REPO_ROOT) not in sys.path:
 from pathlib import Path
 
 """
-Complete 8x B200 GPU Training Pipeline with PyTorch 2.9
+Complete 8x B200 GPU Training Pipeline with PyTorch 2.10
 ======================================================
 
 Production-ready training pipeline optimized for 8x Blackwell B200 GPUs.
 Demonstrates all latest optimizations:
 - NCCL 2.28 with NVLS for 8-GPU collectives
 - Hybrid parallelism (TP=2/4, DP=4/2)
-- PyTorch 2.9 compiled autograd
+- PyTorch 2.10 compiled autograd
 - Symmetric memory for low-latency communication
 - FP8 training (optional)
 - GB200/GB300 Grace CPU optimizations

@@ -203,9 +203,9 @@ def create_fsdp_model():
 
 def create_fsdp_model_pytorch29():
     """
-    Create FSDP model with PyTorch 2.9 features (NEW).
+    Create FSDP model with PyTorch 2.10 features (NEW).
     
-    PyTorch 2.9 adds:
+    PyTorch 2.10 adds:
     - forward_prefetch for overlap
     - HYBRID_SHARD_ZERO2 strategy
     - Improved performance (15-25% faster)
@@ -231,7 +231,7 @@ def create_fsdp_model_pytorch29():
         min_num_params=1e8,
     )
     
-    # Check if forward_prefetch is available (PyTorch 2.9+)
+    # Check if forward_prefetch is available (PyTorch 2.10+)
     forward_prefetch_available = hasattr(FSDP, "__init__") and "forward_prefetch" in FSDP.__init__.__code__.co_varnames
     
     # FSDP configuration
@@ -239,14 +239,14 @@ def create_fsdp_model_pytorch29():
         "auto_wrap_policy": auto_wrap_policy,
         "mixed_precision": mixed_precision_policy,
         "backward_prefetch": BackwardPrefetch.BACKWARD_PRE,
-        # NEW in PyTorch 2.9: HYBRID_SHARD_ZERO2 for better performance
+        # NEW in PyTorch 2.10: HYBRID_SHARD_ZERO2 for better performance
         "sharding_strategy": ShardingStrategy.HYBRID_SHARD if hasattr(ShardingStrategy, "HYBRID_SHARD") else ShardingStrategy.FULL_SHARD,
         "device_id": torch.cuda.current_device() if torch.cuda.is_available() else None,
         "sync_module_states": True,
         "use_orig_params": True,
     }
     
-    # NEW in PyTorch 2.9: forward_prefetch for better overlap
+    # NEW in PyTorch 2.10: forward_prefetch for better overlap
     if forward_prefetch_available:
         fsdp_kwargs["forward_prefetch"] = True
         fsdp_kwargs["limit_all_gathers"] = True  # Prevent memory spikes
@@ -255,7 +255,7 @@ def create_fsdp_model_pytorch29():
     
     if rank == 0:
         print("\n" + "=" * 80)
-        print("FSDP PyTorch 2.9 Configuration")
+        print("FSDP PyTorch 2.10 Configuration")
         print("=" * 80)
         print(f"Sharding strategy: {fsdp_kwargs['sharding_strategy']}")
         print(f"Backward prefetch: {fsdp_kwargs['backward_prefetch']}")
@@ -263,7 +263,7 @@ def create_fsdp_model_pytorch29():
             print(f"Forward prefetch:  Enabled (NEW in 2.9)")
             print(f"Limit all gathers:  Enabled")
         else:
-            print(f"Forward prefetch:  Not available (requires PyTorch 2.9+)")
+            print(f"Forward prefetch:  Not available (requires PyTorch 2.10+)")
         print(f"Mixed precision: BF16 (recommended for Blackwell)")
         print("=" * 80)
     
@@ -343,7 +343,7 @@ def create_fsdp_model_8xb200(tp_size=2, model_size="7B"):
         min_num_params=1e8,
     )
     
-    # Check for PyTorch 2.9 features
+    # Check for PyTorch 2.10 features
     forward_prefetch_available = hasattr(FSDP, "__init__") and "forward_prefetch" in FSDP.__init__.__code__.co_varnames
     
     # Select sharding strategy based on configuration
@@ -361,7 +361,7 @@ def create_fsdp_model_8xb200(tp_size=2, model_size="7B"):
         "use_orig_params": True,
     }
     
-    # Enable PyTorch 2.9 features
+    # Enable PyTorch 2.10 features
     if forward_prefetch_available:
         fsdp_kwargs["forward_prefetch"] = True
         fsdp_kwargs["limit_all_gathers"] = True
@@ -381,7 +381,7 @@ def create_fsdp_model_8xb200(tp_size=2, model_size="7B"):
         print(f"Sharding strategy: {sharding_strategy}")
         print(f"Backward prefetch: Enabled")
         if forward_prefetch_available:
-            print(f"Forward prefetch: Enabled (PyTorch 2.9)")
+            print(f"Forward prefetch: Enabled (PyTorch 2.10)")
         print(f"Mixed precision: BF16")
         
         if torch.cuda.is_available():
@@ -641,7 +641,7 @@ Memory Usage (per GPU, 180 GB total):
   - Activation checkpointing can reduce memory by 30-50%
 
 Key Features:
-  PyTorch 2.9 forward_prefetch for better overlap
+  PyTorch 2.10 forward_prefetch for better overlap
   HYBRID_SHARD strategy for optimal 8-GPU performance
   BFloat16 mixed precision for Blackwell
   Automatic 8x B200 and GB200/GB300 detection

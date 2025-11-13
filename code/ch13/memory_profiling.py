@@ -221,18 +221,18 @@ def demonstrate_memory_optimization():
 
 def demonstrate_pytorch_29_memory_features():
     """
-    Demonstrate PyTorch 2.9 memory features (NEW).
+    Demonstrate PyTorch 2.10 memory features (NEW).
     
-    PyTorch 2.9 adds:
+    PyTorch 2.10 adds:
     - Improved memory snapshot v2 API
     - Better profiler integration
     - Blackwell-specific metrics
     """
     if not torch.cuda.is_available():
-        print("CUDA not available, skipping PyTorch 2.9 memory demos")
+        print("CUDA not available, skipping PyTorch 2.10 memory demos")
         return
     
-    print("\n=== PyTorch 2.9 Memory Features ===")
+    print("\n=== PyTorch 2.10 Memory Features ===")
     
     device = 'cuda'
     
@@ -269,7 +269,7 @@ def demonstrate_pytorch_29_memory_features():
     
     torch.cuda.memory._record_memory_history(False)
     
-    # 2. Memory-efficient attention backend selection (PyTorch 2.9)
+    # 2. Memory-efficient attention backend selection (PyTorch 2.10)
     print("\n2. Memory-Efficient Attention Backend (FlashAttention-3 for Blackwell):")
     
     # Enable specific backends
@@ -311,7 +311,7 @@ def demonstrate_pytorch_29_memory_features():
     else:
         print(f"   Non-Blackwell GPU detected (CC {compute_capability})")
     
-    # 4. Advanced profiler integration (PyTorch 2.9)
+    # 4. Advanced profiler integration (PyTorch 2.10)
     print("\n4. PyTorch Profiler with Blackwell Features:")
     
     from torch.profiler import profile, ProfilerActivity
@@ -324,7 +324,7 @@ def demonstrate_pytorch_29_memory_features():
     
     x_profiler = torch.randn(16, 512, device=device)
     
-    # Check if experimental config is available (PyTorch 2.9+)
+    # Check if experimental config is available (PyTorch 2.10+)
     try:
         experimental_config = torch._C._profiler._ExperimentalConfig(
             verbose=True,
@@ -356,13 +356,13 @@ def demonstrate_pytorch_29_memory_features():
     for event in prof.key_averages().table(sort_by="self_cuda_memory_usage", row_limit=3).split('\n')[:5]:
         print(f"   {event}")
     
-    print("\n=== End PyTorch 2.9 Memory Features ===")
+    print("\n=== End PyTorch 2.10 Memory Features ===")
 
 
 if __name__ == "__main__":
     demonstrate_memory_profiling()
     demonstrate_memory_optimization()
-    demonstrate_pytorch_29_memory_features()  # NEW in PyTorch 2.9
+    demonstrate_pytorch_29_memory_features()  # NEW in PyTorch 2.10
 
 # Architecture-specific optimizations
 if torch.cuda.is_available():

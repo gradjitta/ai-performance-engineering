@@ -29,7 +29,7 @@ Key Features:
 5. Support for various interconnect technologies (NVLink-C2C, PCIe, etc.)
 
 Requirements:
-- PyTorch 2.9+
+- PyTorch 2.10+
 - CUDA-capable GPU (graceful fallback on CPU-only systems)
 """
 import pathlib
