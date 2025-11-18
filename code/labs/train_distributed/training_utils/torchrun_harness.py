@@ -1,0 +1,59 @@
+"""Lightweight helpers for launching training demos via the benchmark harness."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Dict, List, Optional
+
+from common.python.benchmark_harness import (
+    BaseBenchmark,
+    BenchmarkConfig,
+    LaunchVia,
+    TorchrunLaunchSpec,
+)
+
+
+class TorchrunScriptBenchmark(BaseBenchmark):
+    """Wrap a script-based training demo so the harness can launch it via torchrun."""
+
+    def __init__(
+        self,
+        *,
+        script_path: Path,
+        base_args: Optional[List[str]] = None,
+        target_label: Optional[str] = None,
+        config_arg_map: Optional[Dict[str, str]] = None,
+        multi_gpu_required: bool = True,
+        default_nproc_per_node: Optional[int] = None,
+        name: Optional[str] = None,
+    ):
+        super().__init__()
+        self._script_path = Path(script_path)
+        self._base_args = list(base_args) if base_args else []
+        self._config_arg_map = config_arg_map or {}
+        self._multi_gpu_required = multi_gpu_required
+        self._default_nproc_per_node = default_nproc_per_node
+        self._target_label = target_label
+        self.name = name or self._script_path.stem
+
+    def get_config(self) -> BenchmarkConfig:
+        cfg = BenchmarkConfig(
+            launch_via=LaunchVia.TORCHRUN,
+            multi_gpu_required=self._multi_gpu_required,
+            nproc_per_node=self._default_nproc_per_node,
+        )
+        cfg.target_label = self._target_label
+        return cfg
+
+    def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
+        return TorchrunLaunchSpec(
+            script_path=self._script_path,
+            script_args=list(self._base_args),
+            multi_gpu_required=self._multi_gpu_required,
+            config_arg_map=self._config_arg_map,
+            name=self.name,
+        )
+
+    def benchmark_fn(self) -> None:
+        """Required abstract method; execution happens in torchrun subprocess."""
+        raise RuntimeError("TorchrunScriptBenchmark should be executed via torchrun launcher.")

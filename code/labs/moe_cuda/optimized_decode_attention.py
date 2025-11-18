@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Optional, Dict, List
 
@@ -17,6 +18,29 @@ if str(REPO_ROOT) not in sys.path:
 from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from common.python.compile_utils import compile_model, enable_tf32
 from common.python.nvtx_helper import get_nvtx_enabled, nvtx_range
+
+# Prefer non-Flash SDPA backends on SM12x to avoid mismatched prebuilt kernels
+try:
+    from torch.nn.attention import SDPBackend, sdpa_kernel
+    _SDPA_BACKENDS = [
+        backend
+        for backend in (
+            getattr(SDPBackend, "CUDNN", None),
+            getattr(SDPBackend, "EFFICIENT_ATTENTION", None),
+            getattr(SDPBackend, "MATH", None),
+        )
+        if backend is not None
+    ]
+except Exception:  # pragma: no cover - older Torch
+    sdpa_kernel = None  # type: ignore[assignment]
+    _SDPA_BACKENDS = []
+
+
+def _sdpa_safe_ctx():
+    """Favor cudnn/efficient/math; avoid Flash kernels that may lack SM121 binaries."""
+    if sdpa_kernel is None or not _SDPA_BACKENDS:
+        return nullcontext()
+    return sdpa_kernel(_SDPA_BACKENDS)
 
 
 class FlashDecodeAttention(nn.Module):
@@ -38,6 +62,7 @@ class OptimizedDecodeAttentionBenchmark(BaseBenchmark):
 
     def __init__(self) -> None:
         super().__init__()
+        self.force_math = False
         self.batch = 32
         self.num_heads = 16
         self.head_dim = 128
@@ -56,8 +81,22 @@ class OptimizedDecodeAttentionBenchmark(BaseBenchmark):
     def setup(self) -> None:
         enable_tf32()
         torch.manual_seed(42)
-        module = FlashDecodeAttention().to(self.device)
-        module = compile_model(module, mode="max-autotune")
+        major, _ = torch.cuda.get_device_capability() if torch.cuda.is_available() else (0, 0)
+        if major >= 12:
+            # Avoid Flash/CUTLASS kernels that are not built for SM121; route to math backend.
+            class _MathDecode(nn.Module):
+                def forward(self, q, k, v):  # pragma: no cover - benchmark path
+                    with torch.backends.cuda.sdp_kernel(
+                        enable_flash=False, enable_mem_efficient=False, enable_math=True
+                    ):
+                        return F.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=0.0, is_causal=True)
+
+            module = _MathDecode().to(self.device)
+            self.force_math = True
+        else:
+            module = FlashDecodeAttention().to(self.device)
+            # compile_model no-ops on SM>=12; keep path eager to avoid Triton/Inductor gaps
+            module = compile_model(module, mode="max-autotune")
         self.module = module
 
         dtype = torch.bfloat16
@@ -86,7 +125,8 @@ class OptimizedDecodeAttentionBenchmark(BaseBenchmark):
 
         enable_nvtx = get_nvtx_enabled(self.get_config())
         with nvtx_range("moe_cuda_decode_flash", enable=enable_nvtx):
-            with torch.inference_mode():
+            ctx = nullcontext() if self.force_math else _sdpa_safe_ctx()
+            with torch.inference_mode(), ctx:
                 start = self._record_start()
                 _ = self.module(self.q, self.k, self.v)
                 torch.cuda.synchronize(self.device)
@@ -120,25 +160,4 @@ class OptimizedDecodeAttentionBenchmark(BaseBenchmark):
 
 
 def get_benchmark() -> BaseBenchmark:
-    candidate = OptimizedDecodeAttentionBenchmark()
-    if torch.cuda.is_available():
-        major, minor = torch.cuda.get_device_capability()
-        # Current FlashAttention CUTLASS kernels shipped with torch are tagged for
-        # SM80–SM100; SM121 loads the binary but crashes with a mismatched arch error.
-        if major >= 12:
-            class SkipBenchmark(BaseBenchmark):
-                def setup(self) -> None:  # pragma: no cover
-                    raise RuntimeError(
-                        f"SKIPPED: Optimized decode attention uses FlashAttention/CUTLASS kernels "
-                        f"tagged for SM80–SM100; current GPU sm_{major}{minor} is unsupported. "
-                        f"Rebuild kernels for SM{major}{minor} or relax to a non-Flash path."
-                    )
-
-                def benchmark_fn(self) -> None:  # pragma: no cover
-                    return
-
-                def get_config(self) -> BenchmarkConfig:
-                    return BenchmarkConfig(iterations=1, warmup=1)
-
-            return SkipBenchmark()
-    return candidate
+    return OptimizedDecodeAttentionBenchmark()

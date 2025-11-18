@@ -56,12 +56,13 @@ class VectorizedTopKMoE(nn.Module):
 
         w1 = self.w1[flat_expert_ids]
         b1 = self.b1[flat_expert_ids]
-        hidden = torch.baddbmm(b1, flat_tokens.unsqueeze(1), w1).squeeze(1)
+        # Avoid baddbmm meta-shape expand issues by separating matmul + bias add
+        hidden = torch.bmm(flat_tokens.unsqueeze(1), w1).squeeze(1) + b1
         hidden = F.gelu(hidden)
 
         w2 = self.w2[flat_expert_ids]
         b2 = self.b2[flat_expert_ids]
-        expert_out = torch.baddbmm(b2, hidden.unsqueeze(1), w2).squeeze(1)
+        expert_out = torch.bmm(hidden.unsqueeze(1), w2).squeeze(1) + b2
         weighted = expert_out * flat_probs
 
         output = torch.zeros_like(tokens, dtype=tokens.dtype)

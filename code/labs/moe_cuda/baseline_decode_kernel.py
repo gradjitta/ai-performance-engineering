@@ -61,7 +61,8 @@ class BaselineDecodeKernelBenchmark(BaseBenchmark):
         self.output = None
 
     def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=10, warmup=3)
+        # Use shorter runs to keep verification fast on slow builds/GPUs.
+        return BenchmarkConfig(iterations=4, warmup=1, measurement_timeout_seconds=30, setup_timeout_seconds=30)
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
