@@ -2,7 +2,7 @@
 # Fetch and install the requested CUTLASS release into third_party/cutlass.
 set -euo pipefail
 
-REF="${1:-${CUTLASS_REF:-v4.3.0}}"
+REF="${1:-${CUTLASS_REF:-8cd5bef43a2b0d3f9846b026c271593c6e4a8e8a}}"
 REPO="${CUTLASS_REPO:-https://github.com/NVIDIA/cutlass.git}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -15,8 +15,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if git clone --depth 1 --branch "${REF}" "${REPO}" "${tmp_dir}/cutlass-src"; then
-    :
+if git clone --filter=blob:none "${REPO}" "${tmp_dir}/cutlass-src"; then
+    if git -C "${tmp_dir}/cutlass-src" checkout "${REF}"; then
+        :
+    else
+        echo "ERROR: Failed to checkout CUTLASS ref ${REF}" >&2
+        exit 1
+    fi
 else
     echo "ERROR: Failed to clone CUTLASS repo (${REPO} @ ${REF})" >&2
     exit 1

@@ -111,8 +111,9 @@ TE_REPO_URL="${TE_REPO_URL:-https://github.com/NVIDIA/TransformerEngine.git}"
 TE_GIT_COMMIT="${TE_GIT_COMMIT:-f8cb598c9f3af2bc512a051abec75590b25f54c4}"
 TE_SRC_DIR="${TE_SRC_DIR:-${THIRD_PARTY_DIR}/TransformerEngine}"
 CUTLASS_REPO_URL="${CUTLASS_REPO_URL:-https://github.com/NVIDIA/cutlass.git}"
-CUTLASS_REF="${CUTLASS_REF:-v4.3.0}"
-CUTLASS_TARGET_VERSION="${CUTLASS_REF#v}"
+# Use the 4.3.0 commit (no public tag available)
+CUTLASS_REF="${CUTLASS_REF:-8cd5bef43a2b0d3f9846b026c271593c6e4a8e8a}"
+CUTLASS_TARGET_VERSION="${CUTLASS_TARGET_VERSION:-4.3.0}"
 CUTLASS_SRC_DIR="${CUTLASS_SRC_DIR:-${THIRD_PARTY_DIR}/cutlass}"
 PIP_ROOT_USER_ACTION="ignore"
 SOURCE_BUILD_ALLOWED=0
@@ -188,6 +189,19 @@ pip_wheel() {
 
 pip_show() {
     pip_cmd show "$@"
+}
+
+torch_wheel_url() {
+    local arch="$(uname -m)"
+    case "${arch}" in
+        x86_64) arch="x86_64" ;;
+        aarch64|arm64) arch="aarch64" ;;
+        *)
+            echo "Unsupported architecture for cu130 torch wheel: ${arch}" >&2
+            return 1
+            ;;
+    esac
+    echo "${PYTORCH_CU130_INDEX}/torch-2.9.1%2Bcu130-cp${PYTHON_TARGET_MAJOR}${PYTHON_TARGET_MINOR}-cp${PYTHON_TARGET_MAJOR}${PYTHON_TARGET_MINOR}-manylinux_2_28_${arch}.whl"
 }
 
 # Ensure a tool is reachable by adding a symlink in /usr/local/bin if found elsewhere.
@@ -1473,24 +1487,30 @@ pip_uninstall -y torch torchvision torchdata functorch pytorch-triton >/dev/null
 
 echo "Installing torch 2.9.1 + torchvision/torchaudio + torchao (cu13) from cu130 index..."
 if ! pip_install --no-cache-dir --upgrade --ignore-installed \
+    "$(torch_wheel_url)"; then
+    echo "ERROR: torch 2.9.1+cu130 wheel install failed"
+    exit 1
+fi
+
+if ! pip_install --no-cache-dir --upgrade --ignore-installed \
     --index-url "${PYTORCH_CU130_INDEX}" \
     --extra-index-url "https://pypi.org/simple" \
     --only-binary=":all:" \
-    torch==2.9.1+cu130 \
     torchvision==0.24.1+cu130 \
     torchaudio==2.9.1+cu130 \
     torchao==0.14.1+cu130 \
     triton==3.5.1; then
-    echo "ERROR: PyTorch stack installation failed from cu130 index"
+    echo "ERROR: torchvision/torchaudio/torchao install failed from cu130 index"
     exit 1
 fi
 
 # torchdata/torchtitan fallbacks (no cu130 wheels published)
 pip_uninstall -y torchdata torchtitan >/dev/null 2>&1 || true
-pip_install --no-cache-dir --upgrade --ignore-installed torchdata==0.10.0 || {
+# Avoid re-pulling a CPU torch dependency: install these without deps.
+pip_install --no-cache-dir --upgrade --ignore-installed --no-deps torchdata==0.10.0 || {
     echo "Warning: torchdata install failed; continuing"
 }
-pip_install --no-cache-dir --upgrade --ignore-installed torchtitan==0.2.0 || {
+pip_install --no-cache-dir --upgrade --ignore-installed --no-deps torchtitan==0.2.0 || {
     echo "Warning: torchtitan 0.2.0 install failed; continuing without torchtitan"
 }
 
@@ -1598,41 +1618,12 @@ if [ -f "$REQUIREMENTS_FILE" ]; then
     echo "✓ accelerate and torchtitan installed (PyTorch CUDA verified)"
 fi
 
-# Re-pin dependencies that may have been pulled by downstream installs
+# Single pin for shared deps to avoid dependency churn
 pip_install --no-cache-dir --upgrade --ignore-installed --no-deps "fsspec[http]==2024.6.1" || {
     echo "Warning: failed to pin fsspec[http]==2024.6.1"
 }
-echo "Re-pinning torch cu13 dependency wheels (force-reinstall, cu130 index only)..."
-pip_uninstall -y nvidia-cuda-nvrtc nvidia-cuda-runtime nvidia-cusolver nvidia-cusparse nvidia-nvjitlink nvidia-nvtx triton >/dev/null 2>&1 || true
-for pkg in \
-    "nvidia-cuda-nvrtc==13.0.48" \
-    "nvidia-cuda-runtime==13.0.48" \
-    "nvidia-cusolver==12.0.3.29" \
-    "nvidia-cusparse==12.6.2.49" \
-    "nvidia-nvjitlink==13.0.39" \
-    "nvidia-nvtx==13.0.39" \
-    "triton==3.5.1"; do
-    if ! pip_install --no-cache-dir --force-reinstall --ignore-installed --no-deps \
-        --index-url "${PYTORCH_CU130_INDEX}" \
-        "${pkg}"; then
-        echo "Warning: failed to pin ${pkg} from cu130 index"
-    fi
-done
-echo "Re-pinning HF deps for transformers compatibility..."
-pip_uninstall -y tokenizers huggingface-hub onnx onnxscript einops >/dev/null 2>&1 || true
-pip_install --no-cache-dir --upgrade --ignore-installed --no-deps tokenizers==0.19.1 || {
-    echo "Warning: failed to pin tokenizers==0.19.1"
-}
-pip_install --no-cache-dir --upgrade --ignore-installed --no-deps huggingface-hub==0.23.2 || {
-    echo "Warning: failed to pin huggingface-hub==0.23.2"
-}
-pip_install --no-cache-dir --upgrade --ignore-installed --no-deps onnx==1.19.0 onnxscript==0.1.0 einops==0.8.0 || {
-    echo "Warning: failed to pin onnx/onnxscript/einops runtime deps"
-}
-# Final hard pin to prevent late upgrades
-pip_uninstall -y huggingface-hub tokenizers >/dev/null 2>&1 || true
-pip_install --no-cache-dir --force-reinstall --ignore-installed --no-deps huggingface-hub==0.23.2 tokenizers==0.19.1 || {
-    echo "Warning: final HF pinning failed"
+pip_install --no-cache-dir --upgrade --ignore-installed --no-deps tokenizers==0.19.1 huggingface-hub==0.23.2 onnx==1.19.0 onnxscript==0.1.0 einops==0.8.0 || {
+    echo "Warning: failed to pin tokenizers/huggingface-hub/onnx/onnxscript/einops"
 }
 
 # Ensure triton is available (required by Transformer Engine and other PyTorch extensions)
@@ -1708,9 +1699,6 @@ echo "  CUTLASS headers available at ${CUTLASS_SRC_DIR}/include"
 echo ""
 echo "Ensuring monitoring/runtime packages (Prometheus, Transformer Engine)..."
 
-# Remove conflicting binary wheels before installing from source.
-pip_uninstall -y transformer_engine transformer-engine transformer_engine_cu12 transformer-engine-cu12 transformer-engine-cu13 transformer_engine_torch >/dev/null 2>&1 || true
-
 echo ""
 echo "Installing Transformer Engine from source (cu13, arch sm_${GPU_COMPUTE_SM_NUM:-unknown})..."
 mkdir -p "${TE_SRC_DIR}"
@@ -1722,6 +1710,12 @@ git -C "${TE_SRC_DIR}" fetch --all --tags --prune --force >/dev/null 2>&1 || tru
 git -C "${TE_SRC_DIR}" checkout "${TE_GIT_COMMIT}" >/dev/null 2>&1 || true
 git -C "${TE_SRC_DIR}" submodule sync --recursive >/dev/null 2>&1 || true
 git -C "${TE_SRC_DIR}" submodule update --init --recursive >/dev/null 2>&1 || true
+
+# Point TE's bundled cutlass to the top-level CUTLASS (4.3.0 commit) to avoid missing headers
+if [ -d "${TE_SRC_DIR}/3rdparty/cutlass" ] || [ -L "${TE_SRC_DIR}/3rdparty/cutlass" ]; then
+    rm -rf "${TE_SRC_DIR}/3rdparty/cutlass"
+fi
+ln -s "${CUTLASS_SRC_DIR}" "${TE_SRC_DIR}/3rdparty/cutlass"
 
 pip_install --no-input --upgrade --ignore-installed pybind11
 
@@ -1739,6 +1733,7 @@ if ! TORCH_CUDA_ARCH_LIST="${TE_BUILD_ARCH_LIST}" \
        CMAKE_CUDA_ARCH_LIST="${TE_BUILD_NVCC_ARCHS}" \
        NVCC_GENCODE="-gencode=arch=compute_${TE_BUILD_NVCC_ARCHS},code=sm_${TE_BUILD_NVCC_ARCHS}" \
        NVTE_FRAMEWORK=pytorch \
+       NVTE_SKIP_SUBMODULE_CHECKS_DURING_BUILD=1 \
        MAX_JOBS="${MAX_JOBS:-$(nproc)}" \
        pip_install --no-cache-dir --upgrade --ignore-installed --no-build-isolation --no-deps "${TE_SRC_DIR}"; then
     echo "ERROR: Transformer Engine source installation failed (arch list ${TE_BUILD_ARCH_LIST}, NVCC archs ${TE_BUILD_NVCC_ARCHS})."
@@ -2040,21 +2035,54 @@ print(f"Patched FlashAttention warning filters at {path}")
 PY
 }
 
+flash_attn_import_check() {
+    python3 - <<'PY'
+try:
+    import flash_attn_2_cuda  # type: ignore
+except Exception as exc:
+    print(f"[setup] FlashAttention import check failed: {exc}")
+    raise SystemExit(1)
+print("[setup] FlashAttention CUDA extension import OK")
+PY
+}
+
 install_flash_attention() {
     echo "Installing FlashAttention (binary wheel preferred, source fallback)..."
-    if pip_install --no-cache-dir --upgrade --ignore-installed --prefer-binary --only-binary=:all: \
-        flash-attn=="${FLASH_ATTN_EXPECTED_VERSION}"; then
-        return 0
-    fi
-    echo "Binary FlashAttention wheel unavailable; building from source..."
-    local fa_arch_list
-    fa_arch_list="${TE_TORCH_ARCH_LIST:-12.1}"
+    # Force reinstall to ensure ABI matches current torch
+    pip_uninstall -y flash-attn >/dev/null 2>&1 || true
+    local fa_arch_list="${TE_TORCH_ARCH_LIST:-12.1}"
     local fa_sm="${GPU_COMPUTE_SM_NUM:-121}"
+    local fa_archs_env="${FLASH_ATTN_CUDA_ARCHS:-${fa_sm}}"
+    local fa_max_jobs="${FLASH_ATTN_MAX_JOBS:-8}"
+    if [[ "${fa_arch_list}" == *a ]]; then
+        fa_arch_list="${fa_arch_list%a}"
+    fi
+
+    if [ "${FLASH_ATTN_FORCE_SOURCE:-0}" -ne 1 ]; then
+        if pip_install --no-cache-dir --upgrade --force-reinstall --ignore-installed --no-deps --prefer-binary --only-binary=:all: \
+            flash-attn=="${FLASH_ATTN_EXPECTED_VERSION}"; then
+            if flash_attn_import_check; then
+                return 0
+            fi
+            echo "FlashAttention binary wheel installed but import failed; rebuilding from source..."
+            pip_uninstall -y flash-attn >/dev/null 2>&1 || true
+        else
+            echo "Binary FlashAttention wheel unavailable; building from source..."
+        fi
+    else
+        echo "FLASH_ATTN_FORCE_SOURCE=1; building FlashAttention from source..."
+    fi
+
     if TORCH_CUDA_ARCH_LIST="${fa_arch_list}" \
        FLASH_ATTENTION_FORCE_CUDA_SM="${fa_sm}" \
-       pip_install --no-cache-dir --upgrade --ignore-installed --no-build-isolation --no-deps \
+       FLASH_ATTN_CUDA_ARCHS="${fa_archs_env}" \
+       MAX_JOBS="${fa_max_jobs}" \
+       pip_install --no-cache-dir --upgrade --force-reinstall --ignore-installed --no-build-isolation --no-deps \
        "flash-attn @ git+https://github.com/Dao-AILab/flash-attention.git@${FLASH_ATTN_TAG}"; then
-        return 0
+        if flash_attn_import_check; then
+            return 0
+        fi
+        echo "FlashAttention source build succeeded but import failed."
     fi
     echo "ERROR: Failed to install FlashAttention wheel. Provide a wheel at ${FLASH_ATTN_CACHE_PATH} or ${FLASH_ATTN_SPLIT_PREFIX}*."
     return 1
@@ -2991,9 +3019,11 @@ TE_ENV_VARS_BASE=(
 TE_WHEEL_DIR="${THIRD_PARTY_DIR}/wheels"
 mkdir -p "${TE_WHEEL_DIR}"
 
-# Keep torch on nightly cu130 and required deps for TE
-pip_install --upgrade --pre torch --index-url https://download.pytorch.org/whl/nightly/cu130
-pip_install --upgrade nvidia-cusparselt-cu13==0.8.0
+# Keep torch pinned to cu130 production wheel (cu13 deps) for TE builds
+if ! pip_install --no-cache-dir --force-reinstall --ignore-installed "$(torch_wheel_url)"; then
+    echo "ERROR: torch cu130 wheel install failed for TE rebuild"
+    exit 1
+fi
 pip_install --upgrade pydantic==2.12.4 pydantic-core==2.41.5
 
 # Clone/update TransformerEngine source under third_party
