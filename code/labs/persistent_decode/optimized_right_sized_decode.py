@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 import argparse
 from typing import List, Tuple
 
@@ -25,7 +32,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--block-k", type=int, default=None, help="Override BLOCK_K (defaults depend on tier)")
     p.add_argument("--num-programs", type=int, default=None, help="Override number of Triton programs")
-    p.add_argument("--quick", action="store_true", help="Shrink shapes for a fast smoke run")
+    p.add_argument("--smoke-test", action="store_true", help="Enable smoke-test mode (shrinks shapes)")
     p.add_argument(
         "--backend",
         choices=["triton", "graphs"],
@@ -53,7 +60,7 @@ set_decode_options(
     DecodeOptions(
         tier=_CLI_ARGS.tier,
         quantization=_CLI_ARGS.quantization,
-        quick=_CLI_ARGS.quick,
+        quick=_CLI_ARGS.smoke_test,
         block_k=_CLI_ARGS.block_k,
         num_programs=_CLI_ARGS.num_programs,
     )
@@ -68,10 +75,19 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
+    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+
     bench = get_benchmark()
-    bench.setup()
-    for _ in range(bench.get_config().warmup):
-        bench.benchmark_fn()
-    for _ in range(bench.get_config().iterations):
-        bench.benchmark_fn()
-    bench.teardown()
+    cfg = bench.get_config()
+    if _CLI_ARGS.smoke_test:
+        cfg.use_subprocess = False
+        cfg.iterations = 1
+        cfg.warmup = 0
+        cfg.measurement_timeout_seconds = max(180, getattr(cfg, "measurement_timeout_seconds", 0) or 0)
+        bench._config = cfg  # type: ignore[attr-defined]
+        bench.get_config = lambda: cfg  # type: ignore[assignment]
+
+    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=cfg)
+    result = harness.benchmark(bench)
+    mean_ms = result.timing.mean_ms if result and result.timing else 0.0
+    print(f"[{bench.__class__.__name__}] mean iteration {mean_ms:.3f} ms")

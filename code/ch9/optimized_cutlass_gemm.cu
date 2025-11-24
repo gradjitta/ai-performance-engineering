@@ -141,6 +141,7 @@ int main() {
         &heuristic,
         &returnedResults));
     
+#if defined(CUBLASLT_ALGO_CAP_PROGRAMMATIC_DEPENDENT_LAUNCH)
     // CUDA 13 + Blackwell: Check for PDL (Programmatic Dependent Launch) support
     // PDL reduces kernel launch overhead for pipelined workloads
     int pdl_supported = 0;
@@ -158,6 +159,7 @@ int main() {
             // PDL is automatically enabled when supported - no additional API calls needed
         }
     }
+#endif
 
     void* workspace = nullptr;
     CUDA_CHECK(cudaMalloc(&workspace, workspace_bytes));

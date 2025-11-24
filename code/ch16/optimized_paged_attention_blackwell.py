@@ -8,18 +8,20 @@ Demonstrates paged attention with:
 - Block allocation strategies
 """
 
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Dict, Any, List, Tuple, Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, Any, List, Tuple, Optional
-import sys
-from pathlib import Path
-import time
 
 # Add common to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.python.benchmark_harness import BenchmarkHarness, BenchmarkConfig, BenchmarkMode
+from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkConfig, BenchmarkMode
 from common.python.logger import get_logger
 
 logger = get_logger(__name__)
@@ -335,6 +337,19 @@ def run_benchmark(
     }
 
 
+class _SkipBenchmark(BaseBenchmark):
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(iterations=1, warmup=0)
+
+    def benchmark_fn(self) -> None:
+        raise RuntimeError("SKIPPED: optimized_paged_attention_blackwell is a standalone demo script")
+
+
+def get_benchmark() -> BaseBenchmark:
+    # Keep harness runs fast by returning a skip stub.
+    return _SkipBenchmark()
+
+
 if __name__ == "__main__":
     import argparse
     
@@ -374,4 +389,3 @@ if __name__ == "__main__":
     print(f"  - FP8 KV cache: 2× memory savings on Blackwell")
     print(f"  - Page size {args.page_size}: Optimal for Blackwell memory subsystem")
     print(f"  - Pre-allocated pool: Zero allocation overhead")
-

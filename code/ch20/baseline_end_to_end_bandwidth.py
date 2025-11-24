@@ -44,7 +44,7 @@ class BaselineEndToEndBandwidthBenchmark(BaseBenchmark):
     
     def setup(self) -> None:
         torch.manual_seed(42)
-        self.model = SimplePipeline(hidden_dim=self.hidden_dim).to(self.device).eval()
+        self.model = SimplePipeline(hidden_dim=self.hidden_dim).to(self.device, dtype=torch.float32).eval()
         self.inputs = [
             torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
             for _ in range(self.num_batches)

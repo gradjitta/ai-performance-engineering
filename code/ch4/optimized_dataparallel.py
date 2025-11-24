@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from common.python.smoke import is_smoke_mode
 import sys
 from pathlib import Path
 from typing import Optional, List
@@ -48,6 +50,8 @@ class OptimizedDdpBenchmark(BaseBenchmark):
         self.inputs: List[torch.Tensor] = []
         self.targets: List[torch.Tensor] = []
         self.batch_idx = 0
+        self._compiled = False
+        self._compile_error: Optional[str] = None
         tokens = self.batch_size * self.input_size
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -56,14 +60,23 @@ class OptimizedDdpBenchmark(BaseBenchmark):
 
     def setup(self) -> None:
         enable_tf32()
-        model = SimpleNet(self.input_size, self.hidden_size).to(self.device)
+        base_model = SimpleNet(self.input_size, self.hidden_size).to(self.device)
         compile_fn = getattr(torch, "compile", None)
-        if compile_fn is not None:
+        low_mem = is_smoke_mode()
+
+        # Torch compile can be heavy in constrained environments; skip in low-memory
+        # runs and fall back to eager if compilation fails.
+        if compile_fn is not None and not low_mem:
             try:
-                model = compile_fn(model, mode="reduce-overhead")
-            except Exception:
-                pass
-        self.model = model
+                compiled = compile_fn(base_model, mode="reduce-overhead")
+                self.model = compiled
+                self._compiled = True
+            except Exception as exc:
+                self._compile_error = str(exc)
+                self.model = base_model
+        else:
+            self.model = base_model
+
         self.optimizer = optim.SGD(self.model.parameters(), lr=0.01, momentum=0.9)
 
         for _ in range(4):

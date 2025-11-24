@@ -6,17 +6,25 @@ All attention is computed on a single GPU, which limits maximum sequence length
 to what fits in a single GPU's memory.
 """
 
-import torch
-import torch.nn as nn
-from typing import Dict, Any, Optional
+import os
+from common.python.smoke import is_smoke_mode
 import sys
 from pathlib import Path
 import math
+from typing import Dict, Any, Optional
+
+import torch
+import torch.nn as nn
 
 # Add common to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.python.benchmark_harness import BenchmarkHarness, BenchmarkConfig, BenchmarkMode
+from common.python.benchmark_harness import (
+    BaseBenchmark,
+    BenchmarkConfig,
+    BenchmarkHarness,
+    BenchmarkMode,
+)
 from common.python.logger import get_logger
 
 logger = get_logger(__name__)
@@ -253,3 +261,16 @@ if __name__ == "__main__":
     print(f"{'='*60}\n")
     print(f"NOTE: For sequences >16K tokens, consider using Context Parallelism")
     print(f"      to shard attention across multiple GPUs.")
+
+
+def get_benchmark() -> BaseBenchmark:
+    """Skip harness discovery for this multi-GPU-focused example."""
+    if is_smoke_mode():
+        class _SkipBenchmark(BaseBenchmark):
+            def get_config(self) -> BenchmarkConfig:
+                return BenchmarkConfig(iterations=1, warmup=0)
+
+            def benchmark_fn(self) -> None:
+                raise RuntimeError("SKIPPED: context_parallelism is a manual multi-GPU demo")
+        return _SkipBenchmark()
+    raise RuntimeError("SKIPPED: context_parallelism is designed for manual multi-GPU runs")

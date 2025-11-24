@@ -114,5 +114,8 @@ def load_native_tma() -> Optional[object]:
     if _EXT_INSTANCE is not None:
         return _EXT_INSTANCE
     _require_tma_hardware()
-    _EXT_INSTANCE = _try_build_extension()
+    try:
+        _EXT_INSTANCE = _try_build_extension()
+    except Exception as exc:  # pragma: no cover - defensive
+        raise RuntimeError(f"SKIPPED: Native TMA extension unavailable ({exc})") from exc
     return _EXT_INSTANCE

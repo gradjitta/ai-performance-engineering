@@ -22,7 +22,7 @@ Demonstrates Blackwell-friendly persistent decode kernels and TMA-powered prefil
 | `persistent_decode_common.py`, `tma_extension.py`, `expectations_gb10.json` | Shared helpers, CUDA extension wrappers, and expectation thresholds. |
 
 ## Running the Benchmarks
-Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.
+Use the benchmark harness for comparisons or drive the Typer CLI when you need repeatable artifact capture.
 ```bash
 cd ai-performance-engineering
 python tools/cli/benchmark_cli.py list-targets --chapter labs/persistent_decode
@@ -44,6 +44,6 @@ python tools/cli/benchmark_cli.py run --targets labs/persistent_decode --profile
 ## Notes
 - The paged KV microbench assumes PyTorch 2.10+ and CUDA 13 with B200/GB200-class hardware for fused FP8 attention; it falls back to FP16 automatically when fusion is unavailable.
 - Set `TORCH_COMPILE_MODE` or `TMA_TILE_SIZE` via env vars before invoking the harness to sweep tile sizes.
-- Right-sized decode flags (`--tier`, `--quantization`, `--block-k`, `--num-programs`, `--quick`) replace the old env-var driven knobs; pass them via `--target-extra-arg` when using the harness.
+- Right-sized decode flags (`--tier`, `--quantization`, `--block-k`, `--num-programs`, `--smoke-test`) replace the old env-var driven knobs; pass them via `--target-extra-arg` when using the harness.
 - `tma_extension.py` caches builds under `~/.cache/torch_extensions`; clean the cache when switching CUDA versions.
 - FlashAttention-3 ≥ 3.1.0 and Transformer Engine ≥ 2.8.0 are required for the FP8/TMA fast paths; the harness aborts on missing dependencies instead of silently degrading.

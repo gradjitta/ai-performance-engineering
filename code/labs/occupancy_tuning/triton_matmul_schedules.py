@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -117,9 +116,7 @@ class TritonMatmulProtonBenchmark(BaseBenchmark):
             enable_proton=True,
             profile_type="minimal",
             target_label=f"labs/occupancy_tuning:{schedule.name}",
-            use_subprocess=False,
-            setup_timeout_seconds=300,
-            measurement_timeout_seconds=600,
+            use_subprocess=True,
         )
 
     def setup(self) -> None:

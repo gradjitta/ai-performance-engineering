@@ -41,7 +41,8 @@ from common.python.compile_utils import enable_tf32, compile_model
 
 assert torch.cuda.is_available(), "CUDA required for FlexAttention examples"
 _major, _minor = torch.cuda.get_device_capability()
-assert _major >= 12, f"Blackwell expected (sm_120); got sm_{_major}{_minor}"
+if _major < 12:
+    raise RuntimeError(f"SKIPPED: FlexAttention native kernels require Blackwell (sm_120); found sm_{_major}{_minor}")
 
 QUICK_MODE = any(
     os.getenv(flag, "0") == "1"

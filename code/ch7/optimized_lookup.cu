@@ -83,6 +83,7 @@ int main() {
 
   CUDA_CHECK(cudaMemcpy(h_out, d_out, N * sizeof(float), cudaMemcpyDeviceToHost));
   printf("Lookup (Float8, 256-bit): %.4f ms\n", avg_ms);
+  printf("TIME_MS: %.4f\n", avg_ms);
   printf("out[0]=%.1f\n", h_out[0]);
 
   CUDA_CHECK(cudaEventDestroy(start));

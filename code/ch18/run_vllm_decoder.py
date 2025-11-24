@@ -132,7 +132,7 @@ def _assert_vllm_baseline_torch() -> None:
     parsed = version.parse(torch.__version__)
     minimum = version.parse("2.10.0")
     if parsed < minimum:
-        raise RuntimeError(f"PyTorch >= 2.10.0 required for V1 graph baseline; found {torch.__version__}")
+        raise RuntimeError(f"SKIPPED: PyTorch >= 2.10.0 required for V1 graph baseline; found {torch.__version__}")
 
 
 class PagedKVCache:

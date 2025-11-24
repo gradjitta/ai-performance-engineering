@@ -242,3 +242,19 @@ if __name__ == "__main__":
     print(f"Tokens generated: {result['tokens_generated']}")
     print(f"Mean time: {result['mean_time_ms']:.2f} ms")
     print(f"{'='*60}\n")
+
+
+# Harness integration: this example is a standalone demo, so mark it skipped when discovered.
+from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
+
+
+class _SkipBenchmark(BaseBenchmark):
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(iterations=1, warmup=0)
+
+    def benchmark_fn(self) -> None:
+        raise RuntimeError("SKIPPED: speculative_decoding is a standalone demo script")
+
+
+def get_benchmark() -> BaseBenchmark:
+    return _SkipBenchmark()

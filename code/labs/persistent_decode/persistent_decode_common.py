@@ -72,10 +72,7 @@ def resolve_shapes() -> Tuple[int, int, int]:
     - small: lighter shapes to mimic a smaller decode slice
     - medium: default shapes (8 x 32) for continuity with earlier labs
     - large: heavier batch to mimic a bigger slice
-    - quick: tiny shapes for smoke tests
     """
-    if _OPTIONS.quick:
-        return 2, 32, 64
     if _OPTIONS.tier == "small":
         return 4, 32, 64
     if _OPTIONS.tier == "large":

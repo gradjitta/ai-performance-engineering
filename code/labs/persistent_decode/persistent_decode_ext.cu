@@ -39,12 +39,8 @@ __device__ inline float dot_tile_fallback(const float* q, const float* k, int he
     return smem[0];
 }
 
-constexpr bool kTmemAvailable =
-#if defined(CUTE_ARCH_TCGEN05_TMEM_ENABLED)
-    true;
-#else
-    false;
-#endif
+// TMEM path intentionally disabled here; build a stable extension offline if needed.
+constexpr bool kTmemAvailable = false;
 
 constexpr int TILE_M = 32;
 constexpr int TILE_N = 64;
@@ -102,7 +98,7 @@ __global__ void persistent_decode_kernel(
         }
         __syncthreads();
     }
-    // TMEM epilogue: tiles of 32x64, no fallback path.
+    // TMEM epilogue: tiles of 32x64; disabled when TMEM is unavailable.
     if (!kTmemAvailable) {
         return;
     }

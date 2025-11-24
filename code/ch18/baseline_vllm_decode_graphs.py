@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import random
 import sys
 from dataclasses import dataclass
@@ -16,7 +17,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ch18.decode_kernels import DEVICE, build_decode_kernel  # noqa: E402
+from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
+from common.python.smoke import is_smoke_mode
+
+if is_smoke_mode():
+    raise RuntimeError("SKIPPED: vllm_decode_graphs is disabled in smoke-test sweeps")
+
+try:
+    from ch18.decode_kernels import DEVICE, build_decode_kernel  # noqa: E402
+except Exception as exc:  # pragma: no cover - import guard for CI sandboxes
+    raise RuntimeError(f"SKIPPED: vllm_decode_graphs dependencies unavailable ({exc})")
 
 
 def default_trace(num_steps: int = 24, seed: int = 0) -> List[int]:
@@ -181,6 +191,18 @@ def main() -> None:
 
     if args.prom_port is not None:
         export_prom_metrics("baseline", metrics, backend=backend, port=args.prom_port, duration_s=args.prom_duration)
+
+
+class _SkipBenchmark(BaseBenchmark):
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(iterations=1, warmup=0)
+
+    def benchmark_fn(self) -> None:
+        raise RuntimeError("SKIPPED: vllm_decode_graphs is a CLI demonstration script")
+
+
+def get_benchmark() -> BaseBenchmark:
+    return _SkipBenchmark()
 
 
 if __name__ == "__main__":

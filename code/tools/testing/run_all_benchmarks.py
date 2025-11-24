@@ -52,6 +52,8 @@ from common.python.chapter_compare_template import (
     get_last_load_error,
 )
 from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
+from common.python.benchmark_defaults import BenchmarkDefaults, set_defaults
+from common.python.smoke import is_smoke_mode, set_smoke_mode
 from common.python.run_manifest import reset_gpu_state, get_git_info
 from common.python.gpu_telemetry import format_gpu_telemetry, query_gpu_telemetry
 try:
@@ -1576,6 +1578,9 @@ def _test_chapter_impl(
         expectation_hardware_key,
         accept_regressions=accept_regressions,
     )
+    expectations_disabled = is_smoke_mode()
+    if expectations_disabled:
+        expectations_store.evaluate = lambda *args, **kwargs: None  # type: ignore[assignment]
     try:
         expectation_path = expectations_store.path.relative_to(repo_root)
     except ValueError:
@@ -2818,6 +2823,14 @@ def _test_chapter_impl(
 
             evaluation = None
             if baseline_ok and has_success:
+                # In smoke-test mode or when explicitly disabled, skip expectation enforcement.
+                if is_smoke_mode():
+                    result_entry['status'] = 'succeeded'
+                    successful += 1
+                    benchmark_results.append(result_entry)
+                    mark_progress(example_name)
+                    continue
+
                 metrics, best_opt = collect_expectation_metrics(result_entry)
                 metadata = build_expectation_metadata(result_entry, best_opt, git_commit)
                 example_key = expectation_example_key(result_entry['example'], result_entry.get('type', 'python'))
@@ -3140,6 +3153,11 @@ def main():
         help='Override warmup iteration count for Python benchmarks (default: 5 unless the benchmark defines its own).'
     )
     parser.add_argument(
+        '--smoke-test',
+        action='store_true',
+        help='Enable fast smoke-test mode (reduced iterations/warmups, low-memory defaults, expectation checks disabled).'
+    )
+    parser.add_argument(
         '--launch-via',
         choices=['python', 'torchrun'],
         default='python',
@@ -3195,6 +3213,17 @@ def main():
     )
     
     args = parser.parse_args()
+
+    # Configure smoke-test mode without leaking env vars.
+    set_smoke_mode(bool(args.smoke_test))
+    # Refresh benchmark defaults to honor smoke-test toggle.
+    set_defaults(BenchmarkDefaults.for_smoke(is_smoke_mode()))
+
+    # In smoke-test validation mode, don't fail the run on expectation drift.
+    if is_smoke_mode():
+        if hasattr(args, "accept_regressions") and not args.accept_regressions:
+            args.accept_regressions = True
+            logger.info("Smoke-test mode detected - enabling accept_regressions for quick runs.")
     extra_arg_map: Dict[str, List[str]] = {}
     for entry in args.target_extra_arg or []:
         target, sep, payload = entry.partition("=")

@@ -12,7 +12,7 @@ if str(repo_root) not in sys.path:
 
 import torch
 
-from common.python.compile_utils import enable_tf32, configure_tf32, restore_tf32
+from common.python.compile_utils import configure_tf32, restore_tf32
 from common.python.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -38,7 +38,6 @@ class OptimizedCublasBenchmark(BaseBenchmark):
         self.A: Optional[torch.Tensor] = None
         self.B: Optional[torch.Tensor] = None
         self._tf32_state: Optional[Tuple[Optional[str], Optional[str]]] = None
-        self._prev_precision: Optional[str] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(self.m * self.n),
@@ -46,11 +45,18 @@ class OptimizedCublasBenchmark(BaseBenchmark):
 
     def setup(self) -> None:
         """Enable TF32, allocate FP32 matrices, and warm up cuBLAS."""
-        self._prev_precision = torch.get_float32_matmul_precision()
-
-        enable_tf32()
-        self._tf32_state = configure_tf32(enable_matmul=True, enable_cudnn=True)
-        torch.set_float32_matmul_precision("high")
+        # Only use the new matmul precision APIs to avoid mixed-mode warnings.
+        self._tf32_state = configure_tf32(
+            enable_matmul=True,
+            enable_cudnn=True,
+            matmul_precision="high",
+            cudnn_precision="high",
+        )
+        try:
+            torch.set_float32_matmul_precision("high")
+        except Exception:
+            # Best effort; fall back to default precision if unsupported.
+            pass
 
         torch.manual_seed(42)
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float32)
@@ -79,8 +85,6 @@ class OptimizedCublasBenchmark(BaseBenchmark):
         if self._tf32_state is not None:
             restore_tf32(self._tf32_state)
             self._tf32_state = None
-        if self._prev_precision is not None:
-            torch.set_float32_matmul_precision(self._prev_precision)  # type: ignore[arg-type]
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

@@ -48,7 +48,7 @@ class OptimizedMemoryBenchmark(BaseBenchmark):
             nn.Linear(HIDDEN_DIM, HIDDEN_DIM),
             nn.GELU(),
             nn.Linear(HIDDEN_DIM, self.input_dim),
-        ).to(self.device).eval()
+        ).to(self.device, dtype=torch.float32).eval()
         
         self.device_buffer = torch.empty(
             self.batch_size,

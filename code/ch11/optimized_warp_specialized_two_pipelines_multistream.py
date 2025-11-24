@@ -9,6 +9,7 @@ import torch
 from torch.utils.cpp_extension import load
 
 from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
+from common.python.hardware_capabilities import ensure_dsmem_supported  # noqa: E402
 
 
 @lru_cache(maxsize=1)
@@ -31,6 +32,8 @@ class OptimizedDualPipelineBenchmark(BaseBenchmark):
     def __init__(self) -> None:
         super().__init__()
         self.num_streams = 4
+        # Skip on hardware without DSMEM/cluster support to avoid launch failures.
+        ensure_dsmem_supported(description="warp-specialized cluster pipelines")
         self.ext = _load_optimized_extension()
         self.input_a: torch.Tensor | None = None
         self.input_b: torch.Tensor | None = None

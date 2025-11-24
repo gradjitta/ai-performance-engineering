@@ -164,6 +164,7 @@ class BaselineKVCacheNaiveBenchmark(BaseBenchmark):
         self.model = None
         self.kv_cache = None
         self.inputs = None
+        torch.cuda.empty_cache()
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:

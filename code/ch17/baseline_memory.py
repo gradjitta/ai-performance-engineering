@@ -63,7 +63,7 @@ class BaselineMemoryBenchmark(BaseBenchmark):
             nn.Linear(HIDDEN_DIM, HIDDEN_DIM),
             nn.GELU(),
             nn.Linear(HIDDEN_DIM, self.input_dim),
-        ).to(self.device).eval()
+        ).to(self.device, dtype=torch.float32).eval()
         self.host_batches = [
             torch.randint(
                 0,
@@ -87,7 +87,7 @@ class BaselineMemoryBenchmark(BaseBenchmark):
                     host_batch.add_(-0.5)
                     host_batch.mul_(2.0)
                     host_batch.tanh_()
-                    device_batch = host_batch.to(self.device, non_blocking=False)
+                    device_batch = host_batch.to(self.device, dtype=torch.float32, non_blocking=False)
                     _ = self.model(device_batch)
         self._synchronize()
     

@@ -12,6 +12,8 @@ if str(repo_root) not in sys.path:
 
 import torch
 import torch.nn as nn
+import os
+from common.python.smoke import is_smoke_mode
 
 from common.python.allocator_tuning import log_allocator_guidance
 from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
@@ -22,6 +24,12 @@ class BaselineDockerBenchmark(BaseBenchmark):
 
     def __init__(self):
         super().__init__()
+        low_mem = is_smoke_mode()
+        self.input_dim = 512 if low_mem else 2048
+        self.hidden_dim = 1024 if low_mem else 4096
+        self.output_dim = 256 if low_mem else 1024
+        self.batch_size = 64 if low_mem else 256
+        self.num_batches = 2 if low_mem else 4
         self.model: Optional[nn.Module] = None
         self.optimizer: Optional[torch.optim.Optimizer] = None
         self.host_batches: List[torch.Tensor] = []
@@ -32,15 +40,15 @@ class BaselineDockerBenchmark(BaseBenchmark):
         torch.manual_seed(101)
         log_allocator_guidance("ch3/baseline_docker", optimized=False)
         self.model = nn.Sequential(
-            nn.Linear(2048, 4096),
+            nn.Linear(self.input_dim, self.hidden_dim),
             nn.ReLU(),
-            nn.Linear(4096, 1024),
+            nn.Linear(self.hidden_dim, self.output_dim),
         ).to(self.device)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-2)
 
-        for _ in range(4):
-            self.host_batches.append(torch.randn(256, 2048, dtype=torch.float32))
-            self.targets.append(torch.randn(256, 1024, dtype=torch.float32))
+        for _ in range(self.num_batches):
+            self.host_batches.append(torch.randn(self.batch_size, self.input_dim, dtype=torch.float32))
+            self.targets.append(torch.randn(self.batch_size, self.output_dim, dtype=torch.float32))
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
@@ -73,7 +81,8 @@ class BaselineDockerBenchmark(BaseBenchmark):
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=20, warmup=4)
+        low_mem = is_smoke_mode()
+        return BenchmarkConfig(iterations=5 if low_mem else 20, warmup=1 if low_mem else 4)
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:

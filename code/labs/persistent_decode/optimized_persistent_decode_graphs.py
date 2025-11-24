@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from enum import Enum
 
 import torch
@@ -179,21 +186,13 @@ class OptimizedPersistentDecodeGraphsBenchmark(BaseBenchmark):
         self.prefill_out = None
 
     def get_config(self) -> BenchmarkConfig:
-        if self.options.quick:
-            return BenchmarkConfig(
-                iterations=1,
-                warmup=0,
-                enable_profiling=False,
-                enable_ncu=False,
-                enable_nsys=False,
-                measurement_timeout_seconds=90,
-            )
         return BenchmarkConfig(
             iterations=3,
             warmup=1,
             enable_profiling=False,
             enable_ncu=False,
             enable_nsys=False,
+            use_subprocess=False,
             measurement_timeout_seconds=90,
         )
 
@@ -207,3 +206,12 @@ class OptimizedPersistentDecodeGraphsBenchmark(BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedPersistentDecodeGraphsBenchmark()
+
+if __name__ == "__main__":
+    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+
+    bench = get_benchmark()
+    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())
+    result = harness.benchmark(bench)
+    mean_ms = result.timing.mean_ms if result and result.timing else 0.0
+    print(f"[{bench.__class__.__name__}] mean iteration {mean_ms:.3f} ms")

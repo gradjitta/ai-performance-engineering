@@ -20,6 +20,19 @@ constexpr int REPEAT = 50;
 constexpr int BLOCK_THREADS = 256;
 constexpr int VECTORS_PER_THREAD = 4;
 
+__device__ __forceinline__ Float8 load_float8(const Float8* ptr) {
+  Float8 v;
+#if __CUDA_ARCH__ >= 800
+  // Use two 128-bit LDGs to fetch the 256-bit struct without custom intrinsics
+  const float4* src4 = reinterpret_cast<const float4*>(ptr);
+  reinterpret_cast<float4*>(&v)[0] = __ldg(src4);
+  reinterpret_cast<float4*>(&v)[1] = __ldg(src4 + 1);
+#else
+  v = *ptr;
+#endif
+  return v;
+}
+
 // Coalesced copy with register blocking and Float8 (256-bit loads)
 __global__ void coalesced_copy(const Float8* __restrict__ src,
                                Float8* __restrict__ dst,
@@ -33,7 +46,7 @@ __global__ void coalesced_copy(const Float8* __restrict__ src,
     for (int item = 0; item < VECTORS_PER_THREAD; ++item) {
       const int idx = base + item * stride;
       if (idx < n_vec) {
-        lane_buffer[item] = __ldg(src + idx);  // 256-bit load
+        lane_buffer[item] = load_float8(src + idx);  // 256-bit load
       }
     }
     #pragma unroll
@@ -104,6 +117,7 @@ int main() {
   CUDA_CHECK(cudaEventElapsedTime(&total_ms, start, stop));
   const float avg_ms = total_ms / static_cast<float>(REPEAT);
   std::printf("Coalesced copy (Float8, 256-bit): %.3f ms\n", avg_ms);
+  std::printf("TIME_MS: %.3f\n", avg_ms);
 
   CUDA_CHECK(cudaMemcpy(h_dst.data(), d_dst, N * sizeof(float), cudaMemcpyDeviceToHost));
   std::printf("Checksum: %.6f, Max diff: %.6e\n", checksum(h_dst), max_abs_diff(h_src, h_dst));

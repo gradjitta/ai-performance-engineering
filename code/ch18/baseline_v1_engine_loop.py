@@ -11,6 +11,7 @@ repo_root = Path(__file__).resolve().parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
+from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
 from ch18.v1_engine_loop_common import MockRequestOutput, build_demo_stack
 
 
@@ -46,6 +47,18 @@ def _demo() -> None:
         "all_done": core_client.is_all_done(),
     }
     print("Baseline loop demo:", summary)
+
+
+class _SkipBenchmark(BaseBenchmark):
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(iterations=1, warmup=0)
+
+    def benchmark_fn(self) -> None:
+        raise RuntimeError("SKIPPED: v1_engine_loop is a standalone decoder demo")
+
+
+def get_benchmark() -> BaseBenchmark:
+    return _SkipBenchmark()
 
 
 if __name__ == "__main__":

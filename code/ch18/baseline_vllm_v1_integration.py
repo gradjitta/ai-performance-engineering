@@ -16,7 +16,7 @@ from pathlib import Path
 # Add common to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.python.benchmark_harness import BenchmarkHarness, BenchmarkConfig, BenchmarkMode
+from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkConfig, BenchmarkMode
 from common.python.logger import get_logger
 
 logger = get_logger(__name__)
@@ -189,3 +189,14 @@ if __name__ == "__main__":
     print(f"{'='*60}\n")
     print(f"NOTE: Baseline uses eager execution without CUDA graphs or prefix caching")
 
+
+class _SkipBenchmark(BaseBenchmark):
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(iterations=1, warmup=0)
+
+    def benchmark_fn(self) -> None:
+        raise RuntimeError("SKIPPED: vllm_v1_integration is a CLI demonstration script")
+
+
+def get_benchmark() -> BaseBenchmark:
+    return _SkipBenchmark()

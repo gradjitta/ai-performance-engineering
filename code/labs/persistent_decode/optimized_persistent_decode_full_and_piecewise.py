@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from labs.persistent_decode.optimized_persistent_decode_graphs import (
     GraphMode,
     OptimizedPersistentDecodeGraphsBenchmark,
@@ -18,3 +25,13 @@ class OptimizedPersistentDecodeFullAndPiecewiseBenchmark(OptimizedPersistentDeco
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedPersistentDecodeFullAndPiecewiseBenchmark()
+
+if __name__ == "__main__":
+    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+
+    bench = get_benchmark()
+    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())
+    result = harness.benchmark(bench)
+    mean_ms = result.timing.mean_ms if result and result.timing else 0.0
+    print(f"[{bench.__class__.__name__}] mean iteration {mean_ms:.3f} ms")
+

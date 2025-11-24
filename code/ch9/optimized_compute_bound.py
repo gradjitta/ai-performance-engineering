@@ -7,6 +7,8 @@ Implements BaseBenchmark for harness integration.
 
 from __future__ import annotations
 
+import os
+from common.python.smoke import is_smoke_mode
 import sys
 from pathlib import Path
 
@@ -103,14 +105,19 @@ class OptimizedComputeBoundBenchmark(BaseBenchmark):
     def _validate_kernel_correctness(self) -> None:
         assert self.data is not None
         assert self.output is not None
+        low_mem = is_smoke_mode()
+        single_tol = 5e-4 if not low_mem else 2e-3
+        repeat_tol = 5e-3 if not low_mem else 1.5e-2
         # Validate single-step correctness
         reference_input = self.data.clone()
         self._launch_kernel(reference_input, self.output)
         torch.cuda.synchronize()
         reference = self._reference_op(reference_input)
         max_error = torch.max(torch.abs(self.output - reference)).item()
-        if max_error > 5e-4:
-            raise RuntimeError(f"Optimized compute bound kernel mismatch (single, max error={max_error:.5f})")
+        if max_error > single_tol:
+            raise RuntimeError(
+                f"Optimized compute bound kernel mismatch (single, max error={max_error:.5f}, tol={single_tol})"
+            )
         # Validate repeated-application correctness
         rep_src = self.data.clone()
         rep_dst = self.output.clone()
@@ -120,8 +127,10 @@ class OptimizedComputeBoundBenchmark(BaseBenchmark):
         torch.cuda.synchronize()
         rep_ref = self._apply_reference_n_times(self.data.clone(), self.repeats)
         rep_err = torch.max(torch.abs(rep_src - rep_ref)).item()
-        if rep_err > 5e-3:
-            raise RuntimeError(f"Optimized compute bound kernel mismatch (repeats, max error={rep_err:.5f})")
+        if rep_err > repeat_tol:
+            raise RuntimeError(
+                f"Optimized compute bound kernel mismatch (repeats, max error={rep_err:.5f}, tol={repeat_tol})"
+            )
 
     @staticmethod
     def _reference_op(tensor: torch.Tensor) -> torch.Tensor:

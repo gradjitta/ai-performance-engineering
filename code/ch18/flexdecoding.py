@@ -112,7 +112,8 @@ class FlexDecodingModule(torch.nn.Module):
         self.flex_enabled = HAS_FLEX
         assert torch.cuda.is_available(), "CUDA required for FlexDecoding demo"
         major, minor = torch.cuda.get_device_capability()
-        assert major >= 12, f"Blackwell expected (sm_120); got sm_{major}{minor}"
+        if major < 12:
+            raise RuntimeError(f"SKIPPED: FlexDecoding targets Blackwell (sm_120); found sm_{major}{minor}")
         enable_tf32()
         self.compile_mode = COMPILE_MODE
 

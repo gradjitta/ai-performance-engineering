@@ -16,6 +16,7 @@ if str(repo_root) not in sys.path:
 
 import torch
 import torch.nn as nn
+from common.python.smoke import is_smoke_mode
 
 from common.python.benchmark_harness import (
     BaseBenchmark,
@@ -50,8 +51,9 @@ class OptimizedRackPrepBenchmark(BaseBenchmark):
 
     def __init__(self):
         super().__init__()
-        self.seq_len = 4096
-        self.hidden_size = 4096
+        low_mem = is_smoke_mode()
+        self.seq_len = 1024 if low_mem else 4096
+        self.hidden_size = 1024 if low_mem else 4096
         self.reserve_cores = 2
         self.apply_affinity = False
         self.preferred_nics: List[str] = []
@@ -108,7 +110,7 @@ class OptimizedRackPrepBenchmark(BaseBenchmark):
             torch.empty_like(self.host_buffers[0], device=self.device),
             torch.empty_like(self.host_buffers[0], device=self.device),
         ]
-        self.norm = nn.LayerNorm(self.hidden_size, device=self.device)
+        self.norm = nn.LayerNorm(self.hidden_size, device=self.device, dtype=torch.float16)
         self.cur_slot = 0
         self.next_slot = 1
         self._start_copy(self.cur_slot)
@@ -140,7 +142,8 @@ class OptimizedRackPrepBenchmark(BaseBenchmark):
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=12, warmup=3)
+        low_mem = is_smoke_mode()
+        return BenchmarkConfig(iterations=6 if low_mem else 12, warmup=1 if low_mem else 3)
 
     def validate_result(self) -> Optional[str]:
         if not self.host_buffers or self.norm is None:
