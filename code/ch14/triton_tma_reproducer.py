@@ -111,7 +111,7 @@ def tma_gemm_conservative(
 @triton.autotune(
  configs=[
         # This is the config that crashes in production
-                triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 128}, num_warps=16, num_stages=4),
+            triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 128}, num_warps=16, num_stages=4),
                 triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 64}, num_warps=8, num_stages=4),
                 triton.Config({'BLOCK_M': 256, 'BLOCK_N': 128, 'BLOCK_K': 128}, num_warps=16, num_stages=5),
         ], key=['M', 'N', 'K'], )

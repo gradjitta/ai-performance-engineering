@@ -96,13 +96,10 @@ class OptimizedUmaMemoryReportingBenchmark(BaseBenchmark):
         device_name = None
         compute_capability = None
         total_mem_gb = None
-        try:
-            props = torch.cuda.get_device_properties(0)
-            device_name = props.name
-            compute_capability = f"{props.major}.{props.minor}"
-            total_mem_gb = props.total_memory / (1024**3)
-        except Exception:
-            pass
+        props = torch.cuda.get_device_properties(0)
+        device_name = props.name
+        compute_capability = f"{props.major}.{props.minor}"
+        total_mem_gb = props.total_memory / (1024**3)
 
         return {
             "timestamp_utc": datetime.datetime.utcnow().isoformat() + "Z",

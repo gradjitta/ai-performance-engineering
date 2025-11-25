@@ -59,7 +59,7 @@ __global__ void simple_warp_specialized_kernel(const float* __restrict__ A,
 }
 
 void run_baseline() {
-    constexpr int batches = 8;
+    constexpr int batches = 32;
     const size_t bytes = TILE_ELEMS * sizeof(float);
 
     std::vector<float> h_A(batches * TILE_ELEMS);

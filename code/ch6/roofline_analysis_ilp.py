@@ -138,7 +138,27 @@ class RooflineAnalysisILPBenchmark(BaseBenchmark):
         if "baseline" not in self.results or "optimized" not in self.results:
             return "Incomplete results"
         return None
-    
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return roofline analysis metrics for ILP optimization comparison."""
+        if self.results is None:
+            return None
+        baseline = self.results.get("baseline", {})
+        optimized = self.results.get("optimized", {})
+        baseline_time = baseline.get("time_ms", 0.0)
+        optimized_time = optimized.get("time_ms", 0.0)
+        speedup = baseline_time / optimized_time if optimized_time > 0 else 0.0
+        return {
+            "roofline.ridge_point": self.results.get("ridge_point", 0.0),
+            "roofline.baseline_ai": baseline.get("ai", 0.0),
+            "roofline.baseline_tflops": baseline.get("achieved_tflops", 0.0),
+            "roofline.baseline_efficiency_pct": baseline.get("efficiency", 0.0),
+            "roofline.optimized_ai": optimized.get("ai", 0.0),
+            "roofline.optimized_tflops": optimized.get("achieved_tflops", 0.0),
+            "roofline.optimized_efficiency_pct": optimized.get("efficiency", 0.0),
+            "roofline.speedup": speedup,
+        }
+
     def print_results(self) -> None:
         """Print roofline analysis results."""
         if self.results is None:

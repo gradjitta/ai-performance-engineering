@@ -152,8 +152,8 @@ def _gpu_node_from_nvml(device_index: int) -> int | None:
             numa_id = nvml.nvmlDeviceGetNUMANodeId(handle)
             if isinstance(numa_id, int) and numa_id >= 0:
                 return numa_id
-        except Exception:
-            pass
+        except AttributeError:
+            pass  # nvmlDeviceGetNUMANodeId not available in this nvml version
 
         # Derive from CPU affinity mask
         cpu_count = psutil.cpu_count(logical=True) or 0

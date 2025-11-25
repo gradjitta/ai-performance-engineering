@@ -156,6 +156,14 @@ class OptimizedDisaggregatedBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "prefill_decode_disag.batch_size": float(getattr(self, 'batch_size', 0)),
+            "prefill_decode_disag.seq_len": float(getattr(self, 'seq_len', 0)),
+            "prefill_decode_disag.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
+
     def validate_result(self) -> Optional[str]:
         if self.prefill_model is None or self.decode_model is None:
             return "Models not initialized"

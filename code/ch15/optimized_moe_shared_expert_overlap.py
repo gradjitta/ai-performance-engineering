@@ -148,5 +148,13 @@ class OptimizedMoeOverlapBenchmark(BaseBenchmark):
         return self._workload
 
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "moe_shared_expert_ov.batch_size": float(getattr(self, 'batch_size', 0)),
+            "moe_shared_expert_ov.seq_len": float(getattr(self, 'seq_len', 0)),
+            "moe_shared_expert_ov.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
+
 def get_benchmark() -> BaseBenchmark:
     return OptimizedMoeOverlapBenchmark()

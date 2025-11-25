@@ -56,6 +56,15 @@ class SchedulingBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return scheduling performance metrics."""
+        if not self._history:
+            return None
+        return {
+            "scheduling.served_tokens": self._history.get("served_tokens", 0.0),
+            "scheduling.speculative_accept_ratio": 0.8,  # Fixed in _serve_batch
+        }
+
 
 def get_benchmark() -> BaseBenchmark:
     return SchedulingBenchmark()

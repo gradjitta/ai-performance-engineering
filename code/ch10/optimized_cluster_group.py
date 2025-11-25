@@ -32,6 +32,15 @@ class OptimizedClusterGroupBenchmark(CudaBinaryBenchmark):
             time_regex=r"TIME_MS:\s*([0-9.]+)",
         )
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific pipeline metrics."""
+        base_metrics = super().get_custom_metrics() or {}
+        base_metrics.update({
+            "pipeline.uses_clusters": 1.0,
+            "pipeline.uses_pipeline": 1.0,
+        })
+        return base_metrics
+
     def _ensure_cluster_support(self) -> None:
         try:
             ensure_dsmem_supported(description="Thread block cluster DSMEM benchmark")

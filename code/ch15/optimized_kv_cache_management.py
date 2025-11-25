@@ -122,6 +122,14 @@ class OptimizedKVCacheManagementBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "kv_cache_management.batch_size": float(getattr(self, 'batch_size', 0)),
+            "kv_cache_management.seq_len": float(getattr(self, 'seq_len', 0)),
+            "kv_cache_management.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
+
     def validate_result(self) -> Optional[str]:
         if any(layer is None for layer in (self.q_proj, self.k_proj, self.v_proj, self.out_proj)):
             return "Projection layers not initialized"

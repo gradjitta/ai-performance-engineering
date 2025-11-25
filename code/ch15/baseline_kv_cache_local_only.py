@@ -73,6 +73,14 @@ class BaselineKVCacheLocalOnlyBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "kv_cache_local_only.batch_size": float(getattr(self, 'batch_size', 0)),
+            "kv_cache_local_only.seq_len": float(getattr(self, 'seq_len', 0)),
+            "kv_cache_local_only.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
+
     def validate_result(self) -> Optional[str]:
         if self.model is None:
             return "Model not initialized"

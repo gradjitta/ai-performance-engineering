@@ -1,0 +1,229 @@
+"""
+optimized_flexattention_sparse.py - FlexAttention with Block Sparsity (Ch14)
+
+WHAT: FlexAttention is PyTorch's flexible attention API that allows custom
+attention patterns via user-defined mask functions, compiled to efficient kernels.
+
+WHY: Standard attention is O(n²) in memory and compute. Sparse patterns like:
+  - Sliding window (local context only)
+  - Block sparse (document boundaries)
+  - Causal + local (LLM decoding)
+  
+reduce complexity to O(n) or O(n·w) where w is window size.
+
+WHEN TO USE:
+  - Long sequences where full attention OOMs
+  - Document-aware attention (don't attend across docs)
+  - Encoder-decoder with structured sparsity
+  
+REQUIREMENTS:
+  - PyTorch 2.5+ (flex_attention API)
+  - torch.compile for kernel generation
+"""
+
+import math
+from typing import Optional, Callable
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# Check for FlexAttention availability
+HAS_FLEX_ATTENTION = False
+try:
+    from torch.nn.attention.flex_attention import (
+        flex_attention,
+        create_block_mask,
+        _DEFAULT_SPARSE_BLOCK_SIZE,
+    )
+    HAS_FLEX_ATTENTION = True
+except ImportError:
+    _DEFAULT_SPARSE_BLOCK_SIZE = 128
+
+
+#============================================================================
+# Mask Functions for Different Sparsity Patterns
+#============================================================================
+
+def causal_mask(b: int, h: int, q_idx: int, kv_idx: int) -> bool:
+    """Standard causal mask: attend to current and previous positions only."""
+    return q_idx >= kv_idx
+
+
+def sliding_window_mask(window_size: int):
+    """Create sliding window mask function."""
+    def mask_fn(b: int, h: int, q_idx: int, kv_idx: int) -> bool:
+        return abs(q_idx - kv_idx) <= window_size
+    return mask_fn
+
+
+def sliding_window_causal_mask(window_size: int):
+    """Sliding window + causal: attend to last `window_size` tokens only."""
+    def mask_fn(b: int, h: int, q_idx: int, kv_idx: int) -> bool:
+        causal = q_idx >= kv_idx
+        in_window = q_idx - kv_idx <= window_size
+        return causal and in_window
+    return mask_fn
+
+
+def block_sparse_mask(block_size: int, sparse_ratio: float = 0.5):
+    """Block sparse attention: attend to alternating blocks."""
+    def mask_fn(b: int, h: int, q_idx: int, kv_idx: int) -> bool:
+        q_block = q_idx // block_size
+        kv_block = kv_idx // block_size
+        stride = int(1.0 / sparse_ratio)
+        return q_block == kv_block or kv_block % stride == 0
+    return mask_fn
+
+
+#============================================================================
+# FlexAttention Module
+#============================================================================
+
+class SlidingWindowCausalAttention(nn.Module):
+    """Production-ready sliding window causal attention."""
+    
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int,
+        window_size: int = 256,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
+        self.window_size = window_size
+        self.dropout = dropout
+        
+        self.qkv_proj = nn.Linear(embed_dim, 3 * embed_dim, bias=False)
+        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
+        
+        self._compiled_flex = torch.compile(flex_attention) if HAS_FLEX_ATTENTION else None
+        self._block_mask_cache = {}
+    
+    def _get_block_mask(self, batch_size: int, seq_len: int, device: torch.device):
+        """Get or create cached block mask."""
+        key = (batch_size, seq_len, str(device))
+        
+        if key not in self._block_mask_cache:
+            window = self.window_size
+            def mask_fn(b, h, q_idx, kv_idx):
+                return (q_idx >= kv_idx) and (q_idx - kv_idx <= window)
+            
+            self._block_mask_cache[key] = create_block_mask(
+                mask_fn,
+                B=batch_size,
+                H=self.num_heads,
+                Q_LEN=seq_len,
+                KV_LEN=seq_len,
+                device=device,
+            )
+        
+        return self._block_mask_cache[key]
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, seq_len, _ = x.shape
+        
+        qkv = self.qkv_proj(x)
+        qkv = qkv.view(batch_size, seq_len, 3, self.num_heads, self.head_dim)
+        qkv = qkv.permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        
+        if self._compiled_flex is not None and HAS_FLEX_ATTENTION:
+            block_mask = self._get_block_mask(batch_size, seq_len, x.device)
+            output = self._compiled_flex(q, k, v, block_mask=block_mask)
+        else:
+            output = F.scaled_dot_product_attention(
+                q, k, v, is_causal=True, dropout_p=self.dropout if self.training else 0.0
+            )
+        
+        output = output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.embed_dim)
+        return self.out_proj(output)
+
+
+#============================================================================
+# Benchmark
+#============================================================================
+
+def benchmark():
+    """Benchmark FlexAttention sparse patterns."""
+    print("FlexAttention Block Sparsity Benchmark")
+    print("=" * 60)
+    
+    if not torch.cuda.is_available():
+        print("CUDA not available!")
+        return
+    
+    device = torch.device("cuda")
+    print(f"Device: {torch.cuda.get_device_name()}")
+    
+    if not HAS_FLEX_ATTENTION:
+        print("\nFlexAttention requires PyTorch 2.5+")
+        print("Running SDPA comparison instead...")
+    
+    # Config
+    batch_size, num_heads, head_dim, seq_len = 2, 32, 128, 4096
+    dtype = torch.bfloat16
+    
+    print(f"\nConfig: B={batch_size}, H={num_heads}, D={head_dim}, S={seq_len}")
+    
+    q = torch.randn(batch_size, num_heads, seq_len, head_dim, dtype=dtype, device=device)
+    k = torch.randn(batch_size, num_heads, seq_len, head_dim, dtype=dtype, device=device)
+    v = torch.randn(batch_size, num_heads, seq_len, head_dim, dtype=dtype, device=device)
+    
+    # Benchmark full attention via SDPA
+    for _ in range(3):
+        _ = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+    torch.cuda.synchronize()
+    
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+    
+    start.record()
+    for _ in range(10):
+        _ = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+    end.record()
+    torch.cuda.synchronize()
+    
+    sdpa_ms = start.elapsed_time(end) / 10
+    
+    print(f"\nResults:")
+    print(f"  SDPA Causal: {sdpa_ms:.3f} ms")
+    
+    # FlexAttention if available
+    if HAS_FLEX_ATTENTION:
+        window_size = 512
+        mask_fn = sliding_window_causal_mask(window_size)
+        block_mask = create_block_mask(
+            mask_fn, B=batch_size, H=num_heads,
+            Q_LEN=seq_len, KV_LEN=seq_len, device=device
+        )
+        
+        compiled_flex = torch.compile(flex_attention)
+        
+        for _ in range(3):
+            _ = compiled_flex(q, k, v, block_mask=block_mask)
+        torch.cuda.synchronize()
+        
+        start.record()
+        for _ in range(10):
+            _ = compiled_flex(q, k, v, block_mask=block_mask)
+        end.record()
+        torch.cuda.synchronize()
+        
+        flex_ms = start.elapsed_time(end) / 10
+        
+        speedup = sdpa_ms / flex_ms
+        sparsity = 1.0 - (window_size / seq_len)
+        
+        print(f"  FlexAttention (w={window_size}): {flex_ms:.3f} ms")
+        print(f"  Speedup: {speedup:.2f}x")
+        print(f"  Sparsity: {sparsity*100:.1f}%")
+    
+    print("\nNote: Sliding window reduces O(n²) to O(n·w)")
+
+
+if __name__ == "__main__":
+    benchmark()

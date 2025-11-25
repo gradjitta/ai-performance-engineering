@@ -17,7 +17,13 @@ from pathlib import Path
 # Add common to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.python.benchmark_harness import BenchmarkHarness, BenchmarkConfig, BenchmarkMode
+from common.python.benchmark_harness import (
+    BaseBenchmark,
+    BenchmarkConfig,
+    BenchmarkHarness,
+    BenchmarkMode,
+    WorkloadMetadata,
+)
 from common.python.logger import get_logger
 
 logger = get_logger(__name__)
@@ -206,4 +212,73 @@ if __name__ == "__main__":
     print(f"Expected: ~2× better throughput vs baseline with CUDA graphs")
     print(f"         Prefix caching reduces redundant computation")
     print(f"         FP8 KV cache reduces memory usage on Blackwell")
+
+
+#============================================================================
+# Benchmark Harness Integration
+#============================================================================
+
+class OptimizedVLLMV1Benchmark(BaseBenchmark):
+    """Benchmark harness wrapper for optimized vLLM v1 integration."""
+
+    def __init__(self):
+        super().__init__()
+        self.integration = None
+        self.batch_size = 8
+        self.max_tokens = 128
+        self._last_result = {}
+        
+        self._workload = WorkloadMetadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(self.batch_size * self.max_tokens),
+        )
+
+    def setup(self) -> None:
+        """Setup: Initialize optimized vLLM v1 integration."""
+        self.integration = OptimizedVLLMV1Integration(
+            model_name="facebook/opt-125m",
+            max_tokens=self.max_tokens,
+            batch_size=self.batch_size,
+            use_vllm=VLLM_AVAILABLE,
+            enable_chunked_prefill=True,
+        )
+        self.integration.setup()
+
+    def benchmark_fn(self) -> None:
+        """Benchmark: Run optimized vLLM v1 inference."""
+        if self.integration is not None:
+            self._last_result = self.integration.run()
+        self._synchronize()
+
+    def teardown(self) -> None:
+        """Teardown: Clean up resources."""
+        if self.integration is not None:
+            self.integration.cleanup()
+            self.integration = None
+        torch.cuda.empty_cache()
+
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(iterations=5, warmup=2)
+    
+    def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
+        return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        return {
+            "vllm_v1_integration.mode": "optimized",
+            "vllm_v1_integration.cuda_graphs": True,
+            "vllm_v1_integration.prefix_caching": True,
+        }
+
+    def validate_result(self) -> Optional[str]:
+        if not VLLM_AVAILABLE:
+            return "vLLM not available - install with: pip install vllm"
+        if self.integration is None:
+            return "Integration not initialized"
+        return None
+
+
+def get_benchmark() -> BaseBenchmark:
+    """Factory function for benchmark discovery."""
+    return OptimizedVLLMV1Benchmark()
 

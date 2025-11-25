@@ -76,8 +76,13 @@ class OptimizedEarlyExitBenchmark(BaseBenchmark):
         if self.device.type == "cuda":
             try:
                 self.model = self.model.half()
-            except Exception:
-                pass
+            except Exception as e:
+                import warnings
+                warnings.warn(
+                    f"FP16 conversion failed: {e}. Running in FP32.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
         self.model.eval()
         input_dtype = next(self.model.parameters()).dtype
         self.x = torch.randn(
@@ -113,6 +118,14 @@ class OptimizedEarlyExitBenchmark(BaseBenchmark):
     
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "inference_full.batch_size": float(getattr(self, 'batch_size', 0)),
+            "inference_full.seq_len": float(getattr(self, 'seq_len', 0)),
+            "inference_full.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         return None

@@ -56,6 +56,21 @@ class BaselineRooflineBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return roofline analysis metrics."""
+        # Estimate problem size for roofline analysis
+        n = getattr(self, 'N', 0) or getattr(self, 'hidden_dim', 0) or 4096
+        batch = getattr(self, 'batch_size', 1) or getattr(self, 'batch', 1)
+        # Simple FLOP estimate for linear layers
+        flops = 2.0 * batch * n * n  # Rough estimate
+        bytes_moved = batch * n * 4.0  # Input/output bytes
+        arithmetic_intensity = flops / max(bytes_moved, 1.0)
+        return {
+    "roofline.estimated_flops": flops,
+    "roofline.estimated_bytes": bytes_moved,
+    "roofline.arithmetic_intensity": arithmetic_intensity,
+}
+
     def validate_result(self) -> Optional[str]:
         if self.model is None or self.data is None:
             return "Model or data not initialized"

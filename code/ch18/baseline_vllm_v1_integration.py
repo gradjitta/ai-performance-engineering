@@ -190,13 +190,41 @@ if __name__ == "__main__":
     print(f"NOTE: Baseline uses eager execution without CUDA graphs or prefix caching")
 
 
-class _SkipBenchmark(BaseBenchmark):
+class BaselineVLLMV1Benchmark(BaseBenchmark):
+    """Benchmark for baseline vLLM v1 integration."""
+    
+    def __init__(self) -> None:
+        super().__init__()
+        self.integration = None
+    
     def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=1, warmup=0)
+        return BenchmarkConfig(iterations=3, warmup=1)
 
-    def benchmark_fn(self) -> None:
-        raise RuntimeError("SKIPPED: vllm_v1_integration is a CLI demonstration script")
+    def setup(self) -> None:
+        """Set up the vLLM integration."""
+        self.integration = BaselineVLLMV1Integration(
+            model_name="facebook/opt-125m",
+            max_tokens=32,
+            batch_size=4,
+            use_vllm=VLLM_AVAILABLE,
+        )
+        self.integration.setup()
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return vLLM metrics."""
+        return {
+            "vllm_v1_integration.batch_size": 4.0,
+            "vllm_v1_integration.max_tokens": 32.0,
+            "vllm_v1_integration.vllm_available": float(VLLM_AVAILABLE),
+        }
+
+    def benchmark_fn(self) -> Optional[dict]:
+        """Run the baseline vLLM inference."""
+        if self.integration is None:
+            return None
+        result = self.integration.run()
+        return result
 
 
 def get_benchmark() -> BaseBenchmark:
-    return _SkipBenchmark()
+    return BaselineVLLMV1Benchmark()

@@ -41,13 +41,10 @@ class BaselineGuidedDecodingBenchmark(BaseBenchmark):
         if torch.cuda.is_available():
             major, _ = torch.cuda.get_device_capability(self.device)
             if major >= 12:
-                try:
-                    torch.backends.cuda.enable_flash_sdp(False)
-                    torch.backends.cuda.enable_mem_efficient_sdp(False)
-                    torch.backends.cuda.enable_math_sdp(True)
-                    torch.backends.cuda.enable_cudnn_sdp(False)
-                except Exception:
-                    pass
+                torch.backends.cuda.enable_flash_sdp(False)
+                torch.backends.cuda.enable_mem_efficient_sdp(False)
+                torch.backends.cuda.enable_math_sdp(True)
+                torch.backends.cuda.enable_cudnn_sdp(False)
         
         self.model = nn.TransformerDecoder(
             nn.TransformerDecoderLayer(d_model=hidden_dim, nhead=8, batch_first=True),
@@ -84,6 +81,13 @@ class BaselineGuidedDecodingBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "guided_decoding.workload_size": float(getattr(self, 'batch_size', 0) or getattr(self, 'N', 0) or 0),
+        }
+
     def validate_result(self) -> Optional[str]:
         return None
 

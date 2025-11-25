@@ -1,6 +1,7 @@
 """Python harness wrapper for baseline_fused_l2norm.cu."""
 
 from __future__ import annotations
+from typing import Optional
 
 import sys
 from pathlib import Path
@@ -27,6 +28,15 @@ class BaselineFusedL2NormBenchmark(CudaBinaryBenchmark):
             timeout_seconds=90,
         )
 
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific compute metrics."""
+        base_metrics = super().get_custom_metrics() or {}
+        base_metrics.update({
+            "compute.uses_tensor_cores": 0.0,
+            "compute.uses_cutlass": 0.0,
+        })
+        return base_metrics
 
 def get_benchmark() -> BaselineFusedL2NormBenchmark:
     """Factory for discover_benchmarks()."""

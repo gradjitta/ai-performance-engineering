@@ -44,11 +44,15 @@ def resolve_device() -> torch.device:
 
 
 def _should_use_compile(device: torch.device) -> bool:
-    """Grace-Blackwell currently trips torch.compile for this benchmark; fall back to eager there."""
+    """Decide whether to torch.compile the model.
+    
+    torch.compile is currently unstable on Blackwell (sm_100) for this
+    benchmark and has been causing subprocess segfaults. Keep it disabled
+    on CUDA to prefer eager for stability.
+    """
     if device.type != "cuda":
         return False
-    major, _ = torch.cuda.get_device_capability(device.index or 0)
-    return major < 12
+    return False
 
 
 class BaselinePerformanceBenchmark(BaseBenchmark):
@@ -142,6 +146,12 @@ class BaselinePerformanceBenchmark(BaseBenchmark):
             warmup=1,
         )
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        return {
+            "performance.workload_size": float(getattr(self, 'batch_size', 0) or getattr(self, 'N', 0) or 0),
+        }
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.model is None:

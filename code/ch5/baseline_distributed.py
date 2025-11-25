@@ -52,6 +52,14 @@ class BaselineDistributedBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return memory transfer metrics for bandwidth analysis."""
+        bytes_moved = getattr(self, 'N', 0) * 4  # Estimate: elements * 4 bytes
+        return {
+            "distributed.bytes_transferred": float(bytes_moved),
+            "distributed.transfer_type": 0.0,  # 0=pcie, 1=nvlink, 2=hbm
+        }
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.data is None:

@@ -1,0 +1,106 @@
+{
+  "examples": {
+    "flash_sdp": {
+      "example": "flash_sdp",
+      "metadata": {
+        "best_optimization": "optimized_flash_sdp",
+        "best_optimization_file": "optimized_flash_sdp.py",
+        "best_optimization_speedup": 0.6920357836506743,
+        "best_optimization_time_ms": 1.384992003440857,
+        "git_commit": "31bb5bdcfabc2dd956bb8ce8988785b9f6559ed8",
+        "updated_at": "2025-11-25T04:36:37.226262"
+      },
+      "metrics": {
+        "baseline_p75_ms": 0.9590399861335754,
+        "baseline_throughput.latency_ms": 0.9590399861335754,
+        "baseline_throughput.requests_per_s": 8341.675128951043,
+        "baseline_throughput.tokens_per_s": 2135468.833011467,
+        "baseline_time_ms": 0.9590399861335754,
+        "best_optimized_p75_ms": 1.384992003440857,
+        "best_optimized_speedup": 0.6920357836506743,
+        "best_optimized_throughput.latency_ms": 1.384992003440857,
+        "best_optimized_throughput.requests_per_s": 5776.2066352187585,
+        "best_optimized_throughput.tokens_per_s": 1478708.8986160022,
+        "best_optimized_time_ms": 1.384992003440857,
+        "best_speedup": 1.0
+      },
+      "type": "python"
+    },
+    "paged_attention": {
+      "example": "paged_attention",
+      "metadata": {
+        "best_optimization": "optimized_paged_attention",
+        "best_optimization_file": "optimized_paged_attention.py",
+        "best_optimization_speedup": 1.05,
+        "best_optimization_time_ms": 19625.42578125,
+        "git_commit": "31bb5bdcfabc2dd956bb8ce8988785b9f6559ed8",
+        "updated_at": "2025-11-25T02:11:08.223501"
+      },
+      "metrics": {
+        "baseline_p75_ms": 0.5588160157203674,
+        "baseline_throughput.latency_ms": 0.6411168038845062,
+        "baseline_throughput.requests_per_s": 3119.556355225856,
+        "baseline_throughput.tokens_per_s": 7986064.269378191,
+        "baseline_time_ms": 0.6411168038845062,
+        "best_optimized_p75_ms": 19769.44140625,
+        "best_optimized_speedup": 3.2667663419411004e-05,
+        "best_optimized_throughput.latency_ms": 19625.42578125,
+        "best_optimized_throughput.requests_per_s": 0.1019086170304028,
+        "best_optimized_time_ms": 19625.42578125,
+        "best_speedup": 1.0
+      },
+      "type": "python"
+    },
+    "piece_graphs": {
+      "example": "piece_graphs",
+      "metadata": {
+        "best_optimization": "optimized_piece_graphs",
+        "best_optimization_file": "optimized_piece_graphs.py",
+        "best_optimization_speedup": 5.607412099026052,
+        "best_optimization_time_ms": 1.3484880179166794,
+        "git_commit": "31bb5bdcfabc2dd956bb8ce8988785b9f6559ed8",
+        "updated_at": "2025-11-25T02:11:08.223515"
+      },
+      "metrics": {
+        "baseline_p75_ms": 7.525248050689697,
+        "baseline_throughput.latency_ms": 7.561528027057648,
+        "baseline_throughput.requests_per_s": 1586.9808267667636,
+        "baseline_throughput.tokens_per_s": 19500820.39930999,
+        "baseline_time_ms": 7.561528027057648,
+        "best_optimized_p75_ms": 1.5246399641036987,
+        "best_optimized_speedup": 5.607412099026052,
+        "best_optimized_throughput.latency_ms": 1.3484880179166794,
+        "best_optimized_throughput.requests_per_s": 741.5712907445264,
+        "best_optimized_time_ms": 1.3484880179166794,
+        "best_speedup": 5.607412099026052
+      },
+      "type": "python"
+    },
+    "regional_compilation": {
+      "example": "regional_compilation",
+      "metadata": {
+        "best_optimization": "optimized_regional_compilation",
+        "best_optimization_file": "optimized_regional_compilation.py",
+        "best_optimization_speedup": 2481.1784489566658,
+        "best_optimization_time_ms": 4.108831882476807,
+        "git_commit": "31bb5bdcfabc2dd956bb8ce8988785b9f6559ed8",
+        "updated_at": "2025-11-25T04:39:47.157435"
+      },
+      "metrics": {
+        "baseline_p75_ms": 10194.7451171875,
+        "baseline_throughput.latency_ms": 10194.7451171875,
+        "baseline_throughput.requests_per_s": 0.09808975001386572,
+        "baseline_throughput.tokens_per_s": 411418.23084215703,
+        "baseline_time_ms": 10194.7451171875,
+        "best_optimized_p75_ms": 4.176991939544678,
+        "best_optimized_speedup": 2481.1784489566658,
+        "best_optimized_throughput.latency_ms": 4.176991939544678,
+        "best_optimized_throughput.requests_per_s": 239.40673443315458,
+        "best_optimized_time_ms": 4.176991939544678,
+        "best_speedup": 2481.1784489566658
+      },
+      "type": "python"
+    }
+  },
+  "hardware_key": "b200"
+}

@@ -70,7 +70,8 @@ class BaselineRegionalCompilationBenchmark(BaseBenchmark):
         super().__init__()
         self.model: Optional[DummyTransformer] = None
         self.inputs: Optional[torch.Tensor] = None
-        self.choice = MODEL_CANDIDATES[-1]  # Smallest config to avoid OOM on GB10
+        # Use a mid-sized config so the full-graph compilation cost is noticeable.
+        self.choice = MODEL_CANDIDATES[4]  # 6B-style config (24x4096)
         tokens = self.choice["seq_len"] * self.choice["d_model"]
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -139,6 +140,14 @@ class BaselineRegionalCompilationBenchmark(BaseBenchmark):
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "regional_compilation.batch_size": float(getattr(self, 'batch_size', 0)),
+            "regional_compilation.seq_len": float(getattr(self, 'seq_len', 0)),
+            "regional_compilation.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.model is None or self.inputs is None:

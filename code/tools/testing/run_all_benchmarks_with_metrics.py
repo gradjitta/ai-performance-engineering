@@ -205,7 +205,7 @@ if torch.cuda.is_available():
 
 benchmark.teardown()
 """)
-        wrapper_script.close()
+    wrapper_script.close()
         
         ncu_command = [
             "ncu",
@@ -227,10 +227,7 @@ benchmark.teardown()
             check=False
         )
         
-        try:
-            Path(wrapper_script.name).unlink()
-        except Exception:
-            pass
+        Path(wrapper_script.name).unlink(missing_ok=True)
         
         # Check if file exists (NCU may create file even with non-zero exit code)
         # Also check with .ncu-rep extension
@@ -244,11 +241,9 @@ benchmark.teardown()
         for ncu_file in output_dir.glob(f"{benchmark_name}_{variant}*.ncu-rep"):
             return ncu_file
         return None
-    except Exception:
-        try:
-            Path(wrapper_script.name).unlink()
-        except Exception:
-            pass
+    except (subprocess.SubprocessError, OSError) as e:
+        Path(wrapper_script.name).unlink(missing_ok=True)
+        print(f"NCU profiling failed: {e}")
         return None
 
 

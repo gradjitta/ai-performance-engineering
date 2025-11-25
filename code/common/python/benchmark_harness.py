@@ -190,12 +190,10 @@ def _configure_attention_kernels() -> None:
                 if LOGGER_AVAILABLE:
                     logger.debug("SDPA kernel preference failed: %s", exc)
 
-    try:
+    if hasattr(torch.backends.cuda, 'enable_flash_sdp'):
         torch.backends.cuda.enable_flash_sdp(True)  # type: ignore[attr-defined]
         torch.backends.cuda.enable_mem_efficient_sdp(True)  # type: ignore[attr-defined]
         torch.backends.cuda.enable_math_sdp(False)  # type: ignore[attr-defined]
-    except Exception:
-        pass
 
 
 def _configure_matmul_reduction() -> None:
@@ -576,10 +574,7 @@ class BaseBenchmark:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         # Clear any cached config from a previous harness run
-        try:
-            self._config = None
-        except Exception:
-            pass
+        self._config = None
     
     def get_config(self) -> Optional[BenchmarkConfig]:
         """Return the active harness config when available.
@@ -903,12 +898,12 @@ class BenchmarkHarness:
                 world_size = int(nproc)
         except Exception:
             world_size = None
-        try:
-            if nnodes is not None:
+        if nnodes is not None:
+            try:
                 nodes_int = int(str(nnodes).split(":")[0])
                 world_size = (world_size or 1) * nodes_int
-        except Exception:
-            pass
+            except ValueError:
+                pass  # nnodes not a valid integer
         if world_size is None:
             if getattr(config, "launch_via", LaunchVia.PYTHON) == LaunchVia.PYTHON:
                 world_size = 1
@@ -1295,11 +1290,8 @@ class BenchmarkHarness:
             config.execution_mode = ExecutionMode.THREAD
         bench_config = benchmark.get_config()
         if bench_config and _is_chapter_or_labs_benchmark(benchmark):
-            try:
-                bench_config.iterations = None  # type: ignore[assignment]
-                bench_config.warmup = None  # type: ignore[assignment]
-            except Exception:
-                pass
+            bench_config.iterations = None  # type: ignore[assignment]
+            bench_config.warmup = None  # type: ignore[assignment]
         if bench_config:
             # Override with benchmark-specific settings
             for key, value in bench_config.__dict__.items():
@@ -1340,10 +1332,7 @@ class BenchmarkHarness:
         
         previous_config = getattr(benchmark, "_config", None)
         # Make merged config visible to benchmarks that need per-target args.
-        try:
-            benchmark._config = config  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        benchmark._config = config  # type: ignore[attr-defined]
         
         # CRITICAL: Ensure percentiles is always a list (never None)
         # This handles cases where benchmark.get_config() returns a config with percentiles=None
@@ -1377,10 +1366,7 @@ class BenchmarkHarness:
             print("[harness] dispatch threading (direct)", flush=True)
             return self._benchmark_with_threading(benchmark, config)
         finally:
-            try:
-                benchmark._config = previous_config  # type: ignore[attr-defined]
-            except Exception:
-                pass
+            benchmark._config = previous_config  # type: ignore[attr-defined]
             if gpu_mem_logger is not None:
                 log_file = gpu_mem_logger.stop()
                 if LOGGER_AVAILABLE:
@@ -2257,11 +2243,8 @@ class BenchmarkHarness:
             times_ms = cast(List[float], [])
             
             if torch.cuda.is_available():
-                try:
-                    torch.cuda.empty_cache()
-                    torch.cuda.reset_peak_memory_stats()
-                except Exception:
-                    pass
+                torch.cuda.empty_cache()
+                torch.cuda.reset_peak_memory_stats()
             gc.collect()
             gc.collect()
             

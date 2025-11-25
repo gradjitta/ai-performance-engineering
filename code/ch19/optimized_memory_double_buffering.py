@@ -150,6 +150,14 @@ class OptimizedMemoryDoubleBufferingBenchmark(BaseBenchmark):
             warmup=5,
         )
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return precision/quantization metrics."""
+        return {
+            "memory_double_buffer.batch_size": float(getattr(self, 'batch_size', 0)),
+            "memory_double_buffer.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+            "memory_double_buffer.precision_bits": 32.0,  # Override: 32=fp32, 16=fp16, 8=fp8, 4=fp4
+        }
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.model is None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Optional
 
 repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
@@ -26,6 +27,16 @@ class BaselineMemoryAccessBenchmark(CudaBinaryBenchmark):
             timeout_seconds=90,
             time_regex=r"TIME_MS:\s*([0-9.]+)",
         )
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return memory access pattern metrics for ch7 analysis."""
+        base_metrics = super().get_custom_metrics() or {}
+        base_metrics.update({
+            # Memory access pattern characteristics (baseline = uncoalesced)
+            "memory_access.is_coalesced": 0.0,  # 0 = baseline uncoalesced
+            "memory_access.expected_efficiency_pct": 3.125,  # 1/32 for stride-32 access
+        })
+        return base_metrics
 
 
 def get_benchmark() -> BaselineMemoryAccessBenchmark:

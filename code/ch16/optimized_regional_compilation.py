@@ -113,7 +113,8 @@ class OptimizedRegionalCompilationBenchmark(BaseBenchmark):
         self.graph_cache: Dict[int, GraphCacheEntry] = {}
 
     def setup(self) -> None:
-        candidate = MODEL_CANDIDATES[0]  # Use smallest config to avoid OOM on GB10
+        # Use the larger preset so region capture speedups have room to show.
+        candidate = MODEL_CANDIDATES[1]
         model = LargeTransformerModel(
             n_layers=candidate["n_layers"],
             d_model=candidate["d_model"],
@@ -145,8 +146,13 @@ class OptimizedRegionalCompilationBenchmark(BaseBenchmark):
         enable_tf32()
         try:
             torch.set_float32_matmul_precision("high")
-        except Exception:
-            pass
+        except Exception as e:
+            import warnings
+            warnings.warn(
+                f"Failed to set float32_matmul_precision='high': {e}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
     def _prepare_cuda_graphs(self) -> None:
         """Capture CUDA graphs per sequence length to eliminate Python overhead."""
@@ -255,6 +261,14 @@ class OptimizedRegionalCompilationBenchmark(BaseBenchmark):
             measurement_timeout_seconds=240,
             use_subprocess=False,
         )
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "regional_compilation.batch_size": float(getattr(self, 'batch_size', 0)),
+            "regional_compilation.seq_len": float(getattr(self, 'seq_len', 0)),
+            "regional_compilation.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.model is None or self.input_buffer is None:

@@ -218,6 +218,14 @@ def _execute_benchmarks(
     rdzv_endpoint: Optional[str] = None,
     torchrun_env: Optional[List[str]] = None,
     target_extra_args: Optional[List[str]] = None,
+    # LLM options
+    llm_analysis: bool = False,
+    llm_provider: Optional[str] = None,
+    apply_llm_patches: bool = False,
+    rebenchmark_llm_patches: bool = False,
+    patch_strategy: str = "ast",
+    use_llm_cache: bool = True,
+    llm_explain: bool = False,
 ) -> None:
     """Execute selected benchmarks with optional profiling."""
     parsed_extra_args = _parse_target_extra_args(target_extra_args)
@@ -226,8 +234,8 @@ def _execute_benchmarks(
         from common.python.cuda_capabilities import set_force_pipeline
 
         set_force_pipeline(force_pipeline)
-    except Exception:
-        pass
+    except ImportError:
+        pass  # cuda_capabilities not available
 
     artifact_manager = ArtifactManager(base_dir=Path(artifacts_dir) if artifacts_dir else None)
     if log_file is None:
@@ -281,6 +289,14 @@ def _execute_benchmarks(
             rdzv_endpoint=rdzv_endpoint,
             env_passthrough=torchrun_env,
             target_extra_args=parsed_extra_args,
+            # LLM options
+            llm_analysis=llm_analysis,
+            llm_provider=llm_provider,
+            apply_llm_patches=apply_llm_patches,
+            rebenchmark_llm_patches=rebenchmark_llm_patches,
+            patch_strategy=patch_strategy,
+            use_llm_cache=use_llm_cache,
+            llm_explain=llm_explain,
         )
         all_results.append(result)
 
@@ -328,6 +344,14 @@ if TYPER_AVAILABLE:
         rdzv_endpoint: Optional[str] = Option(None, "--rdzv-endpoint", help="torchrun rendezvous endpoint (host:port)."),
         torchrun_env: Optional[List[str]] = Option(None, "--torchrun-env", help="Environment variables to forward into torchrun launches (repeatable)."),
         target_extra_args: Optional[List[str]] = Option(None, "--target-extra-arg", help='Per-target extra args, format: target="--flag value". Repeatable.'),
+        # LLM analysis and patching options
+        llm_analysis: bool = Option(False, "--llm-analysis", help="Enable LLM-powered analysis for benchmarks with <1.1x speedup. Requires API keys in .env.local", is_flag=True),
+        llm_provider: Optional[str] = Option(None, "--llm-provider", help="LLM provider: 'anthropic' or 'openai'. Defaults to env LLM_PROVIDER."),
+        apply_llm_patches: bool = Option(False, "--apply-llm-patches", help="Apply LLM-suggested patches to create new optimized variants. Requires --llm-analysis.", is_flag=True),
+        rebenchmark_llm_patches: bool = Option(False, "--rebenchmark-llm-patches", help="Re-benchmark LLM-patched variants. Requires --apply-llm-patches.", is_flag=True),
+        patch_strategy: str = Option("ast", "--patch-strategy", help="Patch strategy: 'ast' (default, AST-based) or 'fuzzy' (text matching)."),
+        no_llm_cache: bool = Option(False, "--no-llm-cache", help="Disable LLM analysis caching (always re-run LLM even if cached results exist).", is_flag=True),
+        llm_explain: bool = Option(False, "--llm-explain", help="Generate educational explanations for best patches (why it works, optimization techniques used). Requires --rebenchmark-llm-patches.", is_flag=True),
     ):
         """Run benchmarks - discover, run, and summarize results."""
         combined_targets: List[str] = []
@@ -370,6 +394,14 @@ if TYPER_AVAILABLE:
             rdzv_endpoint=rdzv_endpoint,
             torchrun_env=torchrun_env,
             target_extra_args=target_extra_args,
+            # LLM options
+            llm_analysis=llm_analysis,
+            llm_provider=llm_provider,
+            apply_llm_patches=apply_llm_patches,
+            rebenchmark_llm_patches=rebenchmark_llm_patches,
+            patch_strategy=patch_strategy,
+            use_llm_cache=not no_llm_cache,
+            llm_explain=llm_explain,
         )
 
     @app.command()

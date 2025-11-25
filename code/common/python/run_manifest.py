@@ -507,7 +507,7 @@ class RunManifest(BaseModel):
         json_schema_extra = {
             "example": {
             "hardware": {
-                    "gpu_model": "NVIDIA B200-SXM5-192GB",
+                "gpu_model": "NVIDIA B200-SXM5-192GB",
                     "cuda_version": "13.0",
                     "driver_version": "580.105.08",
                     "compute_capability": "10.0",

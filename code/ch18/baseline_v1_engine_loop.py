@@ -49,16 +49,44 @@ def _demo() -> None:
     print("Baseline loop demo:", summary)
 
 
-class _SkipBenchmark(BaseBenchmark):
-    def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=1, warmup=0)
+from typing import Optional
 
-    def benchmark_fn(self) -> None:
-        raise RuntimeError("SKIPPED: v1_engine_loop is a standalone decoder demo")
+
+class BaselineV1EngineLoopBenchmark(BaseBenchmark):
+    """Benchmark for baseline V1 engine polling loop."""
+    
+    def __init__(self) -> None:
+        super().__init__()
+        self.engine_core = None
+        self.core_client = None
+    
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(iterations=10, warmup=2)
+
+    def setup(self) -> None:
+        """Set up the mock engine stack."""
+        self.engine_core, self.core_client = build_demo_stack()
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return engine loop metrics."""
+        return {
+            "v1_engine_loop.num_draft_tokens": 4.0,
+            "v1_engine_loop.batch_size": 1.0,
+        }
+
+    def benchmark_fn(self) -> Optional[dict]:
+        """Run the baseline engine loop and measure it."""
+        # Reset the engine state for each iteration
+        self.engine_core, self.core_client = build_demo_stack()
+        outputs = list(baseline_engine_loop(self.engine_core, self.core_client))
+        return {
+            "steps": self.engine_core.calls,
+            "tokens_generated": len(outputs),
+        }
 
 
 def get_benchmark() -> BaseBenchmark:
-    return _SkipBenchmark()
+    return BaselineV1EngineLoopBenchmark()
 
 
 if __name__ == "__main__":

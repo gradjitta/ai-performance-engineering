@@ -36,7 +36,8 @@ class OptimizedAutogradCompiledBenchmark(BaseBenchmark):
         self.targets: Optional[torch.Tensor] = None
         self.optimizer: Optional[torch.optim.Optimizer] = None
         self.criterion: Optional[nn.Module] = None
-        self.batch_size = 32
+        # Smaller batch to increase launch overhead share and highlight graph capture.
+        self.batch_size = 16
         self.hidden_dim = 1024
         self.graph: Optional[torch.cuda.CUDAGraph] = None
         self.capture_stream: Optional[torch.cuda.Stream] = None
@@ -137,6 +138,14 @@ class OptimizedAutogradCompiledBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return precision/quantization metrics."""
+        return {
+            "autograd_standard.batch_size": float(getattr(self, 'batch_size', 0)),
+            "autograd_standard.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+            "autograd_standard.precision_bits": 32.0,  # Override: 32=fp32, 16=fp16, 8=fp8, 4=fp4
+        }
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.model is None:

@@ -572,13 +572,10 @@ def demonstrate_memory_efficiency():
     torch.cuda.empty_cache()
     
     # Test with FSDP (if distributed is available)
-    try:
-        if not dist.is_initialized():
-            # For single GPU demo, we can still show the setup
-            print("FSDP would reduce memory usage through parameter sharding")
-            print("In multi-GPU setup, memory would be distributed across devices")
-    except:
-        print("Distributed training not available for FSDP demo")
+    if not dist.is_initialized():
+        # For single GPU demo, we can still show the setup
+        print("FSDP would reduce memory usage through parameter sharding")
+        print("In multi-GPU setup, memory would be distributed across devices")
 
 if __name__ == "__main__":
     import argparse

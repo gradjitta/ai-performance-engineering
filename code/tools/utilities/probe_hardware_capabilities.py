@@ -103,6 +103,8 @@ def _compile_and_run(source: str, sm_tag: str, exe_name: str) -> Tuple[int, str,
     nvcc = _locate_tool("nvcc")
     if not nvcc:
         return 1, "", "nvcc not found"
+    # Blackwell (SM 10.x) requires the 'a' suffix for cluster/DSMEM features
+    arch_tag = f"sm_{sm_tag}a" if sm_tag.startswith("10") else f"sm_{sm_tag}"
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         cu_path = tmp_path / f"{exe_name}.cu"
@@ -113,7 +115,7 @@ def _compile_and_run(source: str, sm_tag: str, exe_name: str) -> Tuple[int, str,
             "-std=c++17",
             "-rdc=true",
             "-O2",
-            f"-arch=sm_{sm_tag}",
+            f"-arch={arch_tag}",
             str(cu_path),
             "-lcuda",
             "-lcudadevrt",
@@ -127,6 +129,8 @@ def _compile_and_run(source: str, sm_tag: str, exe_name: str) -> Tuple[int, str,
 
 
 def _probe_dsmem_support(sm_tag: str) -> Tuple[bool, Optional[str]]:
+    # CUDA 13.0 changed cudaLaunchKernelEx to a template API.
+    # Use static shared memory (not extern __shared__) for reliable DSMEM access.
     source = textwrap.dedent(
         """
         #include <cuda_runtime.h>
@@ -134,16 +138,18 @@ def _probe_dsmem_support(sm_tag: str) -> Tuple[bool, Optional[str]]:
         namespace cg = cooperative_groups;
         
         __global__ void dsmem_probe_kernel(int *out) {
-            extern __shared__ int smem[];
+            __shared__ int smem[32];  // Static shared memory for reliable DSMEM
             auto cluster = cg::this_cluster();
-            if (cluster.block_rank() == 0 && threadIdx.x == 0) {
-                smem[0] = 7;
+            unsigned int block_rank = cluster.block_rank();
+            if (block_rank == 0 && threadIdx.x == 0) {
+                smem[0] = 123;
             }
             cluster.sync();
-            if (cluster.block_rank() == 1 && threadIdx.x == 0) {
+            if (block_rank == 1 && threadIdx.x == 0) {
                 int *remote = cluster.map_shared_rank(smem, 0);
-                out[0] = remote[0];
+                out[0] = remote[0];  // Should read 123 from block 0's smem
             }
+            cluster.sync();
         }
         
         int main() {
@@ -151,17 +157,28 @@ def _probe_dsmem_support(sm_tag: str) -> Tuple[bool, Optional[str]]:
             if (cudaMalloc(&out, sizeof(int)) != cudaSuccess) {
                 return 3;
             }
+            cudaMemset(out, 0, sizeof(int));
             cudaLaunchConfig_t config{};
             config.gridDim = dim3(2);
             config.blockDim = dim3(32);
-            config.clusterDim = dim3(2, 1, 1);
-            config.dynamicSmemBytes = sizeof(int) * 32;
+            config.dynamicSmemBytes = 0;  // Using static shared memory
             config.stream = nullptr;
-            void *args[] = { &out };
-            cudaError_t launch_err = cudaLaunchKernelEx(&config, dsmem_probe_kernel, args);
+            // Use attributes API for cluster dimension (works in CUDA 12.x and 13.0)
+            cudaLaunchAttribute attrs[1];
+            attrs[0].id = cudaLaunchAttributeClusterDimension;
+            attrs[0].val.clusterDim.x = 2;
+            attrs[0].val.clusterDim.y = 1;
+            attrs[0].val.clusterDim.z = 1;
+            config.attrs = attrs;
+            config.numAttrs = 1;
+            // CUDA 13.0 template API: pass kernel args directly
+            cudaError_t launch_err = cudaLaunchKernelEx(&config, dsmem_probe_kernel, out);
             cudaError_t sync_err = cudaDeviceSynchronize();
+            int result = 0;
+            cudaMemcpy(&result, out, sizeof(int), cudaMemcpyDeviceToHost);
             cudaFree(out);
-            if (launch_err == cudaSuccess && sync_err == cudaSuccess) {
+            // Verify the kernel actually worked (result should be 123)
+            if (launch_err == cudaSuccess && sync_err == cudaSuccess && result == 123) {
                 return 0;
             }
             if (launch_err == cudaErrorNotSupported) {

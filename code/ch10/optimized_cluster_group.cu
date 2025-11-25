@@ -19,8 +19,10 @@ namespace cg = cooperative_groups;
         }                                                                       \
     } while (0)
 
-__global__ void __cluster_dims__(kClusterBlocks, 1, 1)
-cluster_dual_kernel(const float* __restrict__ input,
+// Main kernel WITHOUT __cluster_dims__ attribute - use runtime specification only.
+// The attribute conflicts with cudaLaunchAttributeClusterDimension on B200/CUDA 13.
+// Use static shared memory for DSMEM compatibility on B200 (dynamic extern fails).
+__global__ void cluster_dual_kernel(const float* __restrict__ input,
                     float* __restrict__ chunk_sum,
                     float* __restrict__ chunk_sq,
                     int elems_per_block,
@@ -28,9 +30,10 @@ cluster_dual_kernel(const float* __restrict__ input,
     cg::cluster_group cluster = cg::this_cluster();
     cg::thread_block block = cg::this_thread_block();
 
-    extern __shared__ float shared[];
+    // Static shared memory: tile (2048 floats) + reductions (256 floats) = 9216 bytes
+    __shared__ float shared[kElementsPerBlock + kThreadsPerBlock];
     float* tile = shared;
-    float* reductions = shared + elems_per_block;
+    float* reductions = shared + kElementsPerBlock;
 
     const int chunk_id = blockIdx.x / kClusterBlocks;
     const int cluster_rank = cluster.block_rank();
@@ -74,24 +77,23 @@ cluster_dual_kernel(const float* __restrict__ input,
     }
 }
 
-__global__ void __cluster_dims__(2, 1, 1)
-dsmem_probe_kernel(float* out) {
+// Probe kernel WITHOUT __cluster_dims__ attribute - use runtime specification only.
+// The attribute conflicts with cudaLaunchAttributeClusterDimension on B200/CUDA 13.
+__global__ void dsmem_probe_kernel(float* out) {
     cg::cluster_group cluster = cg::this_cluster();
-    cg::thread_block block = cg::this_thread_block();
-    extern __shared__ float buffer[];
+    // Static shared memory required for DSMEM on Blackwell B200 (dynamic extern fails)
+    __shared__ float buffer[32];
+    unsigned int block_rank = cluster.block_rank();
 
-    if (cluster.block_rank() == 0) {
-        if (threadIdx.x == 0) {
-            buffer[0] = 123.0f;
-        }
+    if (block_rank == 0 && threadIdx.x == 0) {
+        buffer[0] = 123.0f;
     }
-
     cluster.sync();
-
-    if (cluster.block_rank() == 1 && threadIdx.x == 0) {
+    if (block_rank == 1 && threadIdx.x == 0) {
         float* remote = cluster.map_shared_rank(buffer, 0);
         out[0] = remote[0];
     }
+    cluster.sync();  // Final sync for clean exit
 }
 
 struct ProbeResult {
@@ -110,17 +112,19 @@ ProbeResult probe_dsmem_support() {
     cudaLaunchConfig_t cfg{};
     cfg.gridDim = dim3(2);
     cfg.blockDim = dim3(32);
-    cfg.dynamicSmemBytes = 32 * sizeof(float);
+    cfg.dynamicSmemBytes = 0;  // Using static shared memory for DSMEM compatibility
 
-    cudaKernel_t kernel;
-    cudaError_t err = cudaGetKernel(&kernel, dsmem_probe_kernel);
-    if (err != cudaSuccess) {
-        cudaFree(d_out);
-        return {false, "cudaGetKernel", err};
-    }
+    // Explicitly set cluster dimensions (required for B200 DSMEM support)
+    cudaLaunchAttribute attrs[1];
+    attrs[0].id = cudaLaunchAttributeClusterDimension;
+    attrs[0].val.clusterDim.x = 2;
+    attrs[0].val.clusterDim.y = 1;
+    attrs[0].val.clusterDim.z = 1;
+    cfg.attrs = attrs;
+    cfg.numAttrs = 1;
 
     void* args[] = {&d_out};
-    err = cudaLaunchKernelExC(&cfg, reinterpret_cast<void*>(kernel), args);
+    cudaError_t err = cudaLaunchKernelExC(&cfg, (void*)dsmem_probe_kernel, args);
     if (err != cudaSuccess) {
         cudaFree(d_out);
         return {false, "cudaLaunchKernelExC", err};
@@ -191,7 +195,8 @@ int main() {
 
     dim3 block(kThreadsPerBlock);
     dim3 grid(chunks * kClusterBlocks);
-    const size_t shared_bytes = (kElementsPerBlock + kThreadsPerBlock) * sizeof(float);
+    // Using static shared memory now, so dynamicSmemBytes = 0
+    const size_t shared_bytes = 0;
 
     cudaLaunchAttribute attrs[2]{};
     int attr_count = 0;

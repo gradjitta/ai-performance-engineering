@@ -76,7 +76,8 @@ HOST_ARCH_FLAGS := -Xcompiler -mcpu=native
 else ifeq ($(ARCH),sm_100)
 ARCH_NAME := Blackwell B200/B300 (CC 10.0)
 ARCH_SUFFIX := _sm100
-CUDA_ARCH_GENCODE := -gencode arch=compute_100,code=[sm_100,compute_100]
+# Use sm_100a for cluster/DSMEM support on Blackwell (CUDA 13.0+)
+CUDA_ARCH_GENCODE := -gencode arch=compute_100a,code=[sm_100a,compute_100a]
 HOST_ARCH_FLAGS :=
 else ifeq ($(ARCH),sm_120)
 ARCH_NAME := Grace-Blackwell GB200 (CC 12.0)
@@ -86,7 +87,8 @@ HOST_ARCH_FLAGS := -Xcompiler -mcpu=native
 else ifeq ($(ARCH),sm_103)
 ARCH_NAME := Blackwell Ultra B300 (CC 10.3)
 ARCH_SUFFIX := _sm103
-CUDA_ARCH_GENCODE := -gencode arch=compute_103,code=[sm_103,compute_103]
+# Use sm_103a for cluster/DSMEM support on Blackwell Ultra (CUDA 13.0+)
+CUDA_ARCH_GENCODE := -gencode arch=compute_103a,code=[sm_103a,compute_103a]
 HOST_ARCH_FLAGS :=
 else
 $(error Unsupported ARCH=$(ARCH). Supported values: sm_100, sm_103, sm_120, sm_121, sm_122, sm_123)

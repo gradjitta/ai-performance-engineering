@@ -79,13 +79,10 @@ class OptimizedEndToEndBandwidthBenchmark(BaseBenchmark):
                 compile_supported = False
                 compile_reason = "AIPERF_DISABLE_TORCH_COMPILE=1"
             elif torch.cuda.is_available():
-                try:
                     major, _ = torch.cuda.get_device_capability()
                     if major >= 12:
                         compile_supported = False
                         compile_reason = f"torch.compile disabled on SM{major} for stability"
-                except Exception:
-                    pass
             if compile_supported:
                 try:
                     compiled_model = torch.compile(model, mode="reduce-overhead")
@@ -157,6 +154,13 @@ class OptimizedEndToEndBandwidthBenchmark(BaseBenchmark):
     
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "end_to_end_bandwidth.workload_size": float(getattr(self, 'batch_size', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:

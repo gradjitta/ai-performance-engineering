@@ -53,12 +53,9 @@ class OptimizedGemmBenchmark(BaseBenchmark):
 
         compile_fn = getattr(torch, "compile", None)
         if compile_fn is not None:
-            try:
-                self.fn = compile_fn(fused, mode="reduce-overhead")
-            except Exception:
-                self.fn = fused
+            self.fn = compile_fn(fused, mode="reduce-overhead")
         else:
-            self.fn = fused
+            raise RuntimeError("torch.compile is required for this benchmark")
 
         with torch.autocast("cuda", dtype=torch.float16):
             for _ in range(3):
@@ -86,6 +83,13 @@ class OptimizedGemmBenchmark(BaseBenchmark):
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(iterations=20, warmup=4)
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "gemm.workload_size": float(getattr(self, 'batch_size', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.fn is None:

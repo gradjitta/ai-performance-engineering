@@ -213,8 +213,8 @@ def extract_ncu_metrics(ncu_rep_path: Path, timeout: int = 60) -> NcuMetrics:
             if occupancy_pct is None and occ is not None:
                 occupancy_pct = occ
             raw_metrics.update(raw)
-        except Exception:
-            pass
+        except (ValueError, KeyError, OSError):
+            pass  # CSV parsing failed or file error
     
     return NcuMetrics(
         kernel_time_ms=kernel_time_ms,

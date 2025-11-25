@@ -112,6 +112,14 @@ class OptimizedRoutingBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "routing_static.batch_size": float(getattr(self, 'batch_size', 0)),
+            "routing_static.seq_len": float(getattr(self, 'seq_len', 0)),
+            "routing_static.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
+
     def validate_result(self) -> Optional[str]:
         return None
 

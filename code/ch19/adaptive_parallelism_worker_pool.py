@@ -313,13 +313,15 @@ class AdaptiveParallelismManager:
     
     def _monitor_gpus(self):
         """Background thread to monitor GPU metrics."""
+        has_nvml = False
         try:
             import pynvml
             pynvml.nvmlInit()
             has_nvml = True
-        except:
-            has_nvml = False
+        except ImportError:
             print("Warning: pynvml not available, GPU monitoring disabled")
+        except Exception as e:
+            print(f"Warning: NVML initialization failed: {e}")
         
         while self.monitoring:
             if has_nvml:

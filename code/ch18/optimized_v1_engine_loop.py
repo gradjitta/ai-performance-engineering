@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, Iterator, Set
+from typing import Any, Dict, Iterator, Optional, Set
 
 repo_root = Path(__file__).resolve().parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
+
+from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 try:  # Optional, only for real vLLM runs.
     from vllm.v1.outputs import RequestOutput  # type: ignore
@@ -57,6 +59,28 @@ def _demo() -> None:
         "all_done": core_client.is_all_done(),
     }
     print("Optimized loop demo:", summary)
+
+
+class _SkipBenchmark(BaseBenchmark):
+    """Skip benchmark - v1_engine_loop is a standalone decoder demo."""
+
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(iterations=1, warmup=0)
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return engine loop metrics."""
+        return {
+            "v1_engine_loop.mode": "optimized",
+            "v1_engine_loop.kv_reclamation": True,
+        }
+
+    def benchmark_fn(self) -> None:
+        raise RuntimeError("SKIPPED: v1_engine_loop is a standalone decoder demo")
+
+
+def get_benchmark() -> BaseBenchmark:
+    """Factory function for benchmark discovery."""
+    return _SkipBenchmark()
 
 
 if __name__ == "__main__":

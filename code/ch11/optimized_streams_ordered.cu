@@ -36,7 +36,9 @@
     }                                                                        \
   } while (0)
 
-constexpr int N = 1 << 20;
+constexpr int N = 1 << 22;
+constexpr int kNumStreams = 3;
+constexpr int kPipelines = 8;
 
 __global__ void compute_kernel(const float* __restrict__ in,
                                float* __restrict__ out,
@@ -49,50 +51,64 @@ __global__ void compute_kernel(const float* __restrict__ in,
 }
 
 int main() {
-  float *h_src = nullptr, *h_dst1 = nullptr, *h_dst2 = nullptr;
+  float *h_src = nullptr;
   CUDA_CHECK(cudaMallocHost(&h_src, N * sizeof(float)));
-  CUDA_CHECK(cudaMallocHost(&h_dst1, N * sizeof(float)));
-  CUDA_CHECK(cudaMallocHost(&h_dst2, N * sizeof(float)));
   for (int i = 0; i < N; ++i) h_src[i] = static_cast<float>(i);
 
-  cudaStream_t stream1 = nullptr, stream2 = nullptr;
-  CUDA_CHECK(cudaStreamCreateWithFlags(&stream1, cudaStreamNonBlocking));
-  CUDA_CHECK(cudaStreamCreateWithFlags(&stream2, cudaStreamNonBlocking));
+  std::vector<cudaStream_t> h2d_streams(kNumStreams), compute_streams(kNumStreams), d2h_streams(kNumStreams);
+  for (int i = 0; i < kNumStreams; ++i) {
+    CUDA_CHECK(cudaStreamCreateWithFlags(&h2d_streams[i], cudaStreamNonBlocking));
+    CUDA_CHECK(cudaStreamCreateWithFlags(&compute_streams[i], cudaStreamNonBlocking));
+    CUDA_CHECK(cudaStreamCreateWithFlags(&d2h_streams[i], cudaStreamNonBlocking));
+  }
 
-  float *d_in1 = nullptr, *d_out1 = nullptr;
-  float *d_in2 = nullptr, *d_out2 = nullptr;
-  CUDA_CHECK(cudaMallocAsync(&d_in1, N * sizeof(float), stream1));
-  CUDA_CHECK(cudaMallocAsync(&d_out1, N * sizeof(float), stream1));
-  CUDA_CHECK(cudaMallocAsync(&d_in2, N * sizeof(float), stream2));
-  CUDA_CHECK(cudaMallocAsync(&d_out2, N * sizeof(float), stream2));
+  std::vector<float*> d_in(kNumStreams, nullptr);
+  std::vector<float*> d_out(kNumStreams, nullptr);
+  const int chunk_elems = (N + kPipelines - 1) / kPipelines;
 
-  CUDA_CHECK(cudaMemcpyAsync(d_in1, h_src, N * sizeof(float), cudaMemcpyHostToDevice, stream1));
-  CUDA_CHECK(cudaMemcpyAsync(d_in2, h_src, N * sizeof(float), cudaMemcpyHostToDevice, stream2));
+  for (int i = 0; i < kNumStreams; ++i) {
+    const int elems = std::min(chunk_elems, N - i * chunk_elems);
+    const size_t bytes = static_cast<size_t>(elems) * sizeof(float);
+    CUDA_CHECK(cudaMallocAsync(&d_in[i], bytes, compute_streams[i]));
+    CUDA_CHECK(cudaMallocAsync(&d_out[i], bytes, compute_streams[i]));
+    const float* src_ptr = h_src + i * chunk_elems;
+    CUDA_CHECK(cudaMemcpyAsync(d_in[i], src_ptr, bytes, cudaMemcpyHostToDevice, h2d_streams[i]));
+  }
 
   dim3 block(256);
-  dim3 grid((N + block.x - 1) / block.x);
-  compute_kernel<<<grid, block, 0, stream1>>>(d_in1, d_out1, N);
-  compute_kernel<<<grid, block, 0, stream2>>>(d_in2, d_out2, N);
+  for (int i = 0; i < kNumStreams; ++i) {
+    const int elems = std::min(chunk_elems, N - i * chunk_elems);
+    dim3 local_grid((elems + block.x - 1) / block.x);
+    compute_kernel<<<local_grid, block, 0, compute_streams[i]>>>(d_in[i], d_out[i], elems);
+    compute_kernel<<<local_grid, block, 0, compute_streams[i]>>>(d_out[i], d_in[i], elems);
+    // Third pass to amplify overlap benefit.
+    compute_kernel<<<local_grid, block, 0, compute_streams[i]>>>(d_in[i], d_out[i], elems);
+  }
   CUDA_CHECK(cudaGetLastError());
 
-  CUDA_CHECK(cudaMemcpyAsync(h_dst1, d_out1, N * sizeof(float), cudaMemcpyDeviceToHost, stream1));
-  CUDA_CHECK(cudaMemcpyAsync(h_dst2, d_out2, N * sizeof(float), cudaMemcpyDeviceToHost, stream2));
+  for (int i = 0; i < kNumStreams; ++i) {
+    const int elems = std::min(chunk_elems, N - i * chunk_elems);
+    const size_t bytes = static_cast<size_t>(elems) * sizeof(float);
+    CUDA_CHECK(cudaMemcpyAsync(h_src + i * chunk_elems, d_in[i], bytes,
+                               cudaMemcpyDeviceToHost, d2h_streams[i]));
+  }
 
-  CUDA_CHECK(cudaStreamSynchronize(stream1));
-  CUDA_CHECK(cudaStreamSynchronize(stream2));
+  for (int i = 0; i < kNumStreams; ++i) {
+    CUDA_CHECK(cudaStreamSynchronize(h2d_streams[i]));
+    CUDA_CHECK(cudaStreamSynchronize(compute_streams[i]));
+    CUDA_CHECK(cudaStreamSynchronize(d2h_streams[i]));
+  }
 
-  std::printf("stream1 result[0]=%.1f\n", h_dst1[0]);
-  std::printf("stream2 result[0]=%.1f\n", h_dst2[0]);
+  std::printf("stream0 result[0]=%.1f\n", h_src[0]);
 
-  CUDA_CHECK(cudaFreeAsync(d_in1, stream1));
-  CUDA_CHECK(cudaFreeAsync(d_out1, stream1));
-  CUDA_CHECK(cudaFreeAsync(d_in2, stream2));
-  CUDA_CHECK(cudaFreeAsync(d_out2, stream2));
-  CUDA_CHECK(cudaStreamDestroy(stream1));
-  CUDA_CHECK(cudaStreamDestroy(stream2));
+  for (int i = 0; i < kNumStreams; ++i) {
+    CUDA_CHECK(cudaFreeAsync(d_in[i], compute_streams[i]));
+    CUDA_CHECK(cudaFreeAsync(d_out[i], compute_streams[i]));
+    CUDA_CHECK(cudaStreamDestroy(h2d_streams[i]));
+    CUDA_CHECK(cudaStreamDestroy(compute_streams[i]));
+    CUDA_CHECK(cudaStreamDestroy(d2h_streams[i]));
+  }
   CUDA_CHECK(cudaFreeHost(h_src));
-  CUDA_CHECK(cudaFreeHost(h_dst1));
-  CUDA_CHECK(cudaFreeHost(h_dst2));
   return 0;
 }
 

@@ -87,3 +87,18 @@ def get_benchmark():
         def benchmark_fn(self): pass
         def get_config(self): return BenchmarkConfig(iterations=1, warmup=0)
     return _SkipBenchmark()
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return roofline analysis metrics."""
+        # Estimate problem size for roofline analysis
+        n = getattr(self, 'N', 0) or getattr(self, 'hidden_dim', 0) or 4096
+        batch = getattr(self, 'batch_size', 1) or getattr(self, 'batch', 1)
+        # Simple FLOP estimate for linear layers
+        flops = 2.0 * batch * n * n  # Rough estimate
+        bytes_moved = batch * n * 4.0  # Input/output bytes
+        arithmetic_intensity = flops / max(bytes_moved, 1.0)
+        return {
+    "persistent_matmul_tm.estimated_flops": flops,
+    "persistent_matmul_tm.estimated_bytes": bytes_moved,
+    "persistent_matmul_tm.arithmetic_intensity": arithmetic_intensity,
+}

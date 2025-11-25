@@ -28,7 +28,22 @@ logger = get_logger(__name__)
 
 
 class PagedKVCache:
-    """Paged KV cache with optimal page sizes for Blackwell."""
+    """Paged KV cache with FP8 compression and per-page scale factors.
+    
+    Key Optimization for Blackwell (Ch16):
+    - FP8 E4M3 format: 2× memory savings vs BF16
+    - Per-page scale factors: Better accuracy than global scaling
+    - Dynamic scaling: Compute scale from tensor amax
+    - Pre-allocated pools: Zero runtime allocation overhead
+    
+    Memory savings:
+    - BF16: 2 bytes per element
+    - FP8: 1 byte per element + small scale factor overhead
+    - Net savings: ~50% memory reduction
+    """
+    
+    # FP8 E4M3 max representable value (for scaling)
+    FP8_E4M3_MAX = 448.0
     
     def __init__(
         self,
@@ -51,7 +66,7 @@ class PagedKVCache:
         # Determine KV cache dtype
         if use_fp8 and hasattr(torch, 'float8_e4m3fn'):
             self.cache_dtype = torch.float8_e4m3fn
-            logger.info("Using FP8 KV cache for 2× memory savings")
+            logger.info("Using FP8 KV cache with per-page scaling for 2× memory savings")
         else:
             self.cache_dtype = torch.bfloat16
             logger.info("Using BF16 KV cache")
@@ -62,9 +77,13 @@ class PagedKVCache:
         # Page allocation tracker
         self.free_pages = list(range(max_pages))
         self.allocated_pages = {}  # sequence_id -> list of page indices
+        
+        # Quantization statistics
+        self.total_writes = 0
+        self.total_reads = 0
     
     def _allocate_page_pool(self):
-        """Pre-allocate pool of pages."""
+        """Pre-allocate pool of pages with scale factors for FP8."""
         # KV cache shape: [num_pages, num_layers, 2, num_heads, page_size, head_dim]
         # 2 for K and V
         self.page_pool = torch.zeros(
@@ -78,10 +97,85 @@ class PagedKVCache:
             dtype=self.cache_dtype
         )
         
+        # Per-page scale factors for FP8 dequantization
+        # Shape: [num_pages, num_layers, 2] (one scale per K and V per layer per page)
+        if self.use_fp8:
+            self.page_scales = torch.ones(
+                self.max_pages,
+                self.num_layers,
+                2,  # K and V scales
+                device=self.device,
+                dtype=torch.float32,
+            )
+        else:
+            self.page_scales = None
+        
+        pool_size_mb = (
+            self.page_pool.numel() * self.page_pool.element_size() / (1024 * 1024)
+        )
+        scale_size_mb = (
+            self.page_scales.numel() * 4 / (1024 * 1024) 
+            if self.page_scales is not None else 0
+        )
+        
         logger.info(
             f"Allocated {self.max_pages} pages × {self.page_size} tokens/page "
             f"= {self.max_pages * self.page_size:,} token capacity"
         )
+        logger.info(
+            f"Memory: {pool_size_mb:.1f} MB (pages) + {scale_size_mb:.1f} MB (scales) "
+            f"= {pool_size_mb + scale_size_mb:.1f} MB total"
+        )
+    
+    def _quantize_to_fp8(
+        self, 
+        tensor: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Quantize tensor to FP8 with dynamic per-tensor scaling.
+        
+        Args:
+            tensor: Input tensor in BF16/FP16/FP32
+            
+        Returns:
+            quantized: FP8 tensor
+            scale: Scale factor for dequantization (output = quantized * scale)
+        """
+        # Compute scale from tensor amax
+        amax = tensor.abs().max()
+        
+        # Handle zero tensors
+        if amax == 0:
+            scale = torch.ones(1, device=tensor.device, dtype=torch.float32)
+        else:
+            # Scale to fit in FP8 range
+            scale = amax / self.FP8_E4M3_MAX
+            # Ensure scale is at least 1e-12 to avoid division issues
+            scale = torch.clamp(scale, min=1e-12)
+        
+        # Quantize: divide by scale, clamp, convert to FP8
+        scaled_tensor = tensor / scale
+        # Clamp to FP8 range to handle numerical edge cases
+        scaled_tensor = torch.clamp(scaled_tensor, -self.FP8_E4M3_MAX, self.FP8_E4M3_MAX)
+        quantized = scaled_tensor.to(self.cache_dtype)
+        
+        return quantized, scale
+    
+    def _dequantize_from_fp8(
+        self, 
+        quantized: torch.Tensor, 
+        scale: torch.Tensor
+    ) -> torch.Tensor:
+        """Dequantize FP8 tensor back to BF16.
+        
+        Args:
+            quantized: FP8 tensor
+            scale: Scale factor from quantization
+            
+        Returns:
+            Dequantized tensor in BF16
+        """
+        # Convert to float first, then scale and convert to BF16
+        return quantized.to(torch.float32) * scale.to(quantized.device)
     
     def allocate_pages(self, sequence_id: int, num_tokens: int) -> List[int]:
         """Allocate pages for a sequence.
@@ -118,7 +212,13 @@ class PagedKVCache:
         v: torch.Tensor,
         position: int
     ):
-        """Write KV to cache."""
+        """Write KV to cache with FP8 quantization.
+        
+        For FP8 mode:
+        - Computes per-page scale factors from tensor amax
+        - Quantizes K and V separately with their own scales
+        - Stores scales for later dequantization
+        """
         pages = self.allocated_pages.get(sequence_id, [])
         if not pages:
             pages = self.allocate_pages(sequence_id, position + k.shape[1])
@@ -131,16 +231,35 @@ class PagedKVCache:
             # Need more pages
             pages.extend(self.allocate_pages(sequence_id, k.shape[1]))
         
-        # Write K and V
         page_id = pages[page_idx]
         
-        # Convert to cache dtype if needed
-        if self.use_fp8:
-            k = k.to(self.cache_dtype)
-            v = v.to(self.cache_dtype)
+        # Write K and V with FP8 quantization if enabled
+        if self.use_fp8 and self.page_scales is not None:
+            # Quantize K with dynamic scaling
+            k_quantized, k_scale = self._quantize_to_fp8(k)
+            # Quantize V with dynamic scaling  
+            v_quantized, v_scale = self._quantize_to_fp8(v)
+            
+            # Store quantized values
+            self.page_pool[page_id, layer_idx, 0, :, offset:offset+k.shape[-2], :] = k_quantized
+            self.page_pool[page_id, layer_idx, 1, :, offset:offset+v.shape[-2], :] = v_quantized
+            
+            # Store per-page scale factors for dequantization
+            # Note: Using max of existing and new scale to handle incremental writes
+            self.page_scales[page_id, layer_idx, 0] = torch.max(
+                self.page_scales[page_id, layer_idx, 0], 
+                k_scale.item()
+            )
+            self.page_scales[page_id, layer_idx, 1] = torch.max(
+                self.page_scales[page_id, layer_idx, 1], 
+                v_scale.item()
+            )
+        else:
+            # BF16 path - no quantization
+            self.page_pool[page_id, layer_idx, 0, :, offset:offset+k.shape[-2], :] = k.to(self.cache_dtype)
+            self.page_pool[page_id, layer_idx, 1, :, offset:offset+v.shape[-2], :] = v.to(self.cache_dtype)
         
-        self.page_pool[page_id, layer_idx, 0, :, offset:offset+k.shape[1], :] = k
-        self.page_pool[page_id, layer_idx, 1, :, offset:offset+v.shape[1], :] = v
+        self.total_writes += 1
     
     def read_kv(
         self,
@@ -148,7 +267,13 @@ class PagedKVCache:
         layer_idx: int,
         num_tokens: int
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Read KV from cache."""
+        """Read KV from cache with FP8 dequantization.
+        
+        For FP8 mode:
+        - Reads quantized values from page pool
+        - Applies per-page scale factors for dequantization
+        - Returns BF16 tensors suitable for attention computation
+        """
         pages = self.allocated_pages[sequence_id]
         
         # Gather KV from pages
@@ -162,6 +287,14 @@ class PagedKVCache:
             k_page = self.page_pool[page_id, layer_idx, 0, :, :tokens_in_page, :]
             v_page = self.page_pool[page_id, layer_idx, 1, :, :tokens_in_page, :]
             
+            # Dequantize if using FP8
+            if self.use_fp8 and self.page_scales is not None:
+                k_scale = self.page_scales[page_id, layer_idx, 0]
+                v_scale = self.page_scales[page_id, layer_idx, 1]
+                
+                k_page = self._dequantize_from_fp8(k_page, k_scale).to(torch.bfloat16)
+                v_page = self._dequantize_from_fp8(v_page, v_scale).to(torch.bfloat16)
+            
             k_list.append(k_page)
             v_list.append(v_page)
             
@@ -172,12 +305,37 @@ class PagedKVCache:
         k = torch.cat(k_list, dim=1)  # [num_heads, num_tokens, head_dim]
         v = torch.cat(v_list, dim=1)
         
-        # Convert back from FP8 if needed
-        if self.use_fp8:
-            k = k.to(torch.bfloat16)
-            v = v.to(torch.bfloat16)
+        self.total_reads += 1
         
         return k, v
+    
+    def get_compression_stats(self) -> Dict[str, Any]:
+        """Return FP8 compression statistics."""
+        if self.use_fp8:
+            bf16_size = self.page_pool.numel() * 2  # BF16 = 2 bytes
+            fp8_size = self.page_pool.numel() * 1  # FP8 = 1 byte
+            scale_overhead = self.page_scales.numel() * 4 if self.page_scales is not None else 0
+            actual_size = fp8_size + scale_overhead
+            compression_ratio = bf16_size / actual_size
+            memory_saved_mb = (bf16_size - actual_size) / (1024 * 1024)
+            
+            return {
+                "format": "FP8_E4M3",
+                "bf16_size_mb": bf16_size / (1024 * 1024),
+                "fp8_size_mb": fp8_size / (1024 * 1024),
+                "scale_overhead_mb": scale_overhead / (1024 * 1024),
+                "actual_size_mb": actual_size / (1024 * 1024),
+                "compression_ratio": compression_ratio,
+                "memory_saved_mb": memory_saved_mb,
+                "total_writes": self.total_writes,
+                "total_reads": self.total_reads,
+            }
+        else:
+            return {
+                "format": "BF16",
+                "compression_ratio": 1.0,
+                "memory_saved_mb": 0.0,
+            }
 
 
 class OptimizedPagedAttentionBlackwell:
@@ -337,17 +495,69 @@ def run_benchmark(
     }
 
 
-class _SkipBenchmark(BaseBenchmark):
+class PagedAttentionBlackwellBenchmark(BaseBenchmark):
+    """Benchmark wrapper for FP8 paged attention with proper metrics."""
+    
+    def __init__(self):
+        super().__init__()
+        self._paged_attn: Optional[OptimizedPagedAttentionBlackwell] = None
+        self._compression_stats: Optional[Dict[str, Any]] = None
+    
     def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=1, warmup=0)
-
+        return BenchmarkConfig(iterations=5, warmup=2)
+    
+    def setup(self) -> None:
+        """Initialize paged attention with FP8 KV cache."""
+        self._paged_attn = OptimizedPagedAttentionBlackwell(
+            batch_size=4,
+            num_layers=8,
+            num_heads=16,
+            head_dim=64,
+            seq_length=1024,
+            page_size=128,
+            use_fp8_kv=True,
+        )
+        self._paged_attn.setup()
+    
     def benchmark_fn(self) -> None:
-        raise RuntimeError("SKIPPED: optimized_paged_attention_blackwell is a standalone demo script")
+        """Run paged attention benchmark."""
+        if self._paged_attn is None:
+            raise RuntimeError("Paged attention not initialized")
+        _ = self._paged_attn.run()
+        
+        # Capture compression stats
+        self._compression_stats = self._paged_attn.kv_cache.get_compression_stats()
+    
+    def teardown(self) -> None:
+        """Cleanup resources."""
+        if self._paged_attn is not None:
+            self._paged_attn.cleanup()
+        super().teardown()
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return FP8 KV cache compression metrics.
+        
+        Metrics explain WHY FP8 is beneficial:
+        - compression_ratio: ~2x for FP8 vs BF16
+        - memory_saved_mb: Actual memory savings
+        - This allows larger batch sizes / longer sequences
+        """
+        if self._compression_stats is None:
+            return None
+        
+        return {
+            "fp8_kv.format": 1.0 if self._compression_stats.get("format") == "FP8_E4M3" else 0.0,
+            "fp8_kv.compression_ratio": float(self._compression_stats.get("compression_ratio", 1.0)),
+            "fp8_kv.memory_saved_mb": float(self._compression_stats.get("memory_saved_mb", 0.0)),
+            "fp8_kv.actual_size_mb": float(self._compression_stats.get("actual_size_mb", 0.0)),
+            "fp8_kv.total_writes": float(self._compression_stats.get("total_writes", 0)),
+            "fp8_kv.total_reads": float(self._compression_stats.get("total_reads", 0)),
+        }
 
 
 def get_benchmark() -> BaseBenchmark:
-    # Keep harness runs fast by returning a skip stub.
-    return _SkipBenchmark()
+    """Factory function for benchmark harness discovery."""
+    return PagedAttentionBlackwellBenchmark()
 
 
 if __name__ == "__main__":

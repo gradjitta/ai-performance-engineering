@@ -44,9 +44,9 @@ class OptimizedTrainingDistributedBenchmark(BaseBenchmark):
         self.optimizer: Optional[torch.optim.Optimizer] = None
         self.criterion: Optional[nn.Module] = None
         self.scaler: Optional[torch.cuda.amp.GradScaler] = None
-        self.batch_size = 8
-        self.hidden_dim = 4096
-        self.train_steps = 4
+        self.batch_size = 32
+        self.hidden_dim = 8192
+        self.train_steps = 6
         self._sdpa_ctx_factory = prefer_sdpa_backends if prefer_sdpa_backends is not None else nullcontext
         tokens = self.batch_size * self.hidden_dim
         self._workload = WorkloadMetadata(
@@ -63,8 +63,13 @@ class OptimizedTrainingDistributedBenchmark(BaseBenchmark):
             else:
                 try:
                     torch.set_float32_matmul_precision("high")
-                except Exception:
-                    pass
+                except Exception as e:
+                    import warnings
+                    warnings.warn(
+                        f"Failed to set float32_matmul_precision='high': {e}",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
         torch.manual_seed(42)
         
         base_model = SimpleModel(hidden_dim=self.hidden_dim).to(self.device, dtype=torch.bfloat16).train()
@@ -122,6 +127,13 @@ class OptimizedTrainingDistributedBenchmark(BaseBenchmark):
     
     def get_workload_metadata(self):
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "training_single.workload_size": float(getattr(self, 'batch_size', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:

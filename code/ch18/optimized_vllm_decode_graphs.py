@@ -6,7 +6,12 @@ import argparse
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Tuple
+from typing import Dict, Iterable, Tuple, Optional
+
+# Workaround for importlib.util.spec_from_file_location loading:
+# Register this module in sys.modules so @dataclass works correctly
+if __name__ not in sys.modules:
+    sys.modules[__name__] = sys.modules.get(__name__, type(sys)(__name__))
 
 import torch
 
@@ -20,6 +25,8 @@ from ch18.baseline_vllm_decode_graphs import (  # noqa: E402
     export_prom_metrics,
     format_metrics,
 )
+from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
+from common.python.smoke import is_smoke_mode  # noqa: E402
 from ch18.decode_kernels import DEVICE, build_decode_kernel  # noqa: E402
 
 BUCKETS = (8, 16, 24, 32)
@@ -50,6 +57,9 @@ class BucketWorkspace:
     batch: int
     hidden: int
     device: str = DEVICE
+    tokens: torch.Tensor | None = None
+    kv: torch.Tensor | None = None
+    mask: torch.Tensor | None = None
     logits: torch.Tensor | None = None
     tmp: torch.Tensor | None = None
     stream: torch.cuda.Stream | None = None
@@ -58,22 +68,31 @@ class BucketWorkspace:
     def ensure(self) -> None:
         if self.initialized:
             return
+        dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+        self.tokens = torch.empty((self.batch, self.hidden), device=self.device, dtype=dtype)
+        self.kv = torch.empty_like(self.tokens)
+        self.mask = torch.ones(self.batch, dtype=torch.bool, device=self.device)
         if torch.cuda.is_available():
             self.stream = torch.cuda.Stream(device=self.device)
             with torch.cuda.stream(self.stream):
-                self.logits = torch.empty((self.batch, self.hidden), device=self.device, dtype=torch.float16)
+                self.logits = torch.empty((self.batch, self.hidden), device=self.device, dtype=dtype)
                 self.tmp = torch.empty_like(self.logits)
             self.stream.synchronize()
         else:
-            self.logits = torch.empty((self.batch, self.hidden), device=self.device, dtype=torch.float32)
+            self.logits = torch.empty((self.batch, self.hidden), device=self.device, dtype=dtype)
             self.tmp = torch.empty_like(self.logits)
         self.initialized = True
 
     @property
     def bytes(self) -> int:
-        if self.logits is None or self.tmp is None:
+        if self.logits is None or self.tmp is None or self.tokens is None or self.kv is None or self.mask is None:
             return 0
-        return (self.logits.numel() + self.tmp.numel()) * self.logits.element_size()
+        return (
+            (self.logits.numel() + self.tmp.numel()) * self.logits.element_size()
+            + self.tokens.numel() * self.tokens.element_size()
+            + self.kv.numel() * self.kv.element_size()
+            + self.mask.numel() * self.mask.element_size()
+        )
 
 
 @dataclass
@@ -120,7 +139,7 @@ class OptimizedDecodeDriver:
     Decode loop that keeps shapes stable, preallocates per-bucket workspaces, and lazily compacts KV.
     """
 
-    def __init__(self, trace: Iterable[int] | None = None, hidden: int = 128) -> None:
+    def __init__(self, trace: Iterable[int] | None = None, hidden: int = 256) -> None:
         self.trace = list(trace) if trace is not None else default_trace()
         self.hidden = hidden
         self.decode_kernel = build_decode_kernel(hidden=self.hidden, max_batch=max(BUCKETS))
@@ -142,16 +161,12 @@ class OptimizedDecodeDriver:
             was_initialized = ws.initialized
             ws.ensure()
 
-            tokens = torch.randn(batch_size, self.hidden, device=DEVICE, dtype=dtype)
-            kv = torch.randn(batch_size, self.hidden, device=DEVICE, dtype=dtype)
-
-            tokens_padded, mask = pad_to_bucket(tokens, bucket)
-            kv_padded, _ = pad_to_bucket(kv, bucket)
-
-            if ws.stream is not None:
-                torch.cuda.current_stream().wait_stream(ws.stream)
-
-            logits = self.decode_kernel(tokens_padded, kv_padded, mask)
+            if ws.tokens is None or ws.kv is None or ws.mask is None:
+                raise RuntimeError("workspace not initialized")
+            # Populate preallocated padded buffers in-place to keep shapes stable.
+            ws.tokens.normal_(mean=0.0, std=1.0)
+            ws.kv.normal_(mean=0.0, std=1.0)
+            logits = self.decode_kernel(ws.tokens, ws.kv, ws.mask)
 
             shape_key = (logits.shape[0], logits.shape[1])
             if shape_key not in self.captured_shapes:
@@ -192,6 +207,62 @@ def main() -> None:
 
     if args.prom_port is not None:
         export_prom_metrics("optimized", metrics, backend=backend, port=args.prom_port, duration_s=args.prom_duration)
+
+
+class OptimizedVLLMDecodeGraphsBenchmark(BaseBenchmark):
+    """
+    Harness entry point for the bucketed decode loop. Uses the same ragged
+    trace as the baseline so speedups reflect graph reuse and allocator reuse,
+    not synthetic workload changes.
+    """
+
+    def __init__(self, steps: int = 32, hidden: int = 192, seed: int = 0) -> None:
+        if is_smoke_mode():
+            raise RuntimeError("SKIPPED: vllm_decode_graphs is disabled in smoke-test sweeps")
+        super().__init__()
+        self.steps = steps
+        self.hidden = hidden
+        self.seed = seed
+        self._trace: list[int] = default_trace(num_steps=self.steps, seed=self.seed)
+        self._driver: Optional[OptimizedDecodeDriver] = None
+        self._last_metrics: Optional[DecodeMetrics] = None
+
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(
+            iterations=8,
+            warmup=2,
+            percentiles=[50, 75, 90, 99],
+        )
+
+    def setup(self) -> None:
+        torch.manual_seed(self.seed)
+        self._driver = OptimizedDecodeDriver(trace=self._trace, hidden=self.hidden)
+
+    def benchmark_fn(self) -> None:
+        if self._driver is None:
+            raise RuntimeError("SKIPPED: optimized decode driver not initialized")
+        torch.cuda.synchronize()
+        self._last_metrics = self._driver.run()
+        torch.cuda.synchronize()
+
+    def teardown(self) -> None:
+        super().teardown()
+        self._driver = None
+
+    def get_custom_metrics(self) -> Optional[Dict[str, float]]:
+        if self._last_metrics is None:
+            return None
+        return {
+            "vllm_decode_graphs.steps": float(self._last_metrics.steps),
+            "vllm_decode_graphs.tokens": float(self._last_metrics.tokens),
+            "vllm_decode_graphs.graph_recaptures": float(self._last_metrics.graph_recaptures),
+            "vllm_decode_graphs.allocator_mb": float(self._last_metrics.allocator_bytes) / (1024 * 1024),
+            "vllm_decode_graphs.compactions": float(self._last_metrics.compactions),
+        }
+
+
+def get_benchmark() -> BaseBenchmark:
+    return OptimizedVLLMDecodeGraphsBenchmark()
 
 
 if __name__ == "__main__":

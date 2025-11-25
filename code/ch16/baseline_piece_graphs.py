@@ -62,9 +62,10 @@ class BaselinePieceGraphsBenchmark(BaseBenchmark):
         self.graph: Optional[torch.cuda.CUDAGraph] = None
         self.static_input: Optional[torch.Tensor] = None
         self.static_output: Optional[torch.Tensor] = None
-        self.repeats = 8
-        self.batch = 8
-        self.hidden = 512
+        # Heavier per-iteration work to better expose graph replay speedups.
+        self.repeats = 12
+        self.batch = 16
+        self.hidden = 768
         tokens = self.batch * self.hidden * self.repeats
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.repeats),
@@ -125,6 +126,14 @@ class BaselinePieceGraphsBenchmark(BaseBenchmark):
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "piece_graphs.batch_size": float(getattr(self, 'batch_size', 0)),
+            "piece_graphs.seq_len": float(getattr(self, 'seq_len', 0)),
+            "piece_graphs.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.model is None or self.inputs is None:

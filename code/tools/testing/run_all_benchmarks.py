@@ -172,8 +172,8 @@ def extract_from_pytorch_trace(trace_path: Path) -> Dict[str, float]:
             if cuda_kernels > 0:
                 metrics["pytorch_cuda_kernels"] = float(cuda_kernels)
                 
-    except Exception:
-        pass
+    except (json.JSONDecodeError, OSError, KeyError, TypeError):
+        pass  # Profile file corrupt or unexpected format
     
     return metrics
 
@@ -517,12 +517,9 @@ def reset_cuda_state():
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
-            try:
-                torch.cuda.reset_peak_memory_stats()
-            except:
-                pass
-    except Exception:
-        pass
+            torch.cuda.reset_peak_memory_stats()
+    except RuntimeError:
+        pass  # CUDA not initialized
 
 
 def is_distributed_benchmark(file_path: Path) -> bool:
@@ -1131,21 +1128,15 @@ benchmark.teardown()
         )
         
         # Clean up wrapper script
-        try:
-            Path(wrapper_script.name).unlink()
-        except Exception:
-            pass
+        Path(wrapper_script.name).unlink(missing_ok=True)
         
         if result.returncode == 0 and nsys_output.exists():
             return nsys_output
         else:
             return None
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         # Clean up wrapper script on error
-        try:
-            Path(wrapper_script.name).unlink()
-        except Exception:
-            pass
+        Path(wrapper_script.name).unlink(missing_ok=True)
         return None
 
 
@@ -1293,10 +1284,7 @@ benchmark.teardown()
         )
         
         # Clean up wrapper script
-        try:
-            Path(wrapper_script.name).unlink()
-        except Exception:
-            pass
+        Path(wrapper_script.name).unlink(missing_ok=True)
         
         # Check if file exists (ncu may create file even with non-zero exit code)
         if ncu_output.exists():
@@ -1309,12 +1297,9 @@ benchmark.teardown()
         for ncu_file in output_dir.glob(f"{benchmark_name}_{variant}*.ncu-rep"):
             return ncu_file
         return None
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         # Clean up wrapper script on error
-        try:
-            Path(wrapper_script.name).unlink()
-        except Exception:
-            pass
+        Path(wrapper_script.name).unlink(missing_ok=True)
         return None
 
 
@@ -1516,6 +1501,14 @@ def _test_chapter_impl(
     rdzv_endpoint: Optional[str] = None,
     env_passthrough: Optional[List[str]] = None,
     target_extra_args: Optional[Dict[str, List[str]]] = None,
+    # LLM analysis and patching options
+    llm_analysis: bool = False,
+    llm_provider: Optional[str] = None,
+    apply_llm_patches: bool = False,
+    rebenchmark_llm_patches: bool = False,
+    patch_strategy: str = "ast",
+    use_llm_cache: bool = True,
+    llm_explain: bool = False,
 ) -> Dict[str, Any]:
     """Test all benchmarks in a chapter and return results.
     
@@ -2908,6 +2901,181 @@ def _test_chapter_impl(
     logger.info(f"  Recorded benchmark entries: {len(benchmark_results)}")
     expectations_store.save()
 
+    # LLM Analysis and Patching
+    llm_patch_metrics = {
+        'total_analyzed': 0,
+        'patches_extracted': 0,
+        'patches_applied': 0,
+        'patches_failed': 0,
+        'patches_rebenchmarked': 0,
+        'patches_refined': 0,  # Successfully refined after initial failure
+        'best_patches_selected': 0,  # Number of "best" patches identified
+        'total_speedup_improvement': 0.0,  # Sum of speedups from best patches
+        'failures': [],  # List of {example, reason}
+    }
+    
+    if llm_analysis:
+        logger.info("  Running LLM-powered analysis...")
+        for bench_result in benchmark_results:
+            # Run LLM analysis for benchmarks that need optimization (<1.1x speedup)
+            best_speedup = bench_result.get('best_speedup', 1.0)
+            if bench_result.get('status') in ('succeeded', 'failed_regression') and best_speedup < 1.1:
+                llm_result = _run_llm_analysis_for_benchmark(
+                    bench_result,
+                    profiling_output_dir,
+                    chapter_dir,
+                    llm_provider=llm_provider,
+                    use_cache=use_llm_cache,
+                )
+                if llm_result:
+                    bench_result['llm_analysis'] = llm_result
+                    llm_patch_metrics['total_analyzed'] += 1
+                    logger.info(f"    ✓ {bench_result['example']}: LLM analysis ({llm_result.get('latency_seconds', 0):.1f}s)")
+                    
+                    # Apply patches if enabled
+                    if apply_llm_patches and llm_result.get('md_path'):
+                        patch_results = _apply_llm_patches_for_benchmark(
+                            bench_result,
+                            llm_result,
+                            chapter_dir,
+                            profiling_output_dir,
+                            patch_strategy=patch_strategy,
+                        )
+                        if patch_results:
+                            bench_result['llm_patches'] = patch_results
+                            successful_patches = [p for p in patch_results if p.get('success')]
+                            failed_patches = [p for p in patch_results if not p.get('success')]
+                            
+                            llm_patch_metrics['patches_extracted'] += len(patch_results)
+                            llm_patch_metrics['patches_applied'] += len(successful_patches)
+                            llm_patch_metrics['patches_failed'] += len(failed_patches)
+                            
+                            # Log failures with reasons
+                            for fp in failed_patches:
+                                llm_patch_metrics['failures'].append({
+                                    'example': bench_result['example'],
+                                    'reason': fp.get('error', fp.get('failure_reason', 'Unknown')),
+                                })
+                            
+                            logger.info(f"    📝 {bench_result['example']}: Applied {len(successful_patches)}/{len(patch_results)} patches")
+                            
+                            # Re-benchmark if enabled
+                            if rebenchmark_llm_patches and successful_patches:
+                                benchmarkable = [p for p in successful_patches if p.get('can_benchmark', True)]
+                                baseline_time = bench_result.get('baseline_time_ms', 0)
+                                
+                                # Load original optimized code for potential refinement
+                                original_optimized_code = None
+                                optimized_file = chapter_dir / bench_result.get('optimized_file', '')
+                                if optimized_file.exists():
+                                    original_optimized_code = optimized_file.read_text()
+                                
+                                for patch in benchmarkable:
+                                    rebench_result = _rebenchmark_patched_variant(
+                                        patch['patched_file'],
+                                        iterations=iterations or 3,
+                                        warmup=warmup or 1,
+                                    )
+                                    patch['rebenchmark_result'] = rebench_result
+                                    
+                                    if rebench_result.get('success'):
+                                        llm_patch_metrics['patches_rebenchmarked'] += 1
+                                        # Calculate actual speedup
+                                        patch_time = rebench_result.get('median_ms')
+                                        if patch_time and baseline_time > 0:
+                                            patch['actual_speedup'] = baseline_time / patch_time
+                                            logger.info(f"      ✓ {patch.get('variant_name', 'patch')}: {patch_time:.3f}ms ({patch['actual_speedup']:.2f}x vs baseline)")
+                                    else:
+                                        # Rebenchmark failed - try iterative refinement
+                                        error_info = rebench_result
+                                        logger.warning(f"      ✗ {patch.get('variant_name', 'patch')} failed: {error_info.get('error_type')}")
+                                        
+                                        # Try refinement (up to 2 attempts)
+                                        if original_optimized_code:
+                                            patched_code = Path(patch['patched_file']).read_text() if Path(patch['patched_file']).exists() else None
+                                            if patched_code:
+                                                for attempt in range(2):
+                                                    logger.info(f"      🔄 Refinement attempt {attempt + 1}/2...")
+                                                    refined_code = _refine_patch_with_llm(
+                                                        original_optimized_code,
+                                                        patched_code,
+                                                        error_info,
+                                                        bench_result,
+                                                        chapter_dir,
+                                                        llm_provider=llm_provider,
+                                                    )
+                                                    if refined_code:
+                                                        # Save refined code
+                                                        refined_path = Path(patch['patched_file']).with_suffix('.refined.py')
+                                                        refined_path.write_text(refined_code)
+                                                        
+                                                        # Try rebenchmark again
+                                                        refined_result = _rebenchmark_patched_variant(
+                                                            str(refined_path),
+                                                            iterations=iterations or 3,
+                                                            warmup=warmup or 1,
+                                                        )
+                                                        
+                                                        if refined_result.get('success'):
+                                                            patch['rebenchmark_result'] = refined_result
+                                                            patch['refined'] = True
+                                                            patch['refinement_attempts'] = attempt + 1
+                                                            patch['patched_file'] = str(refined_path)
+                                                            llm_patch_metrics['patches_rebenchmarked'] += 1
+                                                            
+                                                            patch_time = refined_result.get('median_ms')
+                                                            if patch_time and baseline_time > 0:
+                                                                patch['actual_speedup'] = baseline_time / patch_time
+                                                                logger.info(f"      ✓ Refined {patch.get('variant_name', 'patch')}: {patch_time:.3f}ms ({patch['actual_speedup']:.2f}x)")
+                                                            break
+                                                        else:
+                                                            # Update error info for next attempt
+                                                            error_info = refined_result
+                                                            patched_code = refined_code
+                                
+                                # Track refined patches
+                                refined_count = sum(1 for p in benchmarkable if p.get('refined'))
+                                if refined_count > 0:
+                                    llm_patch_metrics['patches_refined'] += refined_count
+                                
+                                # Auto-select best patch
+                                best_patch = _select_best_patch(benchmarkable, baseline_time)
+                                if best_patch:
+                                    bench_result['best_llm_patch'] = {
+                                        'variant_name': best_patch.get('variant_name'),
+                                        'patched_file': best_patch.get('patched_file'),
+                                        'actual_speedup': best_patch.get('actual_speedup'),
+                                        'median_ms': best_patch.get('rebenchmark_result', {}).get('median_ms'),
+                                        'refined': best_patch.get('refined', False),
+                                    }
+                                    llm_patch_metrics['best_patches_selected'] += 1
+                                    if best_patch.get('actual_speedup'):
+                                        llm_patch_metrics['total_speedup_improvement'] += best_patch['actual_speedup']
+                                    
+                                    # Generate educational explanation if enabled
+                                    if llm_explain and original_optimized_code:
+                                        patched_file_path = Path(best_patch.get('patched_file', ''))
+                                        if patched_file_path.exists():
+                                            patched_code = patched_file_path.read_text()
+                                            logger.info(f"    📚 Generating educational explanation...")
+                                            explanation = _explain_best_patch_with_llm(
+                                                best_patch,
+                                                bench_result,
+                                                original_optimized_code,
+                                                patched_code,
+                                                chapter_dir,
+                                                llm_provider=llm_provider,
+                                            )
+                                            if explanation:
+                                                bench_result['best_llm_patch']['explanation'] = explanation
+                                                logger.info(f"    📚 Explanation: {explanation.get('technique_name', 'Unknown')}")
+                                                
+                                                # Save explanation to file
+                                                explain_dir = chapter_dir / "llm_explanations"
+                                                explain_dir.mkdir(exist_ok=True)
+                                                explain_file = explain_dir / f"explanation_{bench_result['example']}.md"
+                                                _save_explanation_markdown(explanation, bench_result, explain_file)
+
     # Calculate summary statistics
     avg_speedup = sum(speedups) / len(speedups) if speedups else 1.0
     max_speedup = max(speedups) if speedups else 1.0
@@ -2929,7 +3097,7 @@ def _test_chapter_impl(
         logger.info("No successful optimizations exceeded baseline performance")
     logger.info("-" * 80)
     
-    return {
+    result = {
         'chapter': chapter_name,
         'status': 'completed',
         'benchmarks': benchmark_results,
@@ -2949,6 +3117,567 @@ def _test_chapter_impl(
             'informational': informational_skipped,
         }
     }
+    
+    # Add LLM patch metrics if analysis was run
+    if llm_analysis:
+        result['llm_patch_metrics'] = llm_patch_metrics
+        if llm_patch_metrics['total_analyzed'] > 0:
+            logger.info(f"  LLM Analysis: {llm_patch_metrics['total_analyzed']} examples analyzed")
+            logger.info(f"  Patches: {llm_patch_metrics['patches_applied']}/{llm_patch_metrics['patches_extracted']} applied, {llm_patch_metrics['patches_failed']} failed")
+            if llm_patch_metrics['patches_rebenchmarked'] > 0:
+                logger.info(f"  Rebenchmarked: {llm_patch_metrics['patches_rebenchmarked']} patches")
+            if llm_patch_metrics['patches_refined'] > 0:
+                logger.info(f"  Refined (after failure): {llm_patch_metrics['patches_refined']} patches")
+            if llm_patch_metrics['best_patches_selected'] > 0:
+                avg_improvement = llm_patch_metrics['total_speedup_improvement'] / llm_patch_metrics['best_patches_selected']
+                logger.info(f"  🏆 Best patches selected: {llm_patch_metrics['best_patches_selected']} (avg {avg_improvement:.2f}x speedup)")
+            if llm_patch_metrics['failures']:
+                logger.info(f"  Failures:")
+                for f in llm_patch_metrics['failures'][:5]:  # Show first 5
+                    logger.info(f"    - {f['example']}: {f['reason'][:80]}")
+    
+    return result
+
+
+def _compute_cache_key(baseline_code: Optional[str], optimized_code: Optional[str], speedup: float) -> str:
+    """Compute a cache key based on source code content and speedup."""
+    import hashlib
+    content = f"{baseline_code or ''}{optimized_code or ''}{speedup:.4f}"
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+def _run_llm_analysis_for_benchmark(
+    benchmark_result: Dict[str, Any],
+    profiling_output_dir: Optional[Path],
+    chapter_dir: Path,
+    llm_provider: Optional[str] = None,
+    use_cache: bool = True,
+) -> Optional[Dict[str, Any]]:
+    """Run LLM analysis on a benchmark that needs optimization.
+    
+    Args:
+        use_cache: If True, check for cached analysis before running LLM.
+    """
+    from tools.analysis.llm_profile_analyzer import LLMProfileAnalyzer, collect_environment_context
+    
+    example_name = benchmark_result.get('example', '')
+    
+    # Build diff report from benchmark data
+    baseline_time = benchmark_result.get('baseline_time_ms', 0)
+    best_opt = None
+    best_speedup = 0.0
+    for opt in benchmark_result.get('optimizations', []):
+        if opt.get('speedup', 0) > best_speedup:
+            best_speedup = opt.get('speedup', 0)
+            best_opt = opt
+    
+    optimized_time = best_opt.get('time_ms', baseline_time) if best_opt else baseline_time
+    
+    # Load source code
+    baseline_code = None
+    optimized_code = None
+    
+    for ext in ['.py', '.cu']:
+        baseline_file = chapter_dir / f"baseline_{example_name}{ext}"
+        if baseline_file.exists():
+            baseline_code = baseline_file.read_text()
+            break
+    
+    if best_opt and best_opt.get('file'):
+        opt_file = chapter_dir / best_opt['file']
+        if opt_file.exists():
+            optimized_code = opt_file.read_text()
+    
+    # Setup output directory
+    output_dir = chapter_dir / "llm_analysis"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    llm_md_path = output_dir / f"llm_analysis_{example_name}.md"
+    cache_key_path = output_dir / f".cache_key_{example_name}"
+    
+    # Check cache
+    cache_key = _compute_cache_key(baseline_code, optimized_code, best_speedup)
+    if use_cache and llm_md_path.exists() and cache_key_path.exists():
+        cached_key = cache_key_path.read_text().strip()
+        if cached_key == cache_key:
+            logger.info(f"    📦 Using cached LLM analysis for {example_name}")
+            return {
+                'md_path': str(llm_md_path),
+                'provider': 'cached',
+                'model': 'cached',
+                'latency_seconds': 0.0,
+                'cached': True,
+            }
+    
+    diff_report = {
+        "overall_speedup": best_speedup if best_speedup > 0 else 1.0,
+        "baseline_total_time_ms": baseline_time,
+        "optimized_total_time_ms": optimized_time,
+        "example_name": example_name,
+        "status": benchmark_result.get('status', 'unknown'),
+    }
+    
+    # Run analysis
+    analyzer = LLMProfileAnalyzer(provider=llm_provider)
+    env_ctx = collect_environment_context()
+    
+    result = analyzer.analyze_differential(
+        diff_report,
+        baseline_code=baseline_code,
+        optimized_code=optimized_code,
+        environment=env_ctx,
+    )
+    
+    # Save output and cache key
+    llm_md_path.write_text(result.to_markdown())
+    cache_key_path.write_text(cache_key)
+    
+    return {
+        'md_path': str(llm_md_path),
+        'provider': result.provider,
+        'model': result.model,
+        'latency_seconds': result.latency_seconds,
+    }
+
+
+def _apply_llm_patches_for_benchmark(
+    benchmark_result: Dict[str, Any],
+    llm_result: Dict[str, Any],
+    chapter_dir: Path,
+    profiling_output_dir: Optional[Path],
+    patch_strategy: str = "ast",
+) -> List[Dict[str, Any]]:
+    """Apply LLM-suggested patches to create new optimized variants."""
+    from tools.analysis.llm_patch_applier import LLMPatchApplier
+    
+    md_path = llm_result.get('md_path')
+    if not md_path or not Path(md_path).exists():
+        return []
+    
+    llm_response = Path(md_path).read_text()
+    
+    applier = LLMPatchApplier(strategy=patch_strategy, dry_run=False, validate_syntax=True)
+    patches = applier.extract_patches(llm_response)
+    
+    if not patches:
+        return []
+    
+    # Find source file
+    example_name = benchmark_result.get('example', '')
+    optimizations = benchmark_result.get('optimizations', [])
+    
+    best_opt = None
+    best_speedup = 0.0
+    for opt in optimizations:
+        if opt.get('status') == 'succeeded' and opt.get('speedup', 0) > best_speedup:
+            best_speedup = opt.get('speedup', 0)
+            best_opt = opt
+    
+    source_file = chapter_dir / f"optimized_{example_name}.py"
+    if not source_file.exists():
+        source_file = chapter_dir / f"baseline_{example_name}.py"
+    if best_opt and best_opt.get('file'):
+        source_file = chapter_dir / best_opt['file']
+    
+    if not source_file.exists():
+        return []
+    
+    output_dir = chapter_dir / "llm_patches"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    results = applier.apply_patches(patches, source_file, output_dir)
+    
+    # Serialize results
+    serializable = []
+    for r in results:
+        if r.success:
+            variant_name = getattr(r.patch, 'variant_name', '') if r.patch else ''
+            serializable.append({
+                'success': True,
+                'patched_file': str(r.patched_file) if r.patched_file else None,
+                'variant_name': variant_name,
+                'description': getattr(r.patch, 'description', '') if r.patch else '',
+                'expected_speedup': getattr(r.patch, 'expected_speedup', '') if r.patch else '',
+                'validation_errors': r.validation_errors,
+                'can_benchmark': not bool(r.validation_errors),
+            })
+        else:
+            serializable.append({
+                'success': False,
+                'error': r.error,
+                'failure_reason': r.error,
+                'can_benchmark': False,
+            })
+            logger.warning(f"      ✗ Patch failed: {r.error}")
+    
+    return serializable
+
+
+def _rebenchmark_patched_variant(
+    patched_file: str,
+    iterations: int = 3,
+    warmup: int = 1,
+) -> Dict[str, Any]:
+    """Re-benchmark a patched variant file.
+    
+    Returns:
+        Dict with keys:
+            - success: bool
+            - time_ms, median_ms, min_ms, iterations (if success)
+            - error: str (if failure)
+            - error_type: str (if failure, e.g., 'import_error', 'runtime_error', 'cuda_error')
+    """
+    import importlib.util
+    import traceback
+    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkConfig
+    
+    path = Path(patched_file)
+    if not path.exists():
+        return {'success': False, 'error': f"File not found: {patched_file}", 'error_type': 'file_not_found'}
+    
+    # Try to load the module
+    try:
+        spec = importlib.util.spec_from_file_location("patched_module", path)
+        if not spec or not spec.loader:
+            return {'success': False, 'error': f"Could not load module spec: {patched_file}", 'error_type': 'import_error'}
+        
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except SyntaxError as e:
+        return {'success': False, 'error': f"Syntax error: {e}", 'error_type': 'syntax_error', 'patched_file': patched_file}
+    except Exception as e:
+        return {'success': False, 'error': f"Import error: {e}", 'error_type': 'import_error', 'patched_file': patched_file}
+    
+    # Find benchmark class (exclude BaseBenchmark itself)
+    from common.python.benchmark_harness import BaseBenchmark
+    benchmark_class = None
+    for name in dir(module):
+        obj = getattr(module, name)
+        if isinstance(obj, type) and issubclass(obj, BaseBenchmark) and obj is not BaseBenchmark:
+            benchmark_class = obj
+            break
+    
+    if not benchmark_class:
+        return {'success': False, 'error': f"No benchmark class found in: {patched_file}", 'error_type': 'class_not_found', 'patched_file': patched_file}
+    
+    # Try to run the benchmark
+    try:
+        config = BenchmarkConfig(
+            iterations=iterations,
+            warmup=warmup,
+            use_subprocess=False,
+        )
+        
+        benchmark = benchmark_class()
+        harness = BenchmarkHarness(config=config)
+        
+        result = harness.benchmark(benchmark)
+        
+        # Extract timing from result
+        timing = getattr(result, 'timing', None)
+        
+        return {
+            'success': True,
+            'time_ms': timing.median_ms if timing else None,
+            'median_ms': timing.median_ms if timing else None,
+            'min_ms': timing.min_ms if timing else None,
+            'iterations': timing.iterations if timing else iterations,
+            'patched_file': patched_file,
+        }
+    except Exception as e:
+        error_str = str(e)
+        error_type = 'runtime_error'
+        if 'CUDA' in error_str or 'cuda' in error_str:
+            error_type = 'cuda_error'
+        elif 'AttributeError' in str(type(e).__name__):
+            error_type = 'attribute_error'
+        
+        return {
+            'success': False,
+            'error': f"{type(e).__name__}: {error_str}",
+            'error_type': error_type,
+            'traceback': traceback.format_exc()[-1000:],  # Last 1000 chars of traceback
+            'patched_file': patched_file,
+        }
+
+
+def _refine_patch_with_llm(
+    original_code: str,
+    patched_code: str,
+    error_info: Dict[str, Any],
+    benchmark_result: Dict[str, Any],
+    chapter_dir: Path,
+    llm_provider: Optional[str] = None,
+) -> Optional[str]:
+    """Send a failed patch back to the LLM for refinement.
+    
+    Returns:
+        New patched code if LLM provides a fix, None otherwise.
+    """
+    from tools.analysis.llm_profile_analyzer import LLMProfileAnalyzer, collect_environment_context
+    
+    analyzer = LLMProfileAnalyzer(provider=llm_provider)
+    environment = collect_environment_context()
+    
+    error_type = error_info.get('error_type', 'unknown')
+    error_msg = error_info.get('error', 'Unknown error')
+    traceback_str = error_info.get('traceback', '')
+    
+    # Build refinement prompt
+    prompt = f"""## Patch Refinement Request
+
+Your previous code patch failed during execution. Please analyze the error and provide a corrected version.
+
+### Error Information
+- **Error Type**: {error_type}
+- **Error Message**: {error_msg}
+- **Traceback** (last 1000 chars):
+```
+{traceback_str}
+```
+
+### Original Code (before your patch)
+```python
+{original_code[:8000]}
+```
+
+### Your Previous Patch (that failed)
+```python
+{patched_code[:8000]}
+```
+
+### Environment
+- GPU: {environment.gpu_name} ({environment.gpu_arch})
+- CUDA: {environment.cuda_version}
+- PyTorch: {environment.pytorch_version}
+
+### Instructions
+Please provide a CORRECTED version of the patch that fixes the error. Common issues:
+- **CUDA Graph errors**: Ensure all operations are captured correctly, avoid stream capture violations
+- **AttributeError**: Make sure all instance attributes are defined in __init__
+- **RuntimeError**: Check tensor shapes and device placement
+
+Respond with the COMPLETE corrected code in a ```python code block.
+"""
+    
+    try:
+        response_tuple = analyzer._call_llm(prompt)
+        if not response_tuple:
+            return None
+        
+        # _call_llm returns (text, tokens)
+        response = response_tuple[0] if isinstance(response_tuple, tuple) else response_tuple
+        
+        # Extract the code block
+        import re
+        code_match = re.search(r'```python\n(.*?)```', response, re.DOTALL)
+        if code_match:
+            return code_match.group(1)
+        
+        return None
+    except Exception as e:
+        logger.warning(f"LLM refinement failed: {e}")
+        return None
+
+
+def _select_best_patch(
+    patches: List[Dict[str, Any]],
+    baseline_time_ms: float,
+) -> Optional[Dict[str, Any]]:
+    """Select the best patch based on rebenchmark results.
+    
+    Returns the patch with the best speedup, or None if no patches succeeded.
+    """
+    successful = [p for p in patches if p.get('rebenchmark_result', {}).get('success')]
+    
+    if not successful:
+        return None
+    
+    # Calculate speedup for each patch
+    for p in successful:
+        rebench = p['rebenchmark_result']
+        patch_time = rebench.get('median_ms')
+        if patch_time and baseline_time_ms > 0:
+            p['actual_speedup'] = baseline_time_ms / patch_time
+        else:
+            p['actual_speedup'] = 0
+    
+    # Sort by speedup descending
+    successful.sort(key=lambda x: x.get('actual_speedup', 0), reverse=True)
+    
+    best = successful[0]
+    logger.info(f"    🏆 Best patch: {best.get('variant_name', 'unknown')} with {best.get('actual_speedup', 0):.2f}x speedup")
+    
+    return best
+
+
+def _save_explanation_markdown(
+    explanation: Dict[str, Any],
+    benchmark_result: Dict[str, Any],
+    output_path: Path,
+) -> None:
+    """Save the educational explanation as a markdown file."""
+    example_name = benchmark_result.get('example', 'unknown')
+    speedup = benchmark_result.get('best_llm_patch', {}).get('actual_speedup', 1.0)
+    variant_name = benchmark_result.get('best_llm_patch', {}).get('variant_name', 'unknown')
+    
+    with open(output_path, 'w') as f:
+        f.write(f"# 📚 Optimization Explanation: {example_name}\n\n")
+        f.write(f"**Technique:** {explanation.get('technique_name', 'Unknown')}\n")
+        f.write(f"**Variant:** {variant_name}\n")
+        f.write(f"**Speedup Achieved:** {speedup:.2f}x\n\n")
+        
+        f.write("## What Changed?\n\n")
+        f.write(f"{explanation.get('explanation', 'No explanation available.')}\n\n")
+        
+        f.write("## Why It Works\n\n")
+        f.write(f"{explanation.get('why_it_works', 'No explanation available.')}\n\n")
+        
+        if explanation.get('key_concepts'):
+            f.write("## Key Concepts to Understand\n\n")
+            for concept in explanation.get('key_concepts', []):
+                f.write(f"- {concept}\n")
+            f.write("\n")
+        
+        if explanation.get('performance_impact'):
+            f.write("## Performance Impact\n\n")
+            perf = explanation['performance_impact']
+            if perf.get('memory_bandwidth'):
+                f.write(f"- **Memory Bandwidth:** {perf['memory_bandwidth']}\n")
+            if perf.get('compute_utilization'):
+                f.write(f"- **Compute Utilization:** {perf['compute_utilization']}\n")
+            if perf.get('latency'):
+                f.write(f"- **Latency:** {perf['latency']}\n")
+            f.write("\n")
+        
+        if explanation.get('when_to_use'):
+            f.write("## When to Use This Technique\n\n")
+            f.write(f"{explanation['when_to_use']}\n\n")
+        
+        if explanation.get('when_not_to_use'):
+            f.write("## When NOT to Use This Technique\n\n")
+            f.write(f"{explanation['when_not_to_use']}\n\n")
+        
+        if explanation.get('further_reading'):
+            f.write("## Further Reading\n\n")
+            for topic in explanation.get('further_reading', []):
+                f.write(f"- {topic}\n")
+            f.write("\n")
+        
+        f.write("---\n")
+        f.write("*Generated by LLM-powered benchmark analysis*\n")
+    
+    logger.info(f"      📄 Saved explanation to: {output_path}")
+
+
+def _explain_best_patch_with_llm(
+    best_patch: Dict[str, Any],
+    benchmark_result: Dict[str, Any],
+    original_code: str,
+    patched_code: str,
+    chapter_dir: Path,
+    llm_provider: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Generate educational explanation for why the best patch works.
+    
+    Returns a dictionary with:
+        - explanation: Plain-language explanation of the optimization
+        - technique_name: Name of the optimization technique
+        - technique_description: Educational description of the technique
+        - why_it_works: Specific explanation for this use case
+        - key_concepts: List of key concepts to understand
+        - further_reading: Suggested topics for learning more
+    """
+    from tools.analysis.llm_profile_analyzer import LLMProfileAnalyzer, collect_environment_context
+    
+    analyzer = LLMProfileAnalyzer(provider=llm_provider)
+    environment = collect_environment_context()
+    
+    variant_name = best_patch.get('variant_name', 'unknown')
+    actual_speedup = best_patch.get('actual_speedup', 1.0)
+    baseline_time = benchmark_result.get('baseline_time_ms', 0)
+    patch_time = best_patch.get('rebenchmark_result', {}).get('median_ms', 0)
+    example_name = benchmark_result.get('example', 'unknown')
+    
+    prompt = f"""## Educational Explanation Request
+
+You selected a code optimization that achieved a {actual_speedup:.2f}x speedup. Please explain this optimization in an educational way.
+
+### Context
+- **Benchmark**: {example_name}
+- **Variant Name**: {variant_name}
+- **Baseline Time**: {baseline_time:.3f}ms
+- **Optimized Time**: {patch_time:.3f}ms
+- **Speedup**: {actual_speedup:.2f}x
+- **GPU**: {environment.gpu_name} ({environment.gpu_arch})
+- **CUDA**: {environment.cuda_version}
+
+### Original Code (before optimization)
+```python
+{original_code[:6000]}
+```
+
+### Optimized Code (your best patch)
+```python
+{patched_code[:6000]}
+```
+
+### Instructions
+
+Provide an educational explanation in JSON format:
+
+```json
+{{
+  "technique_name": "Name of the optimization technique (e.g., 'Memory Coalescing', 'Kernel Fusion', 'Stream Parallelism')",
+  "explanation": "A 2-3 sentence plain-language explanation of what changed and why it's faster",
+  "why_it_works": "Technical explanation of why this optimization works on this specific GPU architecture ({environment.gpu_arch})",
+  "key_concepts": [
+    "Concept 1: Brief explanation",
+    "Concept 2: Brief explanation",
+    "Concept 3: Brief explanation"
+  ],
+  "performance_impact": {{
+    "memory_bandwidth": "How does this affect memory bandwidth utilization?",
+    "compute_utilization": "How does this affect GPU compute utilization?",
+    "latency": "How does this affect latency?"
+  }},
+  "when_to_use": "When should developers apply this optimization technique?",
+  "when_not_to_use": "When might this optimization be counterproductive?",
+  "further_reading": [
+    "Topic 1 to learn more about",
+    "Topic 2 to learn more about"
+  ]
+}}
+```
+
+Focus on being educational - help the user understand not just WHAT changed, but WHY it's faster and HOW they can apply similar optimizations in their own code.
+"""
+    
+    try:
+        response_tuple = analyzer._call_llm(prompt)
+        if not response_tuple:
+            return None
+        
+        # _call_llm returns (text, tokens)
+        response = response_tuple[0] if isinstance(response_tuple, tuple) else response_tuple
+        
+        # Extract JSON from response
+        import re
+        import json
+        json_match = re.search(r'```json\n(.*?)```', response, re.DOTALL)
+        if json_match:
+            explanation_data = json.loads(json_match.group(1))
+            explanation_data['raw_response'] = response
+            return explanation_data
+        
+        # Fallback: return raw response
+        return {
+            'explanation': response,
+            'technique_name': variant_name,
+            'raw_response': response,
+        }
+    except Exception as e:
+        logger.warning(f"LLM explanation failed: {e}")
+        return None
 
 
 def test_chapter(
@@ -2970,6 +3699,14 @@ def test_chapter(
     rdzv_endpoint: Optional[str] = None,
     env_passthrough: Optional[List[str]] = None,
     target_extra_args: Optional[Dict[str, List[str]]] = None,
+    # LLM analysis and patching options
+    llm_analysis: bool = False,
+    llm_provider: Optional[str] = None,
+    apply_llm_patches: bool = False,
+    rebenchmark_llm_patches: bool = False,
+    patch_strategy: str = "ast",
+    use_llm_cache: bool = True,
+    llm_explain: bool = False,
 ) -> Dict[str, Any]:
     return _test_chapter_impl(
         chapter_dir,
@@ -2990,6 +3727,13 @@ def test_chapter(
         rdzv_endpoint=rdzv_endpoint,
         env_passthrough=env_passthrough,
         target_extra_args=target_extra_args,
+        llm_analysis=llm_analysis,
+        llm_provider=llm_provider,
+        apply_llm_patches=apply_llm_patches,
+        rebenchmark_llm_patches=rebenchmark_llm_patches,
+        patch_strategy=patch_strategy,
+        use_llm_cache=use_llm_cache,
+        llm_explain=llm_explain,
     )
 
 
@@ -3040,6 +3784,39 @@ def generate_markdown_report(results: List[Dict[str, Any]], output_path: Path) -
             f.write(f"- **Best speedup:** {max(all_speedups):.2f}x\n")
             f.write(f"- **Worst speedup:** {min(all_speedups):.2f}x\n")
         f.write("\n")
+        
+        # LLM Patch Metrics (if any)
+        total_llm_analyzed = sum(r.get('llm_patch_metrics', {}).get('total_analyzed', 0) for r in results)
+        if total_llm_analyzed > 0:
+            f.write("## LLM Analysis & Patching Summary\n\n")
+            total_patches_extracted = sum(r.get('llm_patch_metrics', {}).get('patches_extracted', 0) for r in results)
+            total_patches_applied = sum(r.get('llm_patch_metrics', {}).get('patches_applied', 0) for r in results)
+            total_patches_failed = sum(r.get('llm_patch_metrics', {}).get('patches_failed', 0) for r in results)
+            total_patches_rebenchmarked = sum(r.get('llm_patch_metrics', {}).get('patches_rebenchmarked', 0) for r in results)
+            
+            f.write(f"- **Benchmarks analyzed:** {total_llm_analyzed}\n")
+            f.write(f"- **Patches extracted:** {total_patches_extracted}\n")
+            f.write(f"- **Patches applied:** {total_patches_applied}\n")
+            f.write(f"- **Patches failed:** {total_patches_failed}\n")
+            if total_patches_rebenchmarked > 0:
+                f.write(f"- **Patches re-benchmarked:** {total_patches_rebenchmarked}\n")
+            
+            # Collect all failures
+            all_failures = []
+            for r in results:
+                all_failures.extend(r.get('llm_patch_metrics', {}).get('failures', []))
+            
+            if all_failures:
+                f.write(f"\n### Patch Failures ({len(all_failures)})\n\n")
+                f.write("| Example | Failure Reason |\n")
+                f.write("|---------|----------------|\n")
+                for failure in all_failures[:20]:  # Show first 20
+                    reason = failure.get('reason', 'Unknown')[:100]
+                    reason = reason.replace('|', '\\|').replace('\n', ' ')
+                    f.write(f"| {failure.get('example', 'unknown')} | {reason} |\n")
+                if len(all_failures) > 20:
+                    f.write(f"\n*...and {len(all_failures) - 20} more failures*\n")
+            f.write("\n")
         
         # Per-chapter summary table
         f.write("## Per-Chapter Summary\n\n")

@@ -94,12 +94,10 @@ def setup_distributed():
 
 def check_symmetric_memory_available() -> bool:
     """Check if symmetric memory is available."""
-    try:
-        # Try to access the API
-        hasattr(torch.distributed, 'nn') and hasattr(torch.distributed.nn, 'SymmetricMemory')
-        return True
-    except:
-        return False
+    return (
+        hasattr(torch.distributed, 'nn') 
+        and hasattr(torch.distributed.nn, 'SymmetricMemory')
+    )
 
 
 # ============================================================================

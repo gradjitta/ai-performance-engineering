@@ -1,13 +1,8 @@
 """
-Triton 3.5 TMA (Tensor Memory Accelerator) for Blackwell GPUs
+Triton 3.5 TMA (Tensor Memory Accelerator) for Blackwell GPUs (B200/B300)
 
 Demonstrates descriptor-backed TMA copies and GEMM kernels on Blackwell.
-Tested with SM100 (B200) on CUDA 13 / Triton 3.5. Pin Triton ≥3.5.1/post builds
-when targeting SM103 (B300) because 3.5.0 had known SM103 regressions.
-
-WARNING: Grace-Blackwell (SM12.1) note:
-    CUDA 13.0 PTXAS cannot emit tensor map ops for SM12.1 yet, so TMA kernels
-    fail on GB10. Regular Triton kernels continue to work on those devices.
+Tested with SM100 (B200) and SM103 (B300) on CUDA 13 / Triton 3.5.
 
 Highlights:
 - 32-byte aligned tensor descriptors mapping to TMA hardware
@@ -658,11 +653,8 @@ def main():
         return
 
     props = torch.cuda.get_device_properties(0)
-    if props.major == 12 and props.minor >= 1:
-        print("Grace-Blackwell (SM 12.x) does not support TMA instructions yet. Skipping demo.")
-        return
-    if props.major != 10 or props.minor != 0:
-        print(f"Unsupported architecture SM {props.major}.{props.minor} for Blackwell TMA demo. Skipping.")
+    if props.major != 10:
+        print(f"This demo targets Blackwell (SM 10.x). Found SM {props.major}.{props.minor}. Skipping.")
         return
 
     demonstrate_tma_features()

@@ -36,7 +36,8 @@ except Exception:
             if not torch.cuda.is_available():
                 return False
             major, minor = torch.cuda.get_device_capability()
-            return major >= 12
+            # Blackwell is sm_100 (major=10), Grace-Blackwell is sm_12x
+            return major >= 10
 
 
 import torch
@@ -49,8 +50,9 @@ from common.python.compile_utils import enable_tf32
 
 assert torch.cuda.is_available(), "CUDA required for FlexAttention scaling demo"
 _major, _minor = torch.cuda.get_device_capability()
-if _major < 12:
-    raise RuntimeError(f"SKIPPED: FlexAttention large-model demo requires Blackwell (sm_120); found sm_{_major}{_minor}")
+# Blackwell is sm_100 (major=10), not sm_120
+if _major < 10:
+    raise RuntimeError(f"SKIPPED: FlexAttention large-model demo requires Blackwell (sm_100+); found sm_{_major}{_minor}")
 
 enable_tf32()
 

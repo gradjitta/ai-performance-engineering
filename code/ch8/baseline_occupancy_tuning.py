@@ -1,6 +1,7 @@
 """Benchmark wrapper for the occupancy_tuning CUDA binary."""
 
 from __future__ import annotations
+from typing import Optional
 
 import os
 from pathlib import Path
@@ -98,6 +99,14 @@ class BaselineOccupancyTuningBenchmark(OccupancyBinaryBenchmark):
     def __init__(self) -> None:
         super().__init__(friendly_name="Occupancy Tuning (baseline)")
 
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific optimization metrics."""
+        base_metrics = super().get_custom_metrics() or {}
+        base_metrics.update({
+            "optimization.has_optimization": 0.0,
+        })
+        return base_metrics
 
 def get_benchmark() -> BaselineOccupancyTuningBenchmark:
     """Factory for discover_benchmarks()."""

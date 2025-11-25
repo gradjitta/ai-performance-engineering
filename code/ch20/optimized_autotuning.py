@@ -60,8 +60,13 @@ class OptimizedAutotuningBenchmark(BaseBenchmark):
         else:
             try:
                 torch.set_float32_matmul_precision("high")
-            except Exception:
-                pass
+            except Exception as e:
+                import warnings
+                warnings.warn(
+                    f"Failed to set float32_matmul_precision='high': {e}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
         model = AutotuneModel(self.hidden_dim).to(self.device, dtype=torch.bfloat16).eval()
         # compile_model skips safely on unsupported architectures
         self.model = compile_model(
@@ -100,6 +105,13 @@ class OptimizedAutotuningBenchmark(BaseBenchmark):
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "autotuning.workload_size": float(getattr(self, 'batch_size', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:

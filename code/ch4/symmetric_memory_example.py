@@ -59,7 +59,7 @@ def setup_distributed():
         # Use NCCL backend for GPU communication with timeout
     setup_single_gpu_env()  # Auto-setup for single-GPU mode
     dist.init_process_group(
-            backend="nccl",
+        backend="nccl",
             init_method="env://",
             world_size=world_size,
             rank=rank,
@@ -72,16 +72,12 @@ def setup_distributed():
 
 def detect_gb200_gb300() -> bool:
     """Detect if running on GB200/GB300 Grace-Blackwell Superchip."""
-    try:
-        import platform
-        if platform.machine() == 'aarch64':
-            with open('/proc/cpuinfo', 'r') as f:
-                cpuinfo = f.read()
-                if 'ARM' in cpuinfo or 'Neoverse' in cpuinfo:
-                    return True
-    except:
-        pass
-    return False
+    import platform
+    if platform.machine() != 'aarch64':
+        return False
+    with open('/proc/cpuinfo', 'r') as f:
+        cpuinfo = f.read()
+        return 'ARM' in cpuinfo or 'Neoverse' in cpuinfo
 
 
 def enable_nvlink_c2c_optimizations() -> None:
@@ -128,14 +124,7 @@ def enable_nvlink_c2c_optimizations() -> None:
     torch.cuda.set_per_process_memory_fraction(0.9)  # Reserve 10% for overhead
     
     # 3. Set memory pool attributes (if using stream-ordered allocator)
-    try:
-        # Get default memory pool
-        for i in range(num_gpus):
-            # This is a placeholder - actual API may vary
-            # The key is to hint that memory will be accessed across CPU-GPU
-            pass
-    except:
-        pass
+    # Note: This is configured via CUDA driver - no PyTorch API needed
     
     print("\nNVLink-C2C Features:")
     if is_grace_blackwell:

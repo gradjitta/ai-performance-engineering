@@ -35,11 +35,11 @@ class OptimizedPipelineOverlapBenchmark(BaseBenchmark):
         self.stages: Optional[nn.ModuleList] = None
         self.stage_streams: Optional[list[torch.cuda.Stream]] = None
         self.inputs: Optional[torch.Tensor] = None
-        self.batch_size = 256
-        self.hidden_dim = 1024
+        self.batch_size = 512
+        self.hidden_dim = 1536
         self.num_stages = 4
-        self.num_micro_batches = 8
-        self.repeats = 4
+        self.num_micro_batches = 12
+        self.repeats = 6
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(self.batch_size),
@@ -120,6 +120,13 @@ class OptimizedPipelineOverlapBenchmark(BaseBenchmark):
     
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "pipeline_sequential.workload_size": float(getattr(self, 'batch_size', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.stages is None:

@@ -96,3 +96,15 @@ class HBMBenchmarkBase(BaseBenchmark):
         if self.output is None:
             return "Output buffer not initialized"
         return None
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return HBM optimization metrics for memory bandwidth analysis."""
+        elements = self.rows * self.cols
+        bytes_per_element = 4  # float32
+        bytes_transferred = float(elements * bytes_per_element)
+        return {
+            f"{self.nvtx_label}.rows": float(self.rows),
+            f"{self.nvtx_label}.cols": float(self.cols),
+            f"{self.nvtx_label}.elements": float(elements),
+            f"{self.nvtx_label}.bytes_transferred": bytes_transferred,
+        }

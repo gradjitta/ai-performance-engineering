@@ -21,13 +21,10 @@ class OptimizedFlexDecodingMathBenchmark(FlexDecodingHarness):
     def setup(self) -> None:
         # Force SDP to math for this benchmark only.
         import torch
-        try:
-            torch.backends.cuda.enable_flash_sdp(False)
-            torch.backends.cuda.enable_mem_efficient_sdp(False)
-            torch.backends.cuda.enable_math_sdp(True)
-            torch.backends.cuda.enable_cudnn_sdp(False)
-        except Exception:
-            pass
+        torch.backends.cuda.enable_flash_sdp(False)
+        torch.backends.cuda.enable_mem_efficient_sdp(False)
+        torch.backends.cuda.enable_math_sdp(True)
+        torch.backends.cuda.enable_cudnn_sdp(False)
         super().setup()
 
 

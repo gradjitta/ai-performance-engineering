@@ -42,13 +42,10 @@ class BaselineGuidedDecodingMathBenchmark(BaseBenchmark):
 
     def setup(self) -> None:
         if torch.cuda.is_available():
-            try:
-                torch.backends.cuda.enable_flash_sdp(False)
-                torch.backends.cuda.enable_mem_efficient_sdp(False)
-                torch.backends.cuda.enable_math_sdp(True)
-                torch.backends.cuda.enable_cudnn_sdp(False)
-            except Exception:
-                pass
+            torch.backends.cuda.enable_flash_sdp(False)
+            torch.backends.cuda.enable_mem_efficient_sdp(False)
+            torch.backends.cuda.enable_math_sdp(True)
+            torch.backends.cuda.enable_cudnn_sdp(False)
             torch.backends.cudnn.benchmark = True
             torch.backends.cudnn.deterministic = False
             enable_tf32()
@@ -96,6 +93,13 @@ class BaselineGuidedDecodingMathBenchmark(BaseBenchmark):
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "guided_decoding_math.workload_size": float(getattr(self, 'batch_size', 0) or getattr(self, 'N', 0) or 0),
+        }
 
     def validate_result(self) -> Optional[str]:
         return None

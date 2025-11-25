@@ -80,6 +80,14 @@ class OptimizedInferenceDisaggregatedBenchmark(BaseBenchmark):
     def get_workload_metadata(self):
         return self._workload
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "inference_monolithic.batch_size": float(getattr(self, 'batch_size', 0)),
+            "inference_monolithic.seq_len": float(getattr(self, 'seq_len', 0)),
+            "inference_monolithic.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
+
     def validate_result(self) -> Optional[str]:
         return None
 

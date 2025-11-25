@@ -109,6 +109,14 @@ class BaselineFlashSDPBenchmark(BaseBenchmark):
         return self._workload
 
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "flash_sdp.batch_size": float(getattr(self, 'batch_size', 0)),
+            "flash_sdp.seq_len": float(getattr(self, 'seq_len', 0)),
+            "flash_sdp.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
+
 def get_benchmark() -> BaseBenchmark:
     return BaselineFlashSDPBenchmark()
 

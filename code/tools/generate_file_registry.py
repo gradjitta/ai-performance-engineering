@@ -80,8 +80,8 @@ def discover_all_benchmarks(repo_root: Path) -> Dict[str, List[Dict]]:
                     entry["implements_benchmark"] = True
                 if "nvtx" in baseline_content.lower():
                     entry["uses_nvtx"] = True
-            except Exception:
-                pass
+            except OSError:
+                pass  # File read error
             
             chapter_registry.append(entry)
         

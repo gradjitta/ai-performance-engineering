@@ -82,6 +82,14 @@ class BaselineDualPipelineBenchmark(BaseBenchmark):
             setup_timeout_seconds=120,
         )
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return CUDA stream metrics."""
+        return {
+            "warp_specialized_two.num_streams": float(getattr(self, 'num_streams', 1)),
+            "warp_specialized_two.num_operations": float(getattr(self, 'num_operations', 1)),
+            "warp_specialized_two.has_overlap": 0.0,  # 0=baseline (no overlap), 1=optimized
+        }
+
     def validate_result(self) -> str | None:
         if self.output is None:
             return "Output tensor not initialized"

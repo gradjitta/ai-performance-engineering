@@ -68,6 +68,20 @@ class BaselineBankConflictsBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for bank conflict analysis.
+        
+        These metrics help explain WHY the optimized version is faster
+        and HOW to identify bank conflict issues.
+        """
+        return {
+            # Problem size for context
+            "bank_conflicts.elements": float(self.N),
+            "bank_conflicts.repeats": float(self.repeats),
+            # For comparison with optimized version
+            "bank_conflicts.expected_conflict_factor": 32.0,  # 32-way bank conflict baseline
+        }
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.output is None:

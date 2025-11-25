@@ -1,13 +1,26 @@
-"""Optimized decode bucketing demo: buckets + prewarm shrink CUDA graph churn."""
+"""Optimized decode bucketing with pre-captured CUDA graphs.
+
+This module demonstrates two approaches:
+1. GraphTreeSimulator: Simulates bucketing behavior for analysis
+2. CUDAGraphBucketing: Actual CUDA graph capture/replay for inference
+
+Key Optimization (Ch18):
+- Pre-capture graphs for common batch/seq size buckets at startup
+- Pad inputs to nearest bucket size
+- Replay pre-captured graph instead of re-capturing
+- Eliminates kernel launch overhead for decode phase
+"""
 
 from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
-from typing import Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 repo_root = Path(__file__).resolve().parent.parent
 if str(repo_root) not in sys.path:
@@ -30,7 +43,167 @@ from ch18.cudagraph_bucketing_common import (  # noqa: E402
 from ch18.cudagraph_bucketing_metrics import (  # noqa: E402
     export_stats_to_prometheus,
 )
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
+from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata  # noqa: E402
+
+
+# ============================================================
+# CUDA Graph Bucketing for Real Inference
+# ============================================================
+
+class CUDAGraphBucketing:
+    """Pre-captured CUDA graphs for variable batch size inference.
+    
+    Key Optimization:
+    - Capture graphs at startup for all bucket combinations
+    - At runtime, pad input to nearest bucket and replay
+    - Eliminates per-request graph capture overhead
+    
+    Usage:
+        graph_exec = CUDAGraphBucketing(model, hidden_dim=256)
+        output = graph_exec.forward(input_tensor)  # Auto-selects bucket
+    """
+    
+    # Standard bucket sizes - powers of 2 for batch, common seq lengths
+    BATCH_BUCKETS = [1, 2, 4, 8, 16, 32, 64]
+    SEQ_BUCKETS = [128, 256, 512, 1024, 2048]
+    
+    def __init__(
+        self,
+        model: nn.Module,
+        hidden_dim: int = 256,
+        device: str = "cuda",
+        max_batch: int = 64,
+        max_seq: int = 2048,
+    ):
+        self.model = model
+        self.hidden_dim = hidden_dim
+        self.device = device
+        self.max_batch = max_batch
+        self.max_seq = max_seq
+        
+        # Storage for captured graphs and static buffers
+        self.graphs: Dict[Tuple[int, int], torch.cuda.CUDAGraph] = {}
+        self.static_inputs: Dict[Tuple[int, int], torch.Tensor] = {}
+        self.static_outputs: Dict[Tuple[int, int], torch.Tensor] = {}
+        
+        # Metrics
+        self.capture_count = 0
+        self.replay_count = 0
+        self.fallback_count = 0
+        
+        # Pre-capture graphs
+        if torch.cuda.is_available():
+            self._precapture_graphs()
+    
+    def _precapture_graphs(self) -> None:
+        """Pre-capture CUDA graphs for all bucket combinations."""
+        # Filter buckets within limits
+        batch_buckets = [b for b in self.BATCH_BUCKETS if b <= self.max_batch]
+        seq_buckets = [s for s in self.SEQ_BUCKETS if s <= self.max_seq]
+        
+        for bs in batch_buckets:
+            for seq in seq_buckets:
+                self._capture_graph(bs, seq)
+    
+    def _capture_graph(self, batch_size: int, seq_len: int) -> None:
+        """Capture a single CUDA graph for the given shape."""
+        key = (batch_size, seq_len)
+        
+        # Allocate static input buffer - match model dtype
+        model_dtype = next(self.model.parameters()).dtype
+        self.static_inputs[key] = torch.zeros(
+            batch_size, seq_len, self.hidden_dim,
+            device=self.device, dtype=model_dtype
+        )
+        
+        # Warmup runs (required before capture)
+        warmup_stream = torch.cuda.Stream()
+        warmup_stream.wait_stream(torch.cuda.current_stream())
+        
+        with torch.cuda.stream(warmup_stream):
+            for _ in range(3):
+                _ = self.model(self.static_inputs[key])
+        
+        torch.cuda.current_stream().wait_stream(warmup_stream)
+        
+        # Capture the graph
+        self.graphs[key] = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(self.graphs[key]):
+            self.static_outputs[key] = self.model(self.static_inputs[key])
+        
+        self.capture_count += 1
+    
+    def _find_bucket(self, batch: int, seq: int) -> Optional[Tuple[int, int]]:
+        """Find smallest bucket >= actual size."""
+        # Find smallest batch bucket >= actual batch
+        batch_bucket = None
+        for b in self.BATCH_BUCKETS:
+            if b >= batch and b <= self.max_batch:
+                batch_bucket = b
+                break
+        
+        if batch_bucket is None:
+            return None
+        
+        # Find smallest seq bucket >= actual seq
+        seq_bucket = None
+        for s in self.SEQ_BUCKETS:
+            if s >= seq and s <= self.max_seq:
+                seq_bucket = s
+                break
+        
+        if seq_bucket is None:
+            return None
+        
+        return (batch_bucket, seq_bucket)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass using pre-captured graphs.
+        
+        Args:
+            x: Input tensor of shape (batch, seq, hidden)
+            
+        Returns:
+            Output tensor, unpadded to original size
+        """
+        if not torch.cuda.is_available():
+            return self.model(x)
+        
+        batch, seq = x.shape[:2]
+        key = self._find_bucket(batch, seq)
+        
+        if key is None or key not in self.graphs:
+            # Fallback to eager execution
+            self.fallback_count += 1
+            return self.model(x)
+        
+        bucket_batch, bucket_seq = key
+        
+        # Pad input to bucket size
+        if batch < bucket_batch or seq < bucket_seq:
+            padded = F.pad(
+                x,
+                (0, 0, 0, bucket_seq - seq, 0, bucket_batch - batch)
+            )
+        else:
+            padded = x
+        
+        # Copy to static buffer and replay graph
+        self.static_inputs[key].copy_(padded)
+        self.graphs[key].replay()
+        self.replay_count += 1
+        
+        # Return unpadded output
+        return self.static_outputs[key][:batch, :seq]
+    
+    def get_stats(self) -> Dict[str, int]:
+        """Return bucketing statistics."""
+        return {
+            "graphs_captured": self.capture_count,
+            "graph_replays": self.replay_count,
+            "eager_fallbacks": self.fallback_count,
+            "total_buckets": len(self.graphs),
+        }
 
 
 class OptimizedCUDAGraphBucketing(BaselineCUDAGraphBucketing):
@@ -184,7 +357,12 @@ def main(argv: Optional[Iterable[str]] = None) -> None:
 
 
 class OptimizedCUDAGraphBucketingBenchmark(BaseBenchmark):
-    """Benchmark wrapper so the optimized simulator can run via benchmark_cli."""
+    """Benchmark wrapper demonstrating CUDA graph bucketing for inference.
+    
+    Tests both:
+    1. GraphTreeSimulator: Analyzes bucketing behavior
+    2. CUDAGraphBucketing: Actual pre-captured graph execution
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -195,8 +373,20 @@ class OptimizedCUDAGraphBucketingBenchmark(BaseBenchmark):
         self.skip_compile_smoke = False
         self._last_sim: Optional[GraphTreeSimulator] = None
         self._compile_stats: Optional[dict] = None
+        self._graph_bucketing: Optional[CUDAGraphBucketing] = None
+        self._graph_stats: Optional[Dict[str, int]] = None
+        
+        # Workload metadata
+        batch_size = 32
+        seq_len = 512
+        self._workload = WorkloadMetadata(
+            requests_per_iteration=float(batch_size),
+            tokens_per_iteration=float(batch_size * seq_len),
+        )
 
     def _resolve_device(self) -> torch.device:
+        if torch.cuda.is_available():
+            return torch.device("cuda")
         return torch.device("cpu")
 
     def apply_target_overrides(self, argv: Iterable[str]) -> None:
@@ -211,7 +401,28 @@ class OptimizedCUDAGraphBucketingBenchmark(BaseBenchmark):
         except SystemExit:
             pass
 
+    def setup(self) -> None:
+        """Setup: Pre-capture CUDA graphs for common bucket sizes."""
+        if torch.cuda.is_available():
+            # Create a simple model for graph capture demo
+            hidden_dim = 256
+            self._demo_model = nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim * 4),
+                nn.GELU(),
+                nn.Linear(hidden_dim * 4, hidden_dim),
+            ).to(self.device).to(torch.bfloat16).eval()  # Use BF16 for consistency
+            
+            # Initialize graph bucketing with pre-captured graphs
+            self._graph_bucketing = CUDAGraphBucketing(
+                model=self._demo_model,
+                hidden_dim=hidden_dim,
+                device=str(self.device),
+                max_batch=64,
+                max_seq=2048,
+            )
+
     def benchmark_fn(self) -> None:
+        # Part 1: Run the simulator analysis
         optimized = OptimizedCUDAGraphBucketing(
             traffic=demo_traffic(),
             vllm_model=self.vllm_model,
@@ -221,20 +432,74 @@ class OptimizedCUDAGraphBucketingBenchmark(BaseBenchmark):
         )
         sim = optimized.run()
         self._last_sim = sim
+        
         if not self.skip_compile_smoke:
             self._compile_stats = optimized.run_compile_smoke()
+        
+        # Part 2: Exercise actual CUDA graph bucketing
+        if self._graph_bucketing is not None and torch.cuda.is_available():
+            # Test with various input sizes - should hit pre-captured graphs
+            test_shapes = [
+                (1, 128), (4, 256), (8, 512), (16, 1024), (32, 2048),
+                (3, 300), (7, 500),  # Non-bucket sizes - will be padded
+            ]
+            
+            with torch.no_grad():
+                for batch, seq in test_shapes:
+                    x = torch.randn(batch, seq, 256, device=self.device, dtype=torch.bfloat16)
+                    _ = self._graph_bucketing.forward(x)
+            
+            self._graph_stats = self._graph_bucketing.get_stats()
+            torch.cuda.synchronize()
+
+    def teardown(self) -> None:
+        """Cleanup resources."""
+        self._demo_model = None
+        self._graph_bucketing = None
+        super().teardown()
 
     def get_custom_metrics(self) -> Optional[dict]:
-        if self._last_sim is None:
-            return None
-        summary = self._last_sim.stats.summary()
-        flat = {f"cudagraph.{k}": v for k, v in summary.items() if k != "hot_keys"}
+        """Return comprehensive bucketing metrics.
+        
+        Metrics explain WHY graph bucketing is faster:
+        - High replay_count = avoiding graph capture overhead
+        - Low fallback_count = good bucket coverage
+        - Low compile_recompiles = stable shapes for torch.compile
+        """
+        metrics: Dict[str, float] = {}
+        
+        # Simulator metrics
+        if self._last_sim is not None:
+            summary = self._last_sim.stats.summary()
+            for k, v in summary.items():
+                if k != "hot_keys":
+                    metrics[f"cudagraph.sim.{k}"] = float(v)
+        
+        # Compile smoke test
         if self._compile_stats is not None:
-            flat["cudagraph.compile_recompiles"] = float(self._compile_stats.get("compiles", 0))
-        return flat
+            metrics["cudagraph.compile_recompiles"] = float(self._compile_stats.get("compiles", 0))
+        
+        # Actual graph bucketing stats
+        if self._graph_stats is not None:
+            metrics["cudagraph.actual.graphs_captured"] = float(self._graph_stats["graphs_captured"])
+            metrics["cudagraph.actual.graph_replays"] = float(self._graph_stats["graph_replays"])
+            metrics["cudagraph.actual.eager_fallbacks"] = float(self._graph_stats["eager_fallbacks"])
+            metrics["cudagraph.actual.total_buckets"] = float(self._graph_stats["total_buckets"])
+            
+            # Compute graph hit rate
+            total_runs = self._graph_stats["graph_replays"] + self._graph_stats["eager_fallbacks"]
+            if total_runs > 0:
+                metrics["cudagraph.actual.graph_hit_rate_pct"] = (
+                    self._graph_stats["graph_replays"] / total_runs * 100
+                )
+        
+        return metrics if metrics else None
+
+    def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
+        return self._workload
 
     def get_config(self) -> Optional[BenchmarkConfig]:
-        return BenchmarkConfig(iterations=1, warmup=0, enable_profiling=False)
+        return BenchmarkConfig(iterations=3, warmup=1, enable_profiling=False)
 
 
 def get_benchmark() -> BaseBenchmark:

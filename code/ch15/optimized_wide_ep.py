@@ -99,5 +99,13 @@ class WideExpertParallelBenchmark(BaseBenchmark):
         return self._workload
 
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "wide_ep.batch_size": float(getattr(self, 'batch_size', 0)),
+            "wide_ep.seq_len": float(getattr(self, 'seq_len', 0)),
+            "wide_ep.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
+
 def get_benchmark() -> BaseBenchmark:
     return WideExpertParallelBenchmark()

@@ -15,8 +15,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
-from packaging import version
-
 try:
     import yaml  # type: ignore
 except ImportError:  # pragma: no cover - optional dependency
@@ -125,14 +123,6 @@ class SpeculatorConfig:
             f"method={self.method}, chunk={self.chunk_size}, "
             f"fallback={self.fallback_chunk_size}, target_accept={self.acceptance_target}"
         )
-
-
-def _assert_vllm_baseline_torch() -> None:
-    """Ensure we are on the PyTorch stack aligned with vLLM v0.12.x (>=2.10)."""
-    parsed = version.parse(torch.__version__)
-    minimum = version.parse("2.10.0")
-    if parsed < minimum:
-        raise RuntimeError(f"SKIPPED: PyTorch >= 2.10.0 required for V1 graph baseline; found {torch.__version__}")
 
 
 class PagedKVCache:
@@ -337,7 +327,6 @@ class VLLMMoEInferenceBenchmark(BaseBenchmark):
 
     # --------------------------------------------------------------------- setup
     def setup(self) -> None:
-        _assert_vllm_baseline_torch()
         torch.manual_seed(21)
         cfg = self.config
         self.model = SimpleMoEGPT(cfg, device=self.device).eval()

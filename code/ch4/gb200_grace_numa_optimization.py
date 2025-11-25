@@ -91,8 +91,8 @@ def detect_grace_cpu() -> Dict[str, Any]:
                 if 'ARM' in cpuinfo or 'Neoverse' in cpuinfo:
                     info["is_grace"] = True
                     info["cpu_model"] = "ARM Neoverse V2 (Grace)"
-        except:
-            pass
+        except FileNotFoundError:
+            pass  # /proc/cpuinfo doesn't exist (not Linux)
     
     # Detect NUMA nodes
     try:
@@ -102,8 +102,8 @@ def detect_grace_cpu() -> Dict[str, Any]:
             for line in result.stdout.split('\n'):
                 if 'available:' in line:
                     info["numa_nodes"] = int(line.split(':')[1].split()[0])
-    except:
-        pass
+    except FileNotFoundError:
+        pass  # numactl not installed
     
     return info
 

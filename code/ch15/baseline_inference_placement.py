@@ -31,12 +31,9 @@ class _PlacementBenchmark(BaseBenchmark):
     def setup(self) -> None:
         torch_backend = self.cfg.dtype
         # Use torch bf16-friendly matmul path on Blackwell; harmless elsewhere.
-        try:
             import torch
 
             torch.set_default_dtype(torch_backend)  # type: ignore[arg-type]
-        except Exception:
-            pass
 
     def benchmark_fn(self) -> None:
         run = self.simulator.simulate(self.cfg, sessions=64, seed=17)

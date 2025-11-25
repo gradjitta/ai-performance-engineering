@@ -10,7 +10,8 @@ import torch
 def test_flex_attention_available() -> None:
     """FlexAttention should import and expose a callable on Blackwell GPUs."""
     major, minor = torch.cuda.get_device_capability()
-    if major < 12:
+    # Blackwell is sm_100 (major=10), Grace-Blackwell is sm_12x
+    if major < 10:
         pytest.skip(f"FlexAttention requires Blackwell-class GPUs (got sm_{major}{minor})")
 
     try:

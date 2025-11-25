@@ -120,3 +120,18 @@ class LoopUnrollingBenchmarkBase(BaseBenchmark):
         if self.output is None:
             return "Output buffer not initialized"
         return None
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return loop unrolling optimization metrics."""
+        total_elements = self.rows * self.elements_per_row
+        flops = float(total_elements * 2)  # mul + add per element
+        bytes_transferred = float(total_elements * 4 + self.weight_period * 4)
+        return {
+            f"{self.nvtx_label}.rows": float(self.rows),
+            f"{self.nvtx_label}.elements_per_row": float(self.elements_per_row),
+            f"{self.nvtx_label}.total_elements": float(total_elements),
+            f"{self.nvtx_label}.weight_period": float(self.weight_period),
+            f"{self.nvtx_label}.flops": flops,
+            f"{self.nvtx_label}.bytes_transferred": bytes_transferred,
+            f"{self.nvtx_label}.arithmetic_intensity": flops / bytes_transferred if bytes_transferred > 0 else 0.0,
+        }

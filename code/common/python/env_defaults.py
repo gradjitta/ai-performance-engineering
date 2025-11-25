@@ -337,8 +337,8 @@ def dump_environment_and_capabilities(stream=None, *, force: bool = False) -> No
                 check=False
             )
             nsys_available = result.returncode == 0
-    except Exception:
-        pass
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass  # nsys not available or timed out
     print(f"nsys available: {nsys_available}", file=stream)
     
     # Check ncu availability
@@ -352,8 +352,8 @@ def dump_environment_and_capabilities(stream=None, *, force: bool = False) -> No
                 check=False
             )
             ncu_available = result.returncode == 0
-    except Exception:
-        pass
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass  # ncu not available or timed out
     print(f"ncu available: {ncu_available}", file=stream)
     
     _ENV_AND_CAPABILITIES_LOGGED = True

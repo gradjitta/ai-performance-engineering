@@ -15,10 +15,10 @@ class Chapter13Workload:
     num_requests: int = 8
     batch_size: int = 4
 
-    training_hidden_dim: int = 4096
+    training_hidden_dim: int = 6144
     training_layers_baseline: int = 28
-    training_layers_optimized: int = 40
-    global_batch_size: int = 64
+    training_layers_optimized: int = 44
+    global_batch_size: int = 96
     micro_batch_size: int = 8
 
 

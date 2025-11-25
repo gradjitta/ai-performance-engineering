@@ -61,10 +61,11 @@ class BaselinePipelineSequentialBenchmark(BaseBenchmark):
         self.device = resolve_device()
         self.stages = None
         self.inputs = None
-        self.batch_size = 256
-        self.hidden_dim = 1024
+        # Larger workload so overlap benefits are measurable against sequential baseline.
+        self.batch_size = 512
+        self.hidden_dim = 1536
         self.num_stages = 4
-        self.repeats = 4
+        self.repeats = 6
     
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         """Describe workload units processed per iteration."""
@@ -74,6 +75,13 @@ class BaselinePipelineSequentialBenchmark(BaseBenchmark):
             samples_per_iteration=float(self.batch_size),
         )
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "pipeline_sequential.workload_size": float(getattr(self, 'batch_size', 0)),
+        }
+
     def setup(self) -> None:
         """Setup: Initialize pipeline stages."""
         torch.manual_seed(42)

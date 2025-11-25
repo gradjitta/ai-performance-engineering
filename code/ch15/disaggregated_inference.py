@@ -113,12 +113,9 @@ if HAS_USABLE_CUDA:
         major = None
     if major is not None and major >= 12:
         PREFERRED_SDP_BACKENDS = (SDPBackend.MATH,)
-    try:
         torch.backends.cuda.enable_flash_sdp(False)  # type: ignore[attr-defined]
         torch.backends.cuda.enable_mem_efficient_sdp(False)  # type: ignore[attr-defined]
         torch.backends.cuda.enable_math_sdp(True)  # type: ignore[attr-defined]
-    except Exception:
-        pass
 
 
 def get_sdpa_context():

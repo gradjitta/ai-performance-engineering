@@ -76,14 +76,15 @@ class OptimizedPieceGraphsBenchmark(BaseBenchmark):
         super().__init__()
         self.device = resolve_device()
         self.model: Optional[RegionalPieceGraph] = None
-        self.sequence_schedule: Sequence[int] = [128, 192, 256, 320, 384, 448, 512]
+        # Start with larger buckets so the capture/replay benefit stands out.
+        self.sequence_schedule: Sequence[int] = [256, 384, 512, 640, 768, 896, 1024]
         self.iteration = 0
         self.graph_cache: Dict[int, Tuple[RegionGraph, RegionGraph]] = {}
         self._rng = torch.Generator(device=self.device)
         self._rng.manual_seed(0)
 
     def setup(self) -> None:
-        self.model = RegionalPieceGraph(hidden_dim=512, n_layers=12).to(
+        self.model = RegionalPieceGraph(hidden_dim=768, n_layers=12).to(
             self.device, dtype=torch.float16
         ).eval()
         self._capture_piece_graphs()
@@ -168,6 +169,14 @@ class OptimizedPieceGraphsBenchmark(BaseBenchmark):
             use_subprocess=False,
         )
 
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "piece_graphs.batch_size": float(getattr(self, 'batch_size', 0)),
+            "piece_graphs.seq_len": float(getattr(self, 'seq_len', 0)),
+            "piece_graphs.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedPieceGraphsBenchmark()

@@ -56,8 +56,9 @@ class OptimizedDataloaderTunedBenchmark(BaseBenchmark):
         self.dataloader: Optional[DataLoader] = None
         self.optimizer = None
         self.criterion = None
-        self.dataset_size = 500
-        self.batch_size = 32
+        # Larger dataset/batch to amplify the benefit of pinned workers/prefetch.
+        self.dataset_size = 1000
+        self.batch_size = 64
         self.feature_dim = 1024
         self._data_iter: Optional[Iterator] = None
         self._workload = WorkloadMetadata(
@@ -139,6 +140,14 @@ class OptimizedDataloaderTunedBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return precision/quantization metrics."""
+        return {
+            "dataloader_default.batch_size": float(getattr(self, 'batch_size', 0)),
+            "dataloader_default.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+            "dataloader_default.precision_bits": 32.0,  # Override: 32=fp32, 16=fp16, 8=fp8, 4=fp4
+        }
+
     def validate_result(self) -> Optional[str]:
         if self.model is None:
             return "Model not initialized"

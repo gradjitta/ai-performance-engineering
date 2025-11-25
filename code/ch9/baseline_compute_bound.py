@@ -68,6 +68,34 @@ class BaselineComputeBoundBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return compute-bound analysis metrics using the centralized helper.
+        
+        These metrics help understand WHY the kernel is compute-bound
+        and HOW to improve tensor core utilization.
+        """
+        from common.python.benchmark_metrics import compute_roofline_metrics
+        
+        # Estimate FLOPs for the model (2 linear layers: 2*M*N*K per layer)
+        # Layer 1: N -> N*2, Layer 2: N*2 -> N
+        layer1_flops = 2 * self.N * (self.N * 2) * self.N
+        layer2_flops = 2 * self.N * self.N * (self.N * 2)
+        total_flops = (layer1_flops + layer2_flops) * self.repeats
+        
+        # Estimate bytes moved (simplified: input + output)
+        element_size = 2  # FP16
+        total_bytes = (self.N + self.N) * element_size * self.repeats
+        
+        # Use elapsed time from last run if available
+        elapsed_ms = getattr(self, '_last_elapsed_ms', 1.0)
+        
+        return compute_roofline_metrics(
+            total_flops=total_flops,
+            total_bytes=total_bytes,
+            elapsed_ms=elapsed_ms,
+            precision="fp16",
+        )
+
     def validate_result(self) -> Optional[str]:
         if self.input is None or self.model is None:
             return "Model/input not initialized"

@@ -53,6 +53,21 @@ class BaselineMatmulTCGen05Benchmark(BaseBenchmark):
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(iterations=20, warmup=5)
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return roofline analysis metrics."""
+        # Estimate problem size for roofline analysis
+        n = getattr(self, 'N', 0) or getattr(self, 'hidden_dim', 0) or 4096
+        batch = getattr(self, 'batch_size', 1) or getattr(self, 'batch', 1)
+        # Simple FLOP estimate for linear layers
+        flops = 2.0 * batch * n * n  # Rough estimate
+        bytes_moved = batch * n * 4.0  # Input/output bytes
+        arithmetic_intensity = flops / max(bytes_moved, 1.0)
+        return {
+    "matmul_tcgen05.estimated_flops": flops,
+    "matmul_tcgen05.estimated_bytes": bytes_moved,
+    "matmul_tcgen05.arithmetic_intensity": arithmetic_intensity,
+}
+
     def validate_result(self) -> Optional[str]:
         if not self._tcgen05_available:
             return self._skip_reason

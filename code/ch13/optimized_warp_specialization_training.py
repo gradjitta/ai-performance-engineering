@@ -92,6 +92,14 @@ class OptimizedWarpSpecializationTrainingBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return precision/quantization metrics."""
+        return {
+            "warp_specialization_.batch_size": float(getattr(self, 'batch_size', 0)),
+            "warp_specialization_.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+            "warp_specialization_.precision_bits": 32.0,  # Override: 32=fp32, 16=fp16, 8=fp8, 4=fp4
+        }
+
     def validate_result(self) -> Optional[str]:
         if self.model is None:
             return "Model not initialized"

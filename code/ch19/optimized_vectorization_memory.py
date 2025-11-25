@@ -133,6 +133,14 @@ class OptimizedVectorizationMemoryBenchmark(BaseBenchmark):
             warmup=10,
         )
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return precision/quantization metrics."""
+        return {
+            "vectorization_memory.batch_size": float(getattr(self, 'batch_size', 0)),
+            "vectorization_memory.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+            "vectorization_memory.precision_bits": 32.0,  # Override: 32=fp32, 16=fp16, 8=fp8, 4=fp4
+        }
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.output is None:

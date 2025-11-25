@@ -102,5 +102,12 @@ class NVFP4TRTLLMBenchmark(BaseBenchmark):
         return self._workload
 
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return speculative decoding metrics."""
+        return {
+            "nvfp4_trtllm.num_draft_tokens": float(getattr(self, 'num_draft_tokens', 4)),
+            "nvfp4_trtllm.batch_size": float(getattr(self, 'batch_size', 1)),
+        }
+
 def get_benchmark() -> BaseBenchmark:
     return NVFP4TRTLLMBenchmark()

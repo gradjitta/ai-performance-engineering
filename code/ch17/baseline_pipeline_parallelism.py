@@ -84,6 +84,14 @@ class BaselinePipelineParallelismBenchmark(BaseBenchmark):
         return self._workload
 
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "pipeline_parallelism.batch_size": float(getattr(self, 'batch_size', 0)),
+            "pipeline_parallelism.seq_len": float(getattr(self, 'seq_len', 0)),
+            "pipeline_parallelism.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
+
 def get_benchmark() -> BaselinePipelineParallelismBenchmark:
     """Factory function for benchmark discovery."""
     return BaselinePipelineParallelismBenchmark()

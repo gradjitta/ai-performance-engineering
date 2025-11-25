@@ -110,3 +110,12 @@ class ThresholdBenchmarkBase(BaseBenchmark):
         if self.inputs is None or self.outputs is None:
             return "Buffers not initialized"
         return None
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return threshold kernel optimization metrics."""
+        bytes_transferred = float(self.rows * 4 * 2)  # float32 read + write
+        return {
+            f"{self.nvtx_label}.rows": float(self.rows),
+            f"{self.nvtx_label}.threshold": self.threshold,
+            f"{self.nvtx_label}.bytes_transferred": bytes_transferred,
+        }

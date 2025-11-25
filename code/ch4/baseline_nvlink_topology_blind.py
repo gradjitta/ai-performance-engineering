@@ -56,6 +56,14 @@ class BaselineNvlinkTopologyBlindBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return memory transfer metrics for bandwidth analysis."""
+        bytes_moved = getattr(self, 'N', 0) * 4  # Estimate: elements * 4 bytes
+        return {
+            "nvlink_topology_blin.bytes_transferred": float(bytes_moved),
+            "nvlink_topology_blin.transfer_type": 0.0,  # 0=pcie, 1=nvlink, 2=hbm
+        }
+
     def validate_result(self) -> Optional[str]:
         if self.src is None or self.dst is None:
             return "Buffers not initialized"

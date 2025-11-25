@@ -38,11 +38,11 @@ class OptimizedKVCacheManagementMathBenchmark(BaseBenchmark):
         self.out_proj: Optional[nn.Linear] = None
         self.inputs: Optional[list[torch.Tensor]] = None
         self.cache_buffer: Optional[torch.Tensor] = None
-        self.batch_size = 4
+        self.batch_size = 8
         self.hidden_dim = 256
         self.num_heads = 8
         self.head_dim = self.hidden_dim // self.num_heads
-        self.steps = 32
+        self.steps = 48
         tokens = self.batch_size * self.steps
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -115,6 +115,14 @@ class OptimizedKVCacheManagementMathBenchmark(BaseBenchmark):
     
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "kv_cache_management_.batch_size": float(getattr(self, 'batch_size', 0)),
+            "kv_cache_management_.seq_len": float(getattr(self, 'seq_len', 0)),
+            "kv_cache_management_.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if any(layer is None for layer in (self.q_proj, self.k_proj, self.v_proj, self.out_proj)):

@@ -80,19 +80,17 @@ class MonitoringSystem:
         
     def get_gpu_metrics(self) -> Dict[str, float]:
         """Get current GPU metrics."""
-        try:
-            gpus = GPUtil.getGPUs()
-            if gpus:
-                gpu = gpus[0]  # First GPU
-                return {
-                    'gpu_utilization': gpu.load * 100,
-                    'gpu_memory_used': gpu.memoryUsed,
-                    'gpu_memory_total': gpu.memoryTotal,
-                    'gpu_temperature': gpu.temperature,
-                    'gpu_power_draw': gpu.power
-                }
-        except:
-            return {}
+        gpus = GPUtil.getGPUs()
+        if gpus:
+            gpu = gpus[0]  # First GPU
+            return {
+                'gpu_utilization': gpu.load * 100,
+                'gpu_memory_used': gpu.memoryUsed,
+                'gpu_memory_total': gpu.memoryTotal,
+                'gpu_temperature': gpu.temperature,
+                'gpu_power_draw': gpu.power
+            }
+        return {}
             
     def get_system_metrics(self) -> Dict[str, float]:
         """Get current system metrics."""

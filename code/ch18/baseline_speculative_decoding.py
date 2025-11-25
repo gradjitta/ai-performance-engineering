@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Baseline: Speculative decoding without optimization.
+"""Baseline: Sequential autoregressive decoding (NO speculative decoding).
 
-Demonstrates basic speculative decoding with single draft model.
+This baseline generates tokens one at a time using ONLY the target model.
+Compare with optimized version that uses speculative decoding for speedup.
+
+The key insight: Sequential decoding requires N target model forward passes
+for N tokens. Speculative decoding can achieve the same with fewer passes.
 """
 
 import torch
 import torch.nn as nn
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 import sys
 from pathlib import Path
 import time
@@ -21,14 +25,19 @@ logger = get_logger(__name__)
 
 
 class BaselineSpeculativeDecoding:
-    """Baseline speculative decoding with single draft."""
+    """Baseline: Sequential autoregressive decoding with target model only.
+    
+    This does NOT use speculative decoding - it generates one token at a time
+    using only the large target model. This is the standard approach that
+    speculative decoding aims to improve upon.
+    """
     
     def __init__(
         self,
         batch_size: int = 4,
         vocab_size: int = 32000,
         hidden_size: int = 4096,
-        num_draft_tokens: int = 4,
+        num_draft_tokens: int = 4,  # Used to match token count with optimized
         num_sequences: int = 10,
     ):
         self.batch_size = batch_size
@@ -36,23 +45,23 @@ class BaselineSpeculativeDecoding:
         self.hidden_size = hidden_size
         self.num_draft_tokens = num_draft_tokens
         self.num_sequences = num_sequences
+        # Total tokens to generate = num_sequences * num_draft_tokens
+        # This ensures fair comparison with speculative decoding
+        self.tokens_to_generate = num_sequences * num_draft_tokens
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
-        logger.info(f"Baseline Speculative Decoding")
-        logger.info(f"  Draft tokens: {num_draft_tokens}")
+        logger.info(f"Baseline Sequential Autoregressive Decoding")
+        logger.info(f"  Tokens to generate: {self.tokens_to_generate}")
     
-    def _create_simple_model(self, is_draft: bool = False):
-        """Create simplified language model."""
+    def _create_target_model(self):
+        """Create the target language model (large, accurate)."""
         class SimpleLM(nn.Module):
-            def __init__(self, vocab_size, hidden_size, is_draft):
+            def __init__(self, vocab_size, hidden_size):
                 super().__init__()
-                # Draft model is smaller
-                h = hidden_size // 4 if is_draft else hidden_size
-                
-                self.embedding = nn.Embedding(vocab_size, h)
-                self.linear1 = nn.Linear(h, h)
-                self.linear2 = nn.Linear(h, vocab_size)
+                self.embedding = nn.Embedding(vocab_size, hidden_size)
+                self.linear1 = nn.Linear(hidden_size, hidden_size)
+                self.linear2 = nn.Linear(hidden_size, vocab_size)
             
             def forward(self, input_ids):
                 x = self.embedding(input_ids)
@@ -60,15 +69,12 @@ class BaselineSpeculativeDecoding:
                 logits = self.linear2(x)
                 return logits
         
-        return SimpleLM(self.vocab_size, self.hidden_size, is_draft)
+        return SimpleLM(self.vocab_size, self.hidden_size)
     
     def setup(self):
-        """Initialize models."""
-        # Target model (large, accurate)
-        self.target_model = self._create_simple_model(is_draft=False).to(self.device).eval()
-        
-        # Draft model (small, fast)
-        self.draft_model = self._create_simple_model(is_draft=True).to(self.device).eval()
+        """Initialize target model only (no draft model in baseline)."""
+        # Target model (large) - this is what we use for sequential decode
+        self.target_model = self._create_target_model().to(self.device).eval()
         
         # Initial input
         self.input_ids = torch.randint(
@@ -77,96 +83,55 @@ class BaselineSpeculativeDecoding:
             device=self.device
         )
         
-        logger.info("Models initialized")
+        logger.info("Target model initialized (sequential baseline)")
     
-    def _draft_tokens(self, input_ids: torch.Tensor) -> torch.Tensor:
-        """Generate draft tokens using small model."""
-        draft_tokens = []
-        current_ids = input_ids
-        
-        for _ in range(self.num_draft_tokens):
-            with torch.no_grad():
-                logits = self.draft_model(current_ids[:, -1:])
-                next_token = torch.argmax(logits, dim=-1)
-                draft_tokens.append(next_token)
-                current_ids = torch.cat([current_ids, next_token], dim=1)
-        
-        return torch.cat(draft_tokens, dim=1)  # [batch, num_draft_tokens]
-    
-    def _verify_tokens(
-        self,
-        input_ids: torch.Tensor,
-        draft_tokens: torch.Tensor
-    ) -> Tuple[torch.Tensor, int]:
-        """Verify draft tokens with target model."""
-        # Concatenate input + draft
-        combined = torch.cat([input_ids, draft_tokens], dim=1)
-        
-        # Target model forward
+    def _generate_one_token(self, current_ids: torch.Tensor) -> torch.Tensor:
+        """Generate a single token using target model (sequential)."""
         with torch.no_grad():
-            logits = self.target_model(combined)
-        
-        # Check each draft token
-        accepted = 0
-        for i in range(self.num_draft_tokens):
-            target_token = torch.argmax(logits[:, -(self.num_draft_tokens - i + 1), :], dim=-1)
-            if torch.all(target_token == draft_tokens[:, i]):
-                accepted += 1
-            else:
-                break
-        
-        # Return accepted tokens + next token from target
-        if accepted < self.num_draft_tokens:
-            final_tokens = draft_tokens[:, :accepted]
-            next_token = torch.argmax(logits[:, -(self.num_draft_tokens - accepted), :], dim=-1)
-            final_tokens = torch.cat([final_tokens, next_token.unsqueeze(1)], dim=1)
-        else:
-            final_tokens = draft_tokens
-        
-        return final_tokens, accepted
+            logits = self.target_model(current_ids[:, -1:])
+            next_token = torch.argmax(logits, dim=-1)
+        return next_token
     
     def run(self) -> Dict[str, float]:
-        """Execute baseline speculative decoding."""
+        """Execute baseline sequential autoregressive decoding.
+        
+        This is the SLOW approach: Generate N tokens one at a time,
+        each requiring a full target model forward pass.
+        
+        Cost: N * target_forward_time
+        """
         torch.cuda.synchronize()
         start = time.perf_counter()
         
-        current_ids = self.input_ids
-        total_accepted = 0
-        total_drafted = 0
+        current_ids = self.input_ids.clone()
         
-        for _ in range(self.num_sequences):
-            # Draft phase
-            draft_tokens = self._draft_tokens(current_ids)
-            total_drafted += self.num_draft_tokens
-            
-            # Verify phase
-            accepted_tokens, num_accepted = self._verify_tokens(current_ids, draft_tokens)
-            total_accepted += num_accepted
-            
-            # Update sequence
-            current_ids = torch.cat([current_ids, accepted_tokens], dim=1)
+        # Generate tokens_to_generate tokens sequentially
+        # Each token requires ONE target model forward pass
+        for _ in range(self.tokens_to_generate):
+            next_token = self._generate_one_token(current_ids)
+            current_ids = torch.cat([current_ids, next_token], dim=1)
         
         torch.cuda.synchronize()
         elapsed = time.perf_counter() - start
         
         # Calculate metrics
-        acceptance_rate = (total_accepted / total_drafted) * 100
         tokens_generated = current_ids.shape[1] - self.input_ids.shape[1]
         tokens_per_sec = tokens_generated * self.batch_size / elapsed
         
-        logger.info(f"Acceptance rate: {acceptance_rate:.1f}%")
+        logger.info(f"Sequential decode: {tokens_generated} tokens")
         logger.info(f"Tokens/sec: {tokens_per_sec:.2f}")
+        logger.info(f"Target forward passes: {tokens_generated} (one per token)")
         
         return {
             "latency_ms": elapsed * 1000,
             "tokens_per_sec": tokens_per_sec,
-            "acceptance_rate": acceptance_rate,
             "tokens_generated": tokens_generated,
+            "target_forward_passes": tokens_generated,
         }
     
     def cleanup(self):
         """Clean up resources."""
-        del self.target_model, self.draft_model, self.input_ids
+        del self.target_model, self.input_ids
         torch.cuda.empty_cache()
 
 
@@ -244,17 +209,91 @@ if __name__ == "__main__":
     print(f"{'='*60}\n")
 
 
-# Harness integration: this example is a standalone demo, so mark it skipped when discovered.
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
+# Harness integration
+from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata  # noqa: E402
 
 
-class _SkipBenchmark(BaseBenchmark):
-    def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=1, warmup=0)
-
+class BaselineSequentialDecodeBenchmark(BaseBenchmark):
+    """Baseline: Sequential autoregressive decoding with target model only.
+    
+    This is the standard approach that speculative decoding aims to improve.
+    Generates N tokens sequentially, each requiring a full target forward pass.
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.batch_size = 4
+        self.vocab_size = 32000
+        self.hidden_size = 4096
+        self.tokens_to_generate = 40  # 10 sequences * 4 draft tokens
+        self.target_model = None
+        self.input_ids = None
+        
+        self._workload = WorkloadMetadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(self.batch_size * self.tokens_to_generate),
+        )
+    
+    def setup(self) -> None:
+        """Initialize target model for sequential decoding."""
+        if torch.cuda.is_available():
+            torch.backends.cudnn.benchmark = True
+        torch.manual_seed(42)
+        
+        # Create target model (large)
+        class SimpleLM(nn.Module):
+            def __init__(self, vocab_size, hidden_size):
+                super().__init__()
+                self.embedding = nn.Embedding(vocab_size, hidden_size)
+                self.linear1 = nn.Linear(hidden_size, hidden_size)
+                self.linear2 = nn.Linear(hidden_size, vocab_size)
+            
+            def forward(self, input_ids):
+                x = self.embedding(input_ids)
+                x = torch.relu(self.linear1(x))
+                return self.linear2(x)
+        
+        self.target_model = SimpleLM(self.vocab_size, self.hidden_size).to(self.device).eval()
+        self.input_ids = torch.randint(0, self.vocab_size, (self.batch_size, 1), device=self.device)
+        
+        self._synchronize()
+        self.register_workload_metadata(
+            requests_per_iteration=self._workload.requests_per_iteration,
+            tokens_per_iteration=self._workload.tokens_per_iteration,
+        )
+    
     def benchmark_fn(self) -> None:
-        raise RuntimeError("SKIPPED: speculative_decoding is a standalone demo script")
+        """Sequential autoregressive decode: one target forward per token."""
+        with self._nvtx_range("baseline_sequential_decode"):
+            current_ids = self.input_ids.clone()
+            
+            # Generate tokens ONE AT A TIME using target model
+            # This is the slow baseline that speculative decoding improves
+            for _ in range(self.tokens_to_generate):
+                with torch.no_grad():
+                    logits = self.target_model(current_ids[:, -1:])
+                    next_token = torch.argmax(logits, dim=-1)
+                    current_ids = torch.cat([current_ids, next_token], dim=1)
+        
+        self._synchronize()
+    
+    def teardown(self) -> None:
+        """Clean up resources."""
+        self.target_model = None
+        self.input_ids = None
+        super().teardown()
+    
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(iterations=10, warmup=2)
+    
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return baseline decode metrics."""
+        return {
+            "decode.tokens_generated": float(self.tokens_to_generate),
+            "decode.target_forward_passes": float(self.tokens_to_generate),
+            "decode.method": 0.0,  # 0 = sequential, 1 = speculative
+        }
 
 
 def get_benchmark() -> BaseBenchmark:
-    return _SkipBenchmark()
+    return BaselineSequentialDecodeBenchmark()

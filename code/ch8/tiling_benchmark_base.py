@@ -152,3 +152,17 @@ class TilingBenchmarkBase(BaseBenchmark):
             extra_cuda_cflags=self.extra_cuda_cflags,
             extra_ldflags=self.extra_ldflags,
         )
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return tiling optimization metrics for roofline analysis."""
+        M, K, N = self.matrix_rows, self.shared_dim, self.matrix_cols
+        flops = 2.0 * M * K * N  # MAD operations
+        bytes_transferred = (M * K + K * N + M * N) * 4.0  # float32
+        return {
+            f"{self.nvtx_label}.matrix_m": float(M),
+            f"{self.nvtx_label}.matrix_k": float(K),
+            f"{self.nvtx_label}.matrix_n": float(N),
+            f"{self.nvtx_label}.flops": flops,
+            f"{self.nvtx_label}.bytes_transferred": bytes_transferred,
+            f"{self.nvtx_label}.arithmetic_intensity": flops / bytes_transferred if bytes_transferred > 0 else 0.0,
+        }

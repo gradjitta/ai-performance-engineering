@@ -18,9 +18,9 @@ class OptimizedContinuousBatchingBenchmark(BaseBenchmark):
         super().__init__()
         self.model: Optional[nn.Module] = None
         self.sample_queue: Optional[deque] = None
-        self.max_batch_size = 8
+        self.max_batch_size = 12
         self.hidden_dim = 1024
-        self.num_samples = 100
+        self.num_samples = 160
         tokens = self.num_samples * self.hidden_dim
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.num_samples),
@@ -77,6 +77,14 @@ class OptimizedContinuousBatchingBenchmark(BaseBenchmark):
     
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "continuous_batching.batch_size": float(getattr(self, 'batch_size', 0)),
+            "continuous_batching.seq_len": float(getattr(self, 'seq_len', 0)),
+            "continuous_batching.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:

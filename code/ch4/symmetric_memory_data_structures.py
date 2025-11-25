@@ -189,11 +189,8 @@ class DistributedTensor:
         # Make it symmetric for zero-copy access
         self.handle: Optional[dist.nn.SymmetricMemory] = None
         if symmetric_memory_available():
-            try:
-                self.handle = dist.nn.SymmetricMemory(self.local_shard)
-                self.local_shard = self.handle.buffer
-            except Exception:
-                pass
+            self.handle = dist.nn.SymmetricMemory(self.local_shard)
+            self.local_shard = self.handle.buffer
     
     def get_local_shard(self) -> torch.Tensor:
         """Get local shard of the distributed tensor."""
@@ -355,11 +352,8 @@ class SymmetricParameterCache:
         handle: Optional[dist.nn.SymmetricMemory] = None
         
         if symmetric_memory_available():
-            try:
-                handle = dist.nn.SymmetricMemory(local_tensor)
-                local_tensor = handle.buffer
-            except Exception:
-                pass
+            handle = dist.nn.SymmetricMemory(local_tensor)
+            local_tensor = handle.buffer
         
         # Add to cache
         self.cache[name] = CachedParameter(
@@ -469,13 +463,10 @@ class CrossGPUHashMap:
         self.values_handle: Optional[dist.nn.SymmetricMemory] = None
         
         if symmetric_memory_available():
-            try:
                 self.keys_handle = dist.nn.SymmetricMemory(self.keys)
                 self.values_handle = dist.nn.SymmetricMemory(self.values)
                 self.keys = self.keys_handle.buffer
                 self.values = self.values_handle.buffer
-            except Exception:
-                pass
     
     def _hash_to_rank(self, key: int) -> int:
         """Determine which rank owns this key."""
@@ -606,15 +597,12 @@ class LockFreeRingBuffer:
         self.tail_handle: Optional[dist.nn.SymmetricMemory] = None
         
         if symmetric_memory_available():
-            try:
                 self.buffer_handle = dist.nn.SymmetricMemory(self.buffer)
                 self.head_handle = dist.nn.SymmetricMemory(self.head)
                 self.tail_handle = dist.nn.SymmetricMemory(self.tail)
                 self.buffer = self.buffer_handle.buffer
                 self.head = self.head_handle.buffer
                 self.tail = self.tail_handle.buffer
-            except Exception:
-                pass
     
     def enqueue(self, data: torch.Tensor) -> bool:
         """

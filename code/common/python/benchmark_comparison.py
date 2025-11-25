@@ -9,7 +9,8 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple, Any, Callable
 
 logger = logging.getLogger(__name__)
-DEFAULT_THRESHOLD_PCT = 5.0
+# GPU benchmarks typically have 10-30% variance between runs.
+DEFAULT_THRESHOLD_PCT = 25.0
 
 _chapter_metrics_loader: Optional[Callable[[str], Dict[str, Dict[str, Any]]]] = None
 

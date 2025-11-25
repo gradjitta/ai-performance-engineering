@@ -21,8 +21,8 @@
 namespace {
 
 constexpr int kDefaultStreams = 3;
-constexpr int kDefaultBatches = 9;
-constexpr int kDefaultBatchElems = 1 << 16;          // 65,536 floats per batch
+constexpr int kDefaultBatches = 24;
+constexpr int kDefaultBatchElems = 1 << 17;          // 131,072 floats per batch
 constexpr int kThreadsPerBlock = 256;
 constexpr double kDefaultReleaseThresholdGiB = 2.0;
 
@@ -159,6 +159,7 @@ int main(int argc, char** argv) {
                                cudaMemcpyHostToDevice, stream));
 
     fused_bias_kernel<<<grid, block, 0, stream>>>(buffers.a, buffers.b, buffers.out, opts.batch_elems);
+    fused_bias_kernel<<<grid, block, 0, stream>>>(buffers.out, buffers.a, buffers.b, opts.batch_elems);
     CUDA_CHECK(cudaGetLastError());
 
     CUDA_CHECK(cudaMemcpyAsync(batch_out, buffers.out, batch_bytes,

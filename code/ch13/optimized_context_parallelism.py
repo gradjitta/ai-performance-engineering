@@ -362,3 +362,72 @@ if __name__ == "__main__":
     print(f"Peak memory: {result['peak_memory_gb']:.2f} GB (max across GPUs)")
     print(f"{'='*60}\n")
     print(f"Launch with: torchrun --nproc_per_node={args.cp_ranks} {__file__}")
+
+
+#============================================================================
+# Benchmark Harness Integration
+#============================================================================
+
+from common.python.benchmark_harness import BaseBenchmark, WorkloadMetadata
+
+
+class ContextParallelismBenchmark(BaseBenchmark):
+    """Benchmark harness wrapper for Context Parallelism."""
+
+    def __init__(self):
+        super().__init__()
+        self.cp = None
+        self.batch_size = 1
+        self.seq_length = 131072  # 128K
+        self.hidden_size = 4096
+        self.num_heads = 32
+        self._last = 0.0
+        
+        self._workload = WorkloadMetadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(self.seq_length),
+        )
+
+    def setup(self) -> None:
+        """Setup: Initialize Context Parallelism."""
+        self.cp = OptimizedContextParallelism(
+            batch_size=self.batch_size,
+            seq_length=self.seq_length,
+            hidden_size=self.hidden_size,
+            num_heads=self.num_heads,
+            num_layers=1,
+            cp_ranks=1,  # Single GPU for benchmark harness
+        )
+        self.cp.setup()
+
+    def benchmark_fn(self) -> None:
+        """Benchmark: Ring attention forward pass."""
+        if self.cp is not None:
+            self._last = self.cp.run()
+        self._synchronize()
+
+    def teardown(self) -> None:
+        """Teardown: Clean up resources."""
+        if self.cp is not None:
+            self.cp.cleanup()
+            self.cp = None
+        torch.cuda.empty_cache()
+
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(iterations=10, warmup=3)
+    
+    def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
+        return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        return {"context_parallelism.mode": "ring_attention"}
+
+    def validate_result(self) -> Optional[str]:
+        if self.cp is None:
+            return "Context parallelism not initialized"
+        return None
+
+
+def get_benchmark() -> BaseBenchmark:
+    """Factory function for benchmark discovery."""
+    return ContextParallelismBenchmark()

@@ -35,9 +35,10 @@ class BaselineTrainingSingleBenchmark(BaseBenchmark):
         self.targets: Optional[torch.Tensor] = None
         self.optimizer: Optional[torch.optim.Optimizer] = None
         self.criterion: Optional[nn.Module] = None
-        self.batch_size = 8
-        self.hidden_dim = 4096
-        self.train_steps = 4
+        # Heavier batch/hidden to highlight benefits of AMP/compile in the optimized path.
+        self.batch_size = 32
+        self.hidden_dim = 8192
+        self.train_steps = 6
         tokens = self.batch_size * self.hidden_dim
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -86,6 +87,13 @@ class BaselineTrainingSingleBenchmark(BaseBenchmark):
     
     def get_workload_metadata(self):
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "training_single.workload_size": float(getattr(self, 'batch_size', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:

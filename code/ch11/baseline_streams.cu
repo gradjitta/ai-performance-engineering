@@ -169,7 +169,7 @@ __global__ void scale_kernel_async(float* __restrict__ data, int n, float scale)
 }
 
 int main() {
-  constexpr int N = 1 << 21;
+  constexpr int N = 1 << 22;
   constexpr size_t BYTES = N * sizeof(float);
 
   float *h_a = nullptr, *h_b = nullptr;
@@ -186,10 +186,12 @@ int main() {
 
   cudaStream_t stream1 = nullptr, stream2 = nullptr;
   CUDA_CHECK(cudaStreamCreateWithFlags(&stream1, cudaStreamNonBlocking));
-  CUDA_CHECK(cudaStreamCreateWithPriority(&stream2, cudaStreamNonBlocking, 0));
+  // Baseline keeps all work on one stream to avoid overlap; reuse stream1.
+  stream2 = stream1;
 
-  CUDA_CHECK(cudaMemcpyAsync(d_a, h_a, BYTES, cudaMemcpyHostToDevice, stream1));
-  CUDA_CHECK(cudaMemcpyAsync(d_b, h_b, BYTES, cudaMemcpyHostToDevice, stream2));
+  // Baseline uses blocking copies and a single stream to avoid overlap.
+  CUDA_CHECK(cudaMemcpy(d_a, h_a, BYTES, cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_b, h_b, BYTES, cudaMemcpyHostToDevice));
 
   // Benchmark: Compare original, vectorized, and async versions
   cudaEvent_t start, stop;
@@ -205,12 +207,14 @@ int main() {
   dim3 grid((N + block.x - 1) / block.x);
   for (int i = 0; i < WARMUP; ++i) {
     scale_kernel<<<grid, block, 0, stream1>>>(d_a, N, 1.1f);
+    scale_kernel<<<grid, block, 0, stream1>>>(d_a, N, 1.05f);
   }
   CUDA_CHECK(cudaStreamSynchronize(stream1));
   
   CUDA_CHECK(cudaEventRecord(start, stream1));
   for (int i = 0; i < ITERS; ++i) {
     scale_kernel<<<grid, block, 0, stream1>>>(d_a, N, 1.1f);
+    scale_kernel<<<grid, block, 0, stream1>>>(d_a, N, 1.05f);
   }
   CUDA_CHECK(cudaEventRecord(stop, stream1));
   CUDA_CHECK(cudaEventSynchronize(stop));
@@ -280,11 +284,10 @@ int main() {
   }
   CUDA_CHECK(cudaGetLastError());
 
-  CUDA_CHECK(cudaMemcpyAsync(h_a, d_a, BYTES, cudaMemcpyDeviceToHost, stream1));
-  CUDA_CHECK(cudaMemcpyAsync(h_b, d_b, BYTES, cudaMemcpyDeviceToHost, stream2));
+  CUDA_CHECK(cudaMemcpy(h_a, d_a, BYTES, cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(h_b, d_b, BYTES, cudaMemcpyDeviceToHost));
 
   CUDA_CHECK(cudaStreamSynchronize(stream1));
-  CUDA_CHECK(cudaStreamSynchronize(stream2));
 
   // Measure sequential vs overlapped pipelines
   auto measure_pipeline = [&](bool overlap) -> double {
@@ -292,7 +295,7 @@ int main() {
     CUDA_CHECK(cudaMemsetAsync(d_a, 0, BYTES, stream1));
     CUDA_CHECK(cudaMemsetAsync(d_b, 0, BYTES, stream2));
     CUDA_CHECK(cudaStreamSynchronize(stream1));
-    CUDA_CHECK(cudaStreamSynchronize(stream2));
+    CUDA_CHECK(cudaStreamSynchronize(stream1));
 
     auto t0 = std::chrono::high_resolution_clock::now();
     if (!overlap) {
@@ -395,7 +398,6 @@ int main() {
   CUDA_CHECK(cudaEventDestroy(start));
   CUDA_CHECK(cudaEventDestroy(stop));
   CUDA_CHECK(cudaStreamDestroy(stream1));
-  CUDA_CHECK(cudaStreamDestroy(stream2));
   CUDA_CHECK(cudaFree(d_a));
   CUDA_CHECK(cudaFree(d_b));
   CUDA_CHECK(cudaFreeHost(h_a));

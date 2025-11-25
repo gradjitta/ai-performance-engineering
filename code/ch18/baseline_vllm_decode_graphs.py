@@ -6,10 +6,16 @@ import argparse
 import os
 import random
 import sys
-from dataclasses import dataclass
 import threading
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple
+from typing import Iterable, List, Sequence, Tuple, Optional, Dict
+
+# Workaround for importlib.util.spec_from_file_location loading:
+# Register this module in sys.modules so @dataclass works correctly
+if __name__ not in sys.modules:
+    sys.modules[__name__] = sys.modules.get(__name__, type(sys)(__name__))
+
+from dataclasses import dataclass
 
 import torch
 
@@ -23,10 +29,19 @@ from common.python.smoke import is_smoke_mode
 if is_smoke_mode():
     raise RuntimeError("SKIPPED: vllm_decode_graphs is disabled in smoke-test sweeps")
 
+# Defer decode_kernels import so the harness can load this module even if the
+# optional vLLM dependencies are absent. We still require CUDA; otherwise the
+# benchmark reports a clean SKIPPED reason instead of silently falling back.
+DECODE_KERNEL_AVAILABLE = False
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+build_decode_kernel = None
 try:
-    from ch18.decode_kernels import DEVICE, build_decode_kernel  # noqa: E402
-except Exception as exc:  # pragma: no cover - import guard for CI sandboxes
-    raise RuntimeError(f"SKIPPED: vllm_decode_graphs dependencies unavailable ({exc})")
+    from ch18.decode_kernels import DEVICE as _DEV, build_decode_kernel as _build  # noqa: E402
+    DEVICE = _DEV
+    build_decode_kernel = _build
+    DECODE_KERNEL_AVAILABLE = True
+except ImportError:
+    pass
 
 
 def default_trace(num_steps: int = 24, seed: int = 0) -> List[int]:
@@ -55,15 +70,29 @@ class KVBlock:
 class NaiveKVLayout:
     """Compacts every step, which models the "micro-motion" overhead."""
 
-    def __init__(self, blocks: Sequence[int] = (64, 64, 128)) -> None:
+    def __init__(
+        self,
+        blocks: Sequence[int] = (64, 96, 128, 192),
+        *,
+        hidden: int = 256,
+        device: str | torch.device = DEVICE,
+        dtype: torch.dtype = torch.float32,
+    ) -> None:
         self.blocks: List[KVBlock] = [KVBlock(b) for b in blocks]
+        # Scratch buffers model eager KV compaction/copy per block.
+        self._scratch: List[torch.Tensor] = [
+            torch.zeros((b, hidden), device=device, dtype=dtype) for b in blocks
+        ]
 
     def simulate_step(self, tokens_written: int) -> int:
         """Write tokens into blocks, then compact all blocks eagerly."""
         compactions = 0
-        for block in self.blocks:
+        for block, scratch in zip(self.blocks, self._scratch):
             block.fill(tokens_written)
             block.compact()
+            # Simulate a zero-fill of the block during compaction to model realistic copy traffic.
+            scratch.fill_(0.0)
+            scratch.add_(float(tokens_written))
             compactions += 1
         return compactions
 
@@ -85,11 +114,12 @@ class BaselineDecodeDriver:
     aggressive KV compaction.
     """
 
-    def __init__(self, trace: Iterable[int] | None = None, hidden: int = 128) -> None:
+    def __init__(self, trace: Iterable[int] | None = None, hidden: int = 256) -> None:
         self.trace = list(trace) if trace is not None else default_trace()
         self.hidden = hidden
         self.decode_kernel = build_decode_kernel(hidden=self.hidden, max_batch=max(self.trace or [1]))
-        self.kv_layout = NaiveKVLayout()
+        dtype = torch.float16 if getattr(self.decode_kernel, "backend", "") == "vllm" else torch.float32
+        self.kv_layout = NaiveKVLayout(hidden=self.hidden, device=DEVICE, dtype=dtype)
         self.captured_shapes: set[Tuple[int, int]] = set()
 
     def run(self) -> DecodeMetrics:
@@ -182,6 +212,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    if not DECODE_KERNEL_AVAILABLE:
+        raise RuntimeError("SKIPPED: vllm_decode_graphs dependencies unavailable for CLI run")
     args = parse_args()
     trace = default_trace(num_steps=args.steps, seed=args.seed)
     driver = BaselineDecodeDriver(trace=trace, hidden=args.hidden)
@@ -193,16 +225,60 @@ def main() -> None:
         export_prom_metrics("baseline", metrics, backend=backend, port=args.prom_port, duration_s=args.prom_duration)
 
 
-class _SkipBenchmark(BaseBenchmark):
+class VLLMDecodeGraphsBenchmark(BaseBenchmark):
+    """
+    Runs the ragged decode driver under the harness so we capture graph
+    recaptures, allocator growth, and eager KV compaction costs.
+    """
+
+    def __init__(self, steps: int = 32, hidden: int = 192, seed: int = 0) -> None:
+        if not DECODE_KERNEL_AVAILABLE:
+            raise RuntimeError("SKIPPED: vllm_decode_graphs dependencies unavailable")
+        super().__init__()
+        self.steps = steps
+        self.hidden = hidden
+        self.seed = seed
+        self._trace: List[int] = default_trace(num_steps=self.steps, seed=self.seed)
+        self._driver: Optional[BaselineDecodeDriver] = None
+        self._last_metrics: Optional[DecodeMetrics] = None
+
     def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=1, warmup=0)
+        # Keep iterations modest—the kernel is compiled once and re-used.
+        return BenchmarkConfig(
+            iterations=8,
+            warmup=2,
+            percentiles=[50, 75, 90, 99],
+        )
+
+    def setup(self) -> None:
+        torch.manual_seed(self.seed)
+        self._driver = BaselineDecodeDriver(trace=self._trace, hidden=self.hidden)
 
     def benchmark_fn(self) -> None:
-        raise RuntimeError("SKIPPED: vllm_decode_graphs is a CLI demonstration script")
+        if self._driver is None:
+            raise RuntimeError("SKIPPED: decode driver not initialized")
+        torch.cuda.synchronize()
+        self._last_metrics = self._driver.run()
+        torch.cuda.synchronize()
+
+    def teardown(self) -> None:
+        super().teardown()
+        self._driver = None
+
+    def get_custom_metrics(self) -> Optional[Dict[str, float]]:
+        if self._last_metrics is None:
+            return None
+        return {
+            "vllm_decode_graphs.steps": float(self._last_metrics.steps),
+            "vllm_decode_graphs.tokens": float(self._last_metrics.tokens),
+            "vllm_decode_graphs.graph_recaptures": float(self._last_metrics.graph_recaptures),
+            "vllm_decode_graphs.allocator_mb": float(self._last_metrics.allocator_bytes) / (1024 * 1024),
+            "vllm_decode_graphs.compactions": float(self._last_metrics.compactions),
+        }
 
 
 def get_benchmark() -> BaseBenchmark:
-    return _SkipBenchmark()
+    return VLLMDecodeGraphsBenchmark()
 
 
 if __name__ == "__main__":

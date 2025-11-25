@@ -105,25 +105,19 @@ def detect_cpu_info() -> Dict[str, Any]:
         info["cpu_type"] = "ARM"
         
         # Check for Neoverse/Grace (ARM-based superchip CPU)
-        try:
-            with open('/proc/cpuinfo', 'r') as f:
-                cpuinfo = f.read()
-                if 'ARM' in cpuinfo or 'Neoverse' in cpuinfo:
-                    info["cpu_type"] = "ARM Neoverse"
-                    info["is_grace"] = True
-        except:
-            pass
+        with open('/proc/cpuinfo', 'r') as f:
+            cpuinfo = f.read()
+            if 'ARM' in cpuinfo or 'Neoverse' in cpuinfo:
+                info["cpu_type"] = "ARM Neoverse"
+                info["is_grace"] = True
     elif info["architecture"] in ["x86_64", "AMD64"]:
         info["cpu_type"] = "x86_64"
-        try:
-            with open('/proc/cpuinfo', 'r') as f:
-                cpuinfo = f.read()
-                if 'Intel' in cpuinfo:
-                    info["cpu_type"] = "Intel x86_64"
-                elif 'AMD' in cpuinfo:
-                    info["cpu_type"] = "AMD x86_64"
-        except:
-            pass
+        with open('/proc/cpuinfo', 'r') as f:
+            cpuinfo = f.read()
+            if 'Intel' in cpuinfo:
+                info["cpu_type"] = "Intel x86_64"
+            elif 'AMD' in cpuinfo:
+                info["cpu_type"] = "AMD x86_64"
     
     # Detect NUMA nodes
     try:
@@ -133,8 +127,8 @@ def detect_cpu_info() -> Dict[str, Any]:
             for line in result.stdout.split('\n'):
                 if 'available:' in line:
                     info["numa_nodes"] = int(line.split(':')[1].split()[0])
-    except:
-        info["numa_nodes"] = 1  # Assume 1 if detection fails
+    except FileNotFoundError:
+        info["numa_nodes"] = 1  # numactl not installed
     
     return info
 
@@ -173,8 +167,8 @@ def detect_interconnect_type(cpu_info: Dict[str, Any], gpu_info: Dict[str, Any])
             return "PCIe Gen4 (~64 GB/s)"
         elif 'PCIe Gen3' in result.stdout or 'LnkCap:.*Speed 8GT/s' in result.stdout:
             return "PCIe Gen3 (~32 GB/s)"
-    except:
-        pass
+    except FileNotFoundError:
+        pass  # lspci not installed
     
     return "PCIe (~16-128 GB/s)"
 

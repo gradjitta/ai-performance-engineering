@@ -1,6 +1,7 @@
 """Python harness wrapper for optimized_cutlass_gemm.cu."""
 
 from __future__ import annotations
+from typing import Optional
 
 import sys
 from pathlib import Path
@@ -27,6 +28,15 @@ class OptimizedCutlassGemmBenchmark(CudaBinaryBenchmark):
             timeout_seconds=120,
         )
 
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific compute metrics."""
+        base_metrics = super().get_custom_metrics() or {}
+        base_metrics.update({
+            "compute.uses_tensor_cores": 1.0,
+            "compute.uses_cutlass": 1.0,
+        })
+        return base_metrics
 
 def get_benchmark() -> OptimizedCutlassGemmBenchmark:
     """Factory for discover_benchmarks()."""

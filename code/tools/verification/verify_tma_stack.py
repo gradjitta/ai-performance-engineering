@@ -23,12 +23,12 @@ from torch.utils.cpp_extension import load_inline
 os.environ.setdefault("MAX_JOBS", "1")
 
 # Silence noisy torch dynamo logging in this short verification script.
-try:  # pragma: no cover - best-effort
+try:
     import torch._logging as torch_logging  # type: ignore[attr-defined]
 
     torch_logging.set_logs(dynamo=False)
-except Exception:
-    pass
+except (ImportError, AttributeError):
+    pass  # torch._logging not available in this PyTorch version
 
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]

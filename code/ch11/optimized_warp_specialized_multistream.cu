@@ -59,8 +59,8 @@ __global__ void simple_warp_specialized_kernel(const float* __restrict__ A,
 }
 
 void run_optimized() {
-    constexpr int batches = 8;
-    constexpr int num_streams = 2;
+    constexpr int batches = 32;
+    constexpr int num_streams = 3;
     const size_t bytes = TILE_ELEMS * sizeof(float);
 
     std::vector<float> h_A(batches * TILE_ELEMS);
@@ -90,6 +90,7 @@ void run_optimized() {
         cudaMemcpyAsync(dB, h_B.data() + b * TILE_ELEMS, bytes, cudaMemcpyHostToDevice, st);
 
         simple_warp_specialized_kernel<<<1, THREADS, 3 * bytes, st>>>(dA, dB, dC);
+        simple_warp_specialized_kernel<<<1, THREADS, 3 * bytes, st>>>(dC, dA, dB);
 
         cudaMemcpyAsync(h_C.data() + b * TILE_ELEMS, dC, bytes, cudaMemcpyDeviceToHost, st);
 

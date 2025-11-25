@@ -55,5 +55,13 @@ class DTensorMeshBenchmark(BaseBenchmark):
         return self._workload
 
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return precision/quantization metrics."""
+        return {
+            "dtensor_mesh.batch_size": float(getattr(self, 'batch_size', 0)),
+            "dtensor_mesh.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+            "dtensor_mesh.precision_bits": 32.0,  # Override: 32=fp32, 16=fp16, 8=fp8, 4=fp4
+        }
+
 def get_benchmark() -> BaseBenchmark:
     return DTensorMeshBenchmark()

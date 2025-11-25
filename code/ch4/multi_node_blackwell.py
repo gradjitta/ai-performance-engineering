@@ -53,8 +53,8 @@ def detect_gb200_gb300() -> bool:
                 cpuinfo = f.read()
                 if 'ARM' in cpuinfo or 'Neoverse' in cpuinfo:
                     return True
-    except:
-        pass
+    except FileNotFoundError:
+        pass  # /proc/cpuinfo doesn't exist (not Linux)
     return False
 
 def setup_8xb200_optimized(

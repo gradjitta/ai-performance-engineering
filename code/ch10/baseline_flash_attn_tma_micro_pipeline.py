@@ -1,6 +1,7 @@
 """Baseline FlashAttention-style micro-pipeline with blocking copies."""
 
 from __future__ import annotations
+from typing import Optional
 
 from pathlib import Path
 
@@ -25,6 +26,15 @@ class BaselineFlashAttnTmaMicroPipelineBenchmark(CudaBinaryBenchmark):
             requires_pipeline_api=True,
         )
 
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific pipeline metrics."""
+        base_metrics = super().get_custom_metrics() or {}
+        base_metrics.update({
+            "pipeline.uses_clusters": 0.0,
+            "pipeline.uses_pipeline": 0.0,
+        })
+        return base_metrics
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineFlashAttnTmaMicroPipelineBenchmark()

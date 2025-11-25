@@ -16,11 +16,14 @@ class BaselineStreamOrderedBenchmark(BaseBenchmark):
     def __init__(self):
         super().__init__()
         self.model: Optional[nn.Module] = None
-        self.requests: Optional[list[torch.Tensor]] = None
-        self.outputs: Optional[list[torch.Tensor]] = None
+        self.host_requests: Optional[list[torch.Tensor]] = None
+        self.host_outputs: Optional[list[torch.Tensor]] = None
+        self.device_inputs: Optional[list[torch.Tensor]] = None
+        self.device_outputs: Optional[list[torch.Tensor]] = None
         self.batch_size = 64
-        self.hidden_dim = 1024
-        self.num_streams = 8
+        self.hidden_dim = 512
+        self.num_streams = 4
+        self.num_requests = 16
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -33,40 +36,72 @@ class BaselineStreamOrderedBenchmark(BaseBenchmark):
             nn.Linear(self.hidden_dim * 2, self.hidden_dim),
         ).to(self.device).half().eval()
 
-        self.requests = [
-            torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float16)
-            for _ in range(self.num_streams)
+        self.host_requests = [
+            torch.randn(
+                self.batch_size, self.hidden_dim, device="cpu", dtype=torch.float16, pin_memory=True
+            )
+            for _ in range(self.num_requests)
         ]
-        self.outputs = [torch.empty_like(req) for req in self.requests]
+        self.host_outputs = [
+            torch.empty_like(req, device="cpu", pin_memory=True) for req in self.host_requests
+        ]
+        self.device_inputs = [
+            torch.empty_like(req, device=self.device) for req in self.host_requests
+        ]
+        self.device_outputs = [
+            torch.empty_like(inp, device=self.device) for inp in self.device_inputs
+        ]
         self._synchronize()
-        tokens = float(self.batch_size * self.hidden_dim * self.num_streams)
+        tokens = float(self.batch_size * self.hidden_dim * self.num_requests)
         self.register_workload_metadata(
             tokens_per_iteration=tokens,
-            requests_per_iteration=float(self.num_streams),
+            requests_per_iteration=float(self.num_requests),
         )
 
     def benchmark_fn(self) -> None:
         assert self.model is not None
-        assert self.requests is not None and self.outputs is not None
+        assert self.host_requests is not None
+        assert self.host_outputs is not None
+        assert self.device_inputs is not None
+        assert self.device_outputs is not None
 
         with self._nvtx_range("stream_ordered"):
             with torch.no_grad():
-                for request, output in zip(self.requests, self.outputs):
-                    output.copy_(self.model(request))
+                for h_req, h_out, d_in, d_out in zip(
+                    self.host_requests, self.host_outputs, self.device_inputs, self.device_outputs
+                ):
+                    d_in.copy_(h_req, non_blocking=True)
+                    out = self.model(d_in)
+                    d_out.copy_(out)
+                    h_out.copy_(d_out, non_blocking=True)
+                    torch.cuda.synchronize()
         self._synchronize()
 
     def teardown(self) -> None:
         self.model = None
-        self.requests = None
-        self.outputs = None
+        self.host_requests = None
+        self.host_outputs = None
+        self.device_inputs = None
+        self.device_outputs = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=50, warmup=5)
+        return BenchmarkConfig(iterations=80, warmup=8)
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return CUDA stream metrics."""
+        return {
+            "stream_ordered.num_streams": float(getattr(self, 'num_streams', 1)),
+            "stream_ordered.num_operations": float(getattr(self, 'num_operations', 1)),
+            "stream_ordered.has_overlap": 0.0,  # 0=baseline (no overlap), 1=optimized
+        }
 
     def validate_result(self) -> Optional[str]:
-        if self.outputs is None:
+        if self.host_outputs is None:
             return "Outputs not initialized"
+        for out in self.host_outputs:
+            if not torch.isfinite(out).all():
+                return "Output contains non-finite values"
         return None
 
 

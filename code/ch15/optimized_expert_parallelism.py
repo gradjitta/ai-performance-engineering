@@ -185,6 +185,14 @@ class OptimizedExpertParallelismBenchmark(BaseBenchmark):
         return self._workload
 
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "expert_parallelism.batch_size": float(getattr(self, 'batch_size', 0)),
+            "expert_parallelism.seq_len": float(getattr(self, 'seq_len', 0)),
+            "expert_parallelism.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
+
 def get_benchmark() -> BaseBenchmark:
     """Factory for harness discovery."""
     return OptimizedExpertParallelismBenchmark()

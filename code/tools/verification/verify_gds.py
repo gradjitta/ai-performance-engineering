@@ -125,8 +125,8 @@ def check_cufile_bindings():
         try:
             import cuda
             print(f"  [OK] CUDA Python version: {cuda.__version__ if hasattr(cuda, '__version__') else 'unknown'}")
-        except:
-            pass
+        except ImportError:
+            pass  # cuda-python not installed
         
         return True
     except ImportError as e:

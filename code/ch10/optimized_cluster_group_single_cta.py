@@ -1,6 +1,7 @@
 """Optimized single-CTA fallback for cooperative group reduction workload."""
 
 from __future__ import annotations
+from typing import Optional
 
 import sys
 from pathlib import Path
@@ -27,6 +28,15 @@ class OptimizedClusterGroupSingleCtaBenchmark(CudaBinaryBenchmark):
             timeout_seconds=60,
         )
 
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific pipeline metrics."""
+        base_metrics = super().get_custom_metrics() or {}
+        base_metrics.update({
+            "pipeline.uses_clusters": 1.0,
+            "pipeline.uses_pipeline": 1.0,
+        })
+        return base_metrics
 
 def get_benchmark() -> OptimizedClusterGroupSingleCtaBenchmark:
     return OptimizedClusterGroupSingleCtaBenchmark()

@@ -65,6 +65,13 @@ class OptimizedILPBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return kernel fundamentals metrics."""
+        return {
+            "gemm_ilp.elements": float(getattr(self, 'N', 0)),
+            "gemm_ilp.iterations": float(getattr(self, 'repeats', 1)),
+        }
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.output is None:

@@ -7,12 +7,17 @@ third_party/wheels/flash_attn*.whl
 third_party/wheels/vllm*.whl
 third_party/vllm-src/
 third_party/te_sm100a_env.sh
+.env
+.env.local
+config/.env
+config/.env.local
 benchmark_test_results.json
 benchmark_test_results.md
 benchmark_status_table.json
 benchmark_status_table.txt
 benchmark_results/
 checkpoints/
+benchmark_test_results.md
 .torch_inductor/
 review_issues.json
 tmp_bench/
@@ -114,6 +119,14 @@ single_gpu_load_test.json
 # Generated summary files
 *summary.md
 **/summary.md
+
+# LLM-generated analysis outputs
+llm_analysis/
+**/llm_analysis/
+llm_patches/
+**/llm_analysis/
+llm_patches_test/
+**/llm_patches_test/
 
 # Power and performance metrics
 power_results/

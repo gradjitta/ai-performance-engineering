@@ -134,6 +134,13 @@ class OptimizedIlpBasicBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "ilp_basic.workload_size": float(getattr(self, 'batch_size', 0) or getattr(self, 'N', 0) or 0),
+        }
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result by comparing to baseline computation.
         

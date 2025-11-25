@@ -68,6 +68,13 @@ class BaselineKubernetesBenchmark(BaseBenchmark):
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(iterations=30, warmup=5)
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "kubernetes.workload_size": float(getattr(self, 'batch_size', 0)),
+        }
+
     def validate_result(self) -> Optional[str]:
         return None
 

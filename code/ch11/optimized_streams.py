@@ -26,7 +26,7 @@ class OptimizedStreamsBenchmark(BaseBenchmark):
         self.stream1 = None
         self.stream2 = None
         self.stream3 = None
-        self.N = 5_000_000
+        self.N = 12_000_000
     
     def setup(self) -> None:
         """Setup: Initialize tensors and streams."""
@@ -58,17 +58,18 @@ class OptimizedStreamsBenchmark(BaseBenchmark):
             # Launch kernels on different streams - they can overlap
             with torch.cuda.stream(self.stream1):
                 self.data1 = self.data1 * 2.0
+                self.data1 = self.data1 * 1.1 + 0.5
             
             with torch.cuda.stream(self.stream2):
                 self.data2 = self.data2 * 2.0
+                self.data2 = self.data2 * 1.1 + 0.5
             
             with torch.cuda.stream(self.stream3):
                 self.data3 = self.data3 * 2.0
+                self.data3 = self.data3 * 1.1 + 0.5
             
-            # Synchronize all streams
-            self.stream1.synchronize()
-            self.stream2.synchronize()
-            self.stream3.synchronize()
+            # Synchronize once across streams to let work overlap.
+            torch.cuda.synchronize()
         self._synchronize()
 
     
@@ -85,12 +86,20 @@ class OptimizedStreamsBenchmark(BaseBenchmark):
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark configuration."""
         return BenchmarkConfig(
-            iterations=30,
-            warmup=5,
+            iterations=20,
+            warmup=4,
             enable_memory_tracking=False,
             enable_profiling=False,
         )
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return CUDA stream metrics."""
+        return {
+            "streams.num_streams": float(getattr(self, 'num_streams', 1)),
+            "streams.num_operations": float(getattr(self, 'num_operations', 1)),
+            "streams.has_overlap": 0.0,  # 0=baseline (no overlap), 1=optimized
+        }
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.data1 is None:
@@ -111,4 +120,3 @@ class OptimizedStreamsBenchmark(BaseBenchmark):
 def get_benchmark() -> OptimizedStreamsBenchmark:
     """Factory function for benchmark discovery."""
     return OptimizedStreamsBenchmark()
-

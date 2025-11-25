@@ -93,6 +93,14 @@ class OptimizedAttentionFlexBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return precision/quantization metrics."""
+        return {
+            "attention_standard.batch_size": float(getattr(self, 'batch_size', 0)),
+            "attention_standard.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+            "attention_standard.precision_bits": 32.0,  # Override: 32=fp32, 16=fp16, 8=fp8, 4=fp4
+        }
+
     def validate_result(self) -> Optional[str]:
         if self.model is None:
             return "Model not initialized"

@@ -162,13 +162,10 @@ def capture_bins_from_vllm_config(vllm_config: object) -> List[int]:
     Extract cudagraph capture batch sizes from a VllmConfig instance.
     Falls back to DEFAULT_CAPTURE_BATCH_SIZES if unavailable.
     """
-    try:
-        comp_cfg = getattr(vllm_config, "compilation_config", None)
-        sizes = getattr(comp_cfg, "cudagraph_capture_sizes", None)
-        if sizes:
-            return list(sizes)
-    except Exception:
-        pass
+    comp_cfg = getattr(vllm_config, "compilation_config", None)
+    sizes = getattr(comp_cfg, "cudagraph_capture_sizes", None)
+    if sizes:
+        return list(sizes)
     return list(DEFAULT_CAPTURE_BATCH_SIZES)
 
 
@@ -192,10 +189,7 @@ def pad_batch_to_capture(
     Returns None if no capture size can hold the batch.
     """
     if pad_fn is not None:
-        try:
             return pad_fn(batch)
-        except Exception:
-            pass
     for size in sorted(set(int(x) for x in capture_sizes)):
         if batch <= size:
             return size

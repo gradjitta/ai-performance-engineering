@@ -133,6 +133,13 @@ class OptimizedWarpDivergenceILPBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return kernel fundamentals metrics."""
+        return {
+            "warp_divergence_ilp.elements": float(getattr(self, 'N', 0)),
+            "warp_divergence_ilp.iterations": float(getattr(self, 'repeats', 1)),
+        }
+
     def validate_result(self) -> Optional[str]:
         if self.output is None:
             return "Output tensor not initialized"

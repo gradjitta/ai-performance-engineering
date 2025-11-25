@@ -1,0 +1,588 @@
+"""
+optimized_fp8_static_demo.py - Static FP8 Quantization (Ch13)
+
+WHAT: Static quantization calibrates scale factors ONCE during profiling,
+then uses fixed scales during inference.
+
+WHY: Dynamic quantization computes scales every forward pass:
+  - Dynamic: Compute amax → derive scale → quantize → GEMM
+  - Static: Use pre-computed scale → quantize → GEMM
+  
+Static saves compute and is deterministic for deployment.
+
+WORKFLOW:
+  1. Calibration pass: Run representative data, collect amax statistics
+  2. Compute scales: scales = amax / fp8_max (often with margin)
+  3. Freeze scales: Store as model attributes
+  4. Inference: Use frozen scales, no amax computation
+
+WHEN TO USE:
+  - Production inference where latency matters
+  - When input distribution is stable (known batch sizes, similar inputs)
+  - Edge deployment where compute is limited
+
+TRADE-OFF:
+  - Better latency than dynamic
+  - Requires calibration dataset
+  - Less accurate if inference data differs from calibration
+
+REQUIREMENTS:
+  - PyTorch 2.1+ with FP8 support
+  - Calibration dataset
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+repo_root = Path(__file__).parent.parent
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
+import torch
+import torch.nn as nn
+from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
+from contextlib import contextmanager
+
+from common.python.benchmark_harness import (
+    BaseBenchmark,
+    BenchmarkConfig,
+    WorkloadMetadata,
+)
+
+
+@dataclass
+class CalibrationStats:
+    """Statistics collected during calibration."""
+    amax_history: List[float] = field(default_factory=list)
+    running_amax: float = 0.0
+    num_samples: int = 0
+    
+    def update(self, tensor: torch.Tensor):
+        """Update statistics with new tensor."""
+        current_amax = tensor.abs().max().item()
+        self.amax_history.append(current_amax)
+        self.running_amax = max(self.running_amax, current_amax)
+        self.num_samples += 1
+    
+    def get_scale(self, fp8_max: float = 448.0, margin: float = 0.0) -> float:
+        """Compute final scale factor."""
+        amax = self.running_amax * (1.0 + margin)
+        return max(amax / fp8_max, 1e-12)
+    
+    def get_percentile_scale(
+        self,
+        percentile: float = 99.9,
+        fp8_max: float = 448.0,
+    ) -> float:
+        """Compute scale from percentile (handles outliers better)."""
+        if not self.amax_history:
+            return 1e-12
+        
+        sorted_amax = sorted(self.amax_history)
+        idx = int(len(sorted_amax) * percentile / 100)
+        amax = sorted_amax[min(idx, len(sorted_amax) - 1)]
+        return max(amax / fp8_max, 1e-12)
+
+
+class StaticFP8Linear(nn.Module):
+    """Linear layer with static FP8 quantization.
+    
+    Modes:
+    - calibration: Collect amax statistics
+    - inference: Use frozen scales
+    """
+    
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        device: Optional[torch.device] = None,
+        dtype: torch.dtype = torch.float32,
+    ):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        
+        # Standard parameters
+        self.weight = nn.Parameter(
+            torch.empty(out_features, in_features, device=device, dtype=dtype)
+        )
+        if bias:
+            self.bias = nn.Parameter(
+                torch.empty(out_features, device=device, dtype=dtype)
+            )
+        else:
+            self.register_parameter('bias', None)
+        
+        # FP8 constants
+        self.fp8_max = 448.0  # E4M3
+        
+        # Static scales (frozen after calibration)
+        self.register_buffer('input_scale', torch.tensor(1.0))
+        self.register_buffer('weight_scale', torch.tensor(1.0))
+        self.register_buffer('is_calibrated', torch.tensor(False))
+        
+        # Calibration state
+        self._calibrating = False
+        self._input_stats = CalibrationStats()
+        self._weight_stats = CalibrationStats()
+        
+        self._reset_parameters()
+    
+    def _reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=5**0.5)
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
+    
+    @contextmanager
+    def calibration_mode(self):
+        """Context manager for calibration mode."""
+        self._calibrating = True
+        self._input_stats = CalibrationStats()
+        self._weight_stats = CalibrationStats()
+        try:
+            yield
+        finally:
+            self._calibrating = False
+    
+    def freeze_scales(self, margin: float = 0.0, use_percentile: bool = True):
+        """Freeze scales after calibration."""
+        if use_percentile:
+            input_scale = self._input_stats.get_percentile_scale(99.9, self.fp8_max)
+            weight_scale = self._weight_stats.get_percentile_scale(99.9, self.fp8_max)
+        else:
+            input_scale = self._input_stats.get_scale(self.fp8_max, margin)
+            weight_scale = self._weight_stats.get_scale(self.fp8_max, margin)
+        
+        self.input_scale.fill_(input_scale)
+        self.weight_scale.fill_(weight_scale)
+        self.is_calibrated.fill_(True)
+        
+        return {
+            "input_scale": input_scale,
+            "weight_scale": weight_scale,
+            "input_samples": self._input_stats.num_samples,
+            "input_max_amax": self._input_stats.running_amax,
+            "weight_max_amax": self._weight_stats.running_amax,
+        }
+    
+    def _quantize_static(
+        self,
+        tensor: torch.Tensor,
+        scale: torch.Tensor,
+    ) -> torch.Tensor:
+        """Quantize with pre-computed scale (no amax computation)."""
+        scaled = tensor / scale
+        clamped = torch.clamp(scaled, -self.fp8_max, self.fp8_max)
+        return clamped.round()
+    
+    def _dequantize(
+        self,
+        tensor: torch.Tensor,
+        input_scale: torch.Tensor,
+        weight_scale: torch.Tensor,
+    ) -> torch.Tensor:
+        """Dequantize output."""
+        return tensor * input_scale * weight_scale
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+        
+        In calibration mode: collect stats, run in full precision
+        In inference mode: use static FP8 quantization
+        """
+        original_dtype = x.dtype
+        
+        if self._calibrating:
+            # Calibration: collect statistics
+            self._input_stats.update(x)
+            self._weight_stats.update(self.weight)
+            
+            # Run in full precision during calibration
+            output = torch.nn.functional.linear(x, self.weight, self.bias)
+            
+        elif self.is_calibrated:
+            # Static FP8 inference
+            x_q = self._quantize_static(x, self.input_scale)
+            w_q = self._quantize_static(self.weight, self.weight_scale)
+            
+            output_q = torch.nn.functional.linear(x_q, w_q, bias=None)
+            output = self._dequantize(output_q, self.input_scale, self.weight_scale)
+            
+            if self.bias is not None:
+                output = output + self.bias
+                
+            output = output.to(original_dtype)
+            
+        else:
+            # Not calibrated - run in full precision with warning
+            output = torch.nn.functional.linear(x, self.weight, self.bias)
+        
+        return output
+    
+    def get_calibration_info(self) -> dict:
+        """Get calibration information."""
+        return {
+            "is_calibrated": self.is_calibrated.item(),
+            "input_scale": self.input_scale.item(),
+            "weight_scale": self.weight_scale.item(),
+            "calibration_samples": self._input_stats.num_samples,
+        }
+
+
+class StaticFP8Model(nn.Module):
+    """Wrapper to calibrate and convert a model to static FP8."""
+    
+    def __init__(self, model: nn.Module):
+        super().__init__()
+        self.model = model
+        self._fp8_layers: List[StaticFP8Linear] = []
+        
+        # Find all Linear layers and track for calibration
+        self._find_fp8_layers(model)
+    
+    def _find_fp8_layers(self, module: nn.Module):
+        """Find all StaticFP8Linear layers."""
+        for child in module.children():
+            if isinstance(child, StaticFP8Linear):
+                self._fp8_layers.append(child)
+            else:
+                self._find_fp8_layers(child)
+    
+    @classmethod
+    def convert_linear_layers(
+        cls,
+        model: nn.Module,
+        dtype: torch.dtype = torch.float32,
+    ) -> 'StaticFP8Model':
+        """Convert all Linear layers to StaticFP8Linear."""
+        
+        def replace_linear(module: nn.Module) -> nn.Module:
+            for name, child in module.named_children():
+                if isinstance(child, nn.Linear):
+                    # Replace with StaticFP8Linear
+                    fp8_linear = StaticFP8Linear(
+                        child.in_features,
+                        child.out_features,
+                        bias=child.bias is not None,
+                        device=child.weight.device,
+                        dtype=dtype,
+                    )
+                    # Copy weights
+                    with torch.no_grad():
+                        fp8_linear.weight.copy_(child.weight)
+                        if child.bias is not None:
+                            fp8_linear.bias.copy_(child.bias)
+                    setattr(module, name, fp8_linear)
+                else:
+                    replace_linear(child)
+            return module
+        
+        model = replace_linear(model)
+        return cls(model)
+    
+    @contextmanager
+    def calibration_mode(self):
+        """Enable calibration mode for all FP8 layers."""
+        contexts = [layer.calibration_mode() for layer in self._fp8_layers]
+        for ctx in contexts:
+            ctx.__enter__()
+        try:
+            yield
+        finally:
+            for ctx in contexts:
+                ctx.__exit__(None, None, None)
+    
+    def calibrate(
+        self,
+        dataloader,
+        num_batches: int = 100,
+        device: torch.device = torch.device('cuda'),
+    ) -> Dict[str, dict]:
+        """Run calibration on a dataset.
+        
+        Args:
+            dataloader: DataLoader with calibration data
+            num_batches: Number of batches to use for calibration
+            device: Device to run calibration on
+            
+        Returns:
+            Dictionary of layer calibration statistics
+        """
+        self.model.eval()
+        
+        with torch.no_grad(), self.calibration_mode():
+            for i, batch in enumerate(dataloader):
+                if i >= num_batches:
+                    break
+                
+                # Handle different batch formats
+                if isinstance(batch, (list, tuple)):
+                    x = batch[0].to(device)
+                elif isinstance(batch, dict):
+                    x = batch['input_ids'].to(device) if 'input_ids' in batch else batch['x'].to(device)
+                else:
+                    x = batch.to(device)
+                
+                # Forward pass to collect statistics
+                _ = self.model(x)
+        
+        # Freeze all scales
+        results = {}
+        for i, layer in enumerate(self._fp8_layers):
+            results[f"layer_{i}"] = layer.freeze_scales()
+        
+        return results
+    
+    def forward(self, *args, **kwargs):
+        return self.model(*args, **kwargs)
+    
+    def get_all_scales(self) -> Dict[str, Tuple[float, float]]:
+        """Get all frozen scales."""
+        scales = {}
+        for i, layer in enumerate(self._fp8_layers):
+            scales[f"layer_{i}"] = (
+                layer.input_scale.item(),
+                layer.weight_scale.item(),
+            )
+        return scales
+
+
+#============================================================================
+# Benchmark
+#============================================================================
+
+def benchmark_static_vs_dynamic():
+    """Compare static vs dynamic FP8 quantization."""
+    print("Static vs Dynamic FP8 Quantization")
+    print("=" * 60)
+    
+    if not torch.cuda.is_available():
+        print("CUDA not available!")
+        return
+    
+    device = torch.device("cuda")
+    print(f"Device: {torch.cuda.get_device_name()}")
+    print()
+    
+    # Create a simple model
+    class SimpleModel(nn.Module):
+        def __init__(self, dim: int, num_layers: int = 4):
+            super().__init__()
+            self.layers = nn.ModuleList([
+                nn.Linear(dim, dim) for _ in range(num_layers)
+            ])
+        
+        def forward(self, x):
+            for layer in self.layers:
+                x = torch.relu(layer(x))
+            return x
+    
+    dim = 4096
+    num_layers = 8
+    batch_size = 32
+    seq_len = 512
+    
+    # Create models
+    baseline_model = SimpleModel(dim, num_layers).cuda()
+    
+    # Convert to static FP8
+    static_model = StaticFP8Model.convert_linear_layers(
+        SimpleModel(dim, num_layers).cuda()
+    )
+    
+    # Copy weights
+    for (name1, p1), (name2, p2) in zip(
+        baseline_model.named_parameters(),
+        static_model.model.named_parameters()
+    ):
+        if 'weight' in name1 or 'bias' in name1:
+            with torch.no_grad():
+                p2.copy_(p1)
+    
+    # Create calibration data
+    print("Running calibration...")
+    calibration_data = [
+        torch.randn(batch_size, seq_len, dim, device=device)
+        for _ in range(50)
+    ]
+    
+    class SimpleDataLoader:
+        def __init__(self, data):
+            self.data = data
+        def __iter__(self):
+            return iter(self.data)
+    
+    cal_results = static_model.calibrate(
+        SimpleDataLoader(calibration_data),
+        num_batches=50,
+        device=device,
+    )
+    
+    print(f"Calibrated {len(cal_results)} layers")
+    print()
+    
+    # Benchmark
+    x = torch.randn(batch_size, seq_len, dim, device=device)
+    
+    # Warmup
+    for _ in range(10):
+        _ = baseline_model(x)
+        _ = static_model(x)
+    torch.cuda.synchronize()
+    
+    # Benchmark baseline (FP32)
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+    
+    start.record()
+    for _ in range(100):
+        _ = baseline_model(x)
+    end.record()
+    torch.cuda.synchronize()
+    
+    baseline_ms = start.elapsed_time(end) / 100
+    
+    # Benchmark static FP8
+    start.record()
+    for _ in range(100):
+        _ = static_model(x)
+    end.record()
+    torch.cuda.synchronize()
+    
+    static_ms = start.elapsed_time(end) / 100
+    
+    # Check accuracy
+    with torch.no_grad():
+        baseline_out = baseline_model(x)
+        static_out = static_model(x)
+    
+    error = (static_out - baseline_out).abs().mean() / baseline_out.abs().mean()
+    
+    # Results
+    print("Results:")
+    print(f"  Baseline (FP32): {baseline_ms:.3f} ms")
+    print(f"  Static FP8:      {static_ms:.3f} ms")
+    print(f"  Speedup:         {baseline_ms / static_ms:.2f}x")
+    print(f"  Relative Error:  {error.item() * 100:.4f}%")
+    print()
+    
+    # Print scale info
+    print("Calibrated Scales (first 3 layers):")
+    scales = static_model.get_all_scales()
+    for name, (in_scale, w_scale) in list(scales.items())[:3]:
+        print(f"  {name}: input={in_scale:.6f}, weight={w_scale:.6f}")
+    
+    print()
+    print("Notes:")
+    print("  - Static FP8 avoids amax computation every forward pass")
+    print("  - Requires calibration dataset that represents inference distribution")
+    print("  - Use percentile-based scaling to handle outliers")
+
+
+#============================================================================
+# Benchmark Harness Integration
+#============================================================================
+
+class FP8StaticDemoBenchmark(BaseBenchmark):
+    """Benchmark harness wrapper for FP8 static quantization demo."""
+
+    def __init__(self):
+        super().__init__()
+        self.model = None
+        self.x = None
+        self.batch_size = 32
+        self.seq_len = 512
+        self.dim = 4096
+        self._last = 0.0
+        
+        tokens = self.batch_size * self.seq_len
+        self._workload = WorkloadMetadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(tokens),
+        )
+
+    def setup(self) -> None:
+        """Setup: Initialize and calibrate static FP8 model."""
+        torch.manual_seed(42)
+        
+        # Create simple model
+        class SimpleModel(nn.Module):
+            def __init__(self, dim: int, num_layers: int = 4):
+                super().__init__()
+                self.layers = nn.ModuleList([
+                    nn.Linear(dim, dim) for _ in range(num_layers)
+                ])
+            
+            def forward(self, x):
+                for layer in self.layers:
+                    x = torch.relu(layer(x))
+                return x
+        
+        # Convert to static FP8
+        self.model = StaticFP8Model.convert_linear_layers(
+            SimpleModel(self.dim, 4).to(self.device)
+        )
+        
+        # Calibrate
+        calibration_data = [
+            torch.randn(self.batch_size, self.seq_len, self.dim, device=self.device)
+            for _ in range(10)
+        ]
+        
+        class SimpleDataLoader:
+            def __init__(self, data):
+                self.data = data
+            def __iter__(self):
+                return iter(self.data)
+        
+        self.model.calibrate(SimpleDataLoader(calibration_data), num_batches=10, device=self.device)
+        
+        self.x = torch.randn(self.batch_size, self.seq_len, self.dim, device=self.device)
+        
+        # Warmup
+        for _ in range(3):
+            with torch.no_grad():
+                _ = self.model(self.x)
+        torch.cuda.synchronize(self.device)
+
+    def benchmark_fn(self) -> None:
+        """Benchmark: Static FP8 inference."""
+        with torch.no_grad():
+            output = self.model(self.x)
+            self._last = float(output.sum())
+            self._synchronize()
+
+    def teardown(self) -> None:
+        """Teardown: Clean up resources."""
+        self.model = None
+        self.x = None
+        torch.cuda.empty_cache()
+
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(iterations=50, warmup=10)
+    
+    def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
+        return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        return {"fp8_static_demo.quantization_type": "static"}
+
+    def validate_result(self) -> Optional[str]:
+        if self.model is None:
+            return "Model not initialized"
+        return None
+
+
+def get_benchmark() -> BaseBenchmark:
+    """Factory function for benchmark discovery."""
+    return FP8StaticDemoBenchmark()
+
+
+if __name__ == "__main__":
+    benchmark_static_vs_dynamic()
+

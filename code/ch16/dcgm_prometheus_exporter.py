@@ -59,9 +59,12 @@ try:
     import pynvml
     pynvml.nvmlInit()
     NVML_AVAILABLE = True
-except:
+except ImportError:
     NVML_AVAILABLE = False
     print("Warning: pynvml not available. Install with: pip install nvidia-ml-py")
+except pynvml.NVMLError as e:
+    NVML_AVAILABLE = False
+    print(f"Warning: NVML initialization failed: {e}")
 
 
 @dataclass
@@ -405,15 +408,15 @@ class DCGMPrometheusExporter:
                 pcie_rx = pynvml.nvmlDeviceGetPcieThroughput(
                     handle, pynvml.NVML_PCIE_UTIL_RX_BYTES
                 ) * 1024
-            except:
-                pcie_tx = pcie_rx = 0
+            except pynvml.NVMLError:
+                pcie_tx = pcie_rx = 0  # Not supported on this GPU
             
             # Try to get encoder/decoder util (may not be available)
             try:
                 encoder_util, _ = pynvml.nvmlDeviceGetEncoderUtilization(handle)
                 decoder_util, _ = pynvml.nvmlDeviceGetDecoderUtilization(handle)
-            except:
-                encoder_util = decoder_util = 0
+            except pynvml.NVMLError:
+                encoder_util = decoder_util = 0  # Not supported on this GPU
             
             metrics.append(GPUMetrics(
                 gpu_id=i,

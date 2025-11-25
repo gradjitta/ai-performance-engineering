@@ -433,7 +433,6 @@ class LockFreeGradientAccumulator:
         self.version_handle = None
         
         if symmetric_memory_available():
-            try:
                 # Make accumulation buffer symmetric
                 local_buf = torch.zeros(param_numel, device=device, dtype=torch.float32)
                 self.sym_handle = dist.nn.SymmetricMemory(local_buf)
@@ -443,8 +442,6 @@ class LockFreeGradientAccumulator:
                 local_versions = torch.zeros(world_size, device=device, dtype=torch.int64)
                 self.version_handle = dist.nn.SymmetricMemory(local_versions)
                 self.peer_versions = self.version_handle.buffer
-            except Exception:
-                pass
 
     def accumulate(self, rank: int, gradients: torch.Tensor) -> None:
         """
@@ -517,11 +514,8 @@ class LockFreeGradientAccumulator:
             for peer in range(self.world_size):
                 if peer == rank:
                     continue
-                try:
                     remote_buf = self.sym_handle.get_buffer(peer)
                     total.add_(remote_buf)
-                except Exception:
-                    pass
             return total / self.world_size
         else:
             # Fallback to NCCL
@@ -747,13 +741,10 @@ class ZeROStyleSymmetricMemoryTrainer:
         
         for name, param in self.fsdp_model.named_parameters():
             if param.requires_grad:
-                try:
                     # Create momentum and variance buffers (for Adam-like optimizers)
                     momentum = torch.zeros_like(param.data)
                     handle = dist.nn.SymmetricMemory(momentum)
                     self.optimizer_state_buffers[f"{name}_momentum"] = handle
-                except Exception:
-                    pass
 
     def training_step(self, batch: torch.Tensor) -> torch.Tensor:
         """

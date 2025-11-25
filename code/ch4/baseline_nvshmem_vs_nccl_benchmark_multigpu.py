@@ -27,6 +27,14 @@ class NVSHMEMVsNCCLBenchmarkMultiGPU(BaseBenchmark):
         return BenchmarkConfig(iterations=1, warmup=1, measurement_timeout_seconds=300)
 
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return memory transfer metrics for bandwidth analysis."""
+        bytes_moved = getattr(self, 'N', 0) * 4  # Estimate: elements * 4 bytes
+        return {
+            "nvshmem_vs_nccl_benc.bytes_transferred": float(bytes_moved),
+            "nvshmem_vs_nccl_benc.transfer_type": 0.0,  # 0=pcie, 1=nvlink, 2=hbm
+        }
+
 def get_benchmark() -> BaseBenchmark:
     return NVSHMEMVsNCCLBenchmarkMultiGPU()
 

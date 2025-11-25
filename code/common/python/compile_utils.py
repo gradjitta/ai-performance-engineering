@@ -33,7 +33,7 @@ def _configure_compiler_defaults() -> None:
 
     cuda_cfg = getattr(config, "cuda", None)
     if cuda_cfg is None or not hasattr(cuda_cfg, "enable_tma"):
-        logger.warning(
+        logger.debug(
             "torch.compiler.config.cuda.enable_tma is unavailable; leaving TMA defaults untouched."
         )
     else:
@@ -44,7 +44,7 @@ def _configure_compiler_defaults() -> None:
 
     triton_cfg = getattr(config, "triton", None)
     if triton_cfg is None:
-        logger.warning("torch.compiler.config.triton is unavailable; Triton defaults unchanged.")
+        logger.debug("torch.compiler.config.triton is unavailable; Triton defaults unchanged.")
         return
     if hasattr(triton_cfg, "tma_support"):
         try:
@@ -52,14 +52,14 @@ def _configure_compiler_defaults() -> None:
         except Exception:
             logger.warning("Failed to enable Triton TMA support via compiler.config", exc_info=True)
     else:
-        logger.warning("torch.compiler.config.triton.tma_support is unavailable; leaving default.")
+        logger.debug("torch.compiler.config.triton.tma_support is unavailable; leaving default.")
     if hasattr(triton_cfg, "autotune_mode"):
         try:
             triton_cfg.autotune_mode = "max-autotune"
         except Exception:
             logger.warning("Failed to set Triton autotune_mode=max-autotune", exc_info=True)
     else:
-        logger.warning("torch.compiler.config.triton.autotune_mode is unavailable; leaving default.")
+        logger.debug("torch.compiler.config.triton.autotune_mode is unavailable; leaving default.")
 
 
 _configure_compiler_defaults()
@@ -122,14 +122,11 @@ def _mirror_legacy_tf32_flags(enable_matmul: bool, enable_cudnn: bool) -> None:
     Store the TF32 state on the patched legacy accessors so callers that still read
     torch.backends.*.allow_tf32 observe the right boolean without touching the old API.
     """
-    try:
+    # These attributes may not exist in older PyTorch versions
+    if hasattr(torch.backends.cuda, 'matmul') and hasattr(torch.backends.cuda.matmul, 'allow_tf32'):
         torch.backends.cuda.matmul.allow_tf32 = enable_matmul  # type: ignore[attr-defined]
-    except Exception:
-        pass
-    try:
+    if hasattr(torch.backends, 'cudnn') and hasattr(torch.backends.cudnn, 'allow_tf32'):
         torch.backends.cudnn.allow_tf32 = enable_cudnn  # type: ignore[attr-defined]
-    except Exception:
-        pass
 
 
 def get_optimal_compile_mode(preferred_mode: str = "max-autotune", sm_threshold: int = 68) -> str:
@@ -305,38 +302,41 @@ def compile_model(module: torch.nn.Module, **kwargs: Any) -> torch.nn.Module:
 def _current_matmul_precision() -> Optional[str]:
     backend = getattr(torch.backends.cuda, "matmul", None)
     if backend is not None and hasattr(backend, "fp32_precision"):
-        try:
-            return str(getattr(backend, "fp32_precision"))
-        except Exception:
-            pass
-    try:
+        return str(getattr(backend, "fp32_precision"))
+    if hasattr(torch, 'get_float32_matmul_precision'):
         return torch.get_float32_matmul_precision()
-    except Exception:
-        return None
+    return None
 
 
 def _current_cudnn_precision() -> Optional[str]:
     cudnn_conv = getattr(torch.backends.cudnn, "conv", None)
     if cudnn_conv is not None and hasattr(cudnn_conv, "fp32_precision"):
-        try:
-            return str(getattr(cudnn_conv, "fp32_precision"))
-        except Exception:
-            pass
+        return str(getattr(cudnn_conv, "fp32_precision"))
     return None
+
+
+def _map_precision_to_backend(precision: str) -> str:
+    """Map torch precision strings to CUDA backend values (ieee/tf32/none)."""
+    p = precision.lower()
+    if p in ("high", "tf32"):
+        return "tf32"
+    if p in ("highest", "fp32", "ieee"):
+        return "ieee"
+    if p in ("medium",):
+        return "tf32"  # medium also uses tf32
+    if p in ("none",):
+        return "none"
+    # Return as-is if already a valid backend value
+    return precision
 
 
 def _set_matmul_precision(precision: str) -> None:
     matmul_backend = getattr(torch.backends.cuda, "matmul", None)
     if matmul_backend is not None and hasattr(matmul_backend, "fp32_precision"):
-        try:
-            backend_mut = cast(Any, matmul_backend)
-            backend_mut.fp32_precision = precision
-        except RuntimeError:
-            pass
-    try:
+        backend_mut = cast(Any, matmul_backend)
+        backend_mut.fp32_precision = _map_precision_to_backend(precision)
+    if hasattr(torch, 'set_float32_matmul_precision'):
         torch.set_float32_matmul_precision(precision)
-    except Exception:
-        pass
 
 
 def _set_cudnn_precision(precision: str) -> None:
@@ -344,7 +344,7 @@ def _set_cudnn_precision(precision: str) -> None:
     if cudnn_conv is not None and hasattr(cudnn_conv, "fp32_precision"):
         try:
             cudnn_mut = cast(Any, cudnn_conv)
-            cudnn_mut.fp32_precision = precision
+            cudnn_mut.fp32_precision = _map_precision_to_backend(precision)
         except RuntimeError:
             pass
 
@@ -451,23 +451,18 @@ def enable_tf32(
     )
     if set_global_precision:
         target = _normalize_precision(matmul_precision, None) or "high"
-        try:
+        if hasattr(torch, 'set_float32_matmul_precision'):
             torch.set_float32_matmul_precision(target)
-        except Exception:
-            pass
     # state unused but kept for signature compatibility
 
 
 @lru_cache()
 def _get_compiled_architectures() -> Tuple[str, ...]:
     """Return the set of architectures baked into the current PyTorch build."""
-    try:
-        get_arch_list = getattr(torch.cuda, "get_arch_list", None)
-        if get_arch_list is None:
-            return tuple()
-        return tuple(get_arch_list())
-    except Exception:
+    get_arch_list = getattr(torch.cuda, "get_arch_list", None)
+    if get_arch_list is None:
         return tuple()
+    return tuple(get_arch_list())
 
 
 def _format_arch(major: int, minor: int) -> str:

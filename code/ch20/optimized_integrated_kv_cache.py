@@ -289,6 +289,13 @@ class OptimizedIntegratedKVCacheBenchmark(BaseBenchmark):
             enable_profiling=False,
         )
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "integrated_kv_cache.workload_size": float(getattr(self, 'batch_size', 0)),
+        }
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.layers is None:

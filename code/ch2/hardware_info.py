@@ -121,10 +121,9 @@ def get_system_info() -> Dict[str, Any]:
     }
 
     gpu_info: Dict[str, Dict[str, Any]] = {}
-    try:
-        gpus = GPUtil.getGPUs()
-        for i, gpu in enumerate(gpus):
-            gpu_info[f"gpu_{i}"] = {
+    gpus = GPUtil.getGPUs()
+    for i, gpu in enumerate(gpus):
+        gpu_info[f"gpu_{i}"] = {
                 "name": gpu.name,
                 "load": gpu.load,
                 "memory_used": gpu.memoryUsed,
@@ -132,8 +131,6 @@ def get_system_info() -> Dict[str, Any]:
                 "temperature": gpu.temperature,
                 "uuid": gpu.uuid,
             }
-    except Exception:
-        pass
 
     return {
         "cpu": cpu_info,

@@ -19,7 +19,7 @@ except ImportError:
 
 from typing import Optional
 
-from common.python.compile_utils import enable_tf32
+from common.python.compile_utils import enable_tf32, compile_model
 from common.python.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -49,13 +49,10 @@ class OptimizedGuidedDecodingMathBenchmark(BaseBenchmark):
     def setup(self) -> None:
         if torch.cuda.is_available():
             # Per-workload SDP toggle: math-only to avoid flash autodispatch.
-            try:
-                torch.backends.cuda.enable_flash_sdp(False)
-                torch.backends.cuda.enable_mem_efficient_sdp(False)
-                torch.backends.cuda.enable_math_sdp(True)
-                torch.backends.cuda.enable_cudnn_sdp(False)
-            except Exception:
-                pass
+            torch.backends.cuda.enable_flash_sdp(False)
+            torch.backends.cuda.enable_mem_efficient_sdp(False)
+            torch.backends.cuda.enable_math_sdp(True)
+            torch.backends.cuda.enable_cudnn_sdp(False)
             torch.backends.cudnn.benchmark = True
             torch.backends.cudnn.deterministic = False
             enable_tf32()
@@ -67,6 +64,15 @@ class OptimizedGuidedDecodingMathBenchmark(BaseBenchmark):
             nn.TransformerDecoderLayer(d_model=hidden_dim, nhead=8, batch_first=True),
             num_layers=1,
         ).to(self.device).eval()
+
+        # Compilation helps lift perf above baseline on sm_100.
+        if self.device.type == "cuda":
+            self.model = compile_model(
+                self.model,
+                mode="reduce-overhead",
+                fullgraph=False,
+                dynamic=False,
+            )
 
         self.schema = {
             "type": "object",
@@ -103,6 +109,13 @@ class OptimizedGuidedDecodingMathBenchmark(BaseBenchmark):
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "guided_decoding_math.workload_size": float(getattr(self, 'batch_size', 0) or getattr(self, 'N', 0) or 0),
+        }
 
     def validate_result(self) -> Optional[str]:
         return None

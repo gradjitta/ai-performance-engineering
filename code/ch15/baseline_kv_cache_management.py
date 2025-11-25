@@ -19,7 +19,7 @@ class BaselineKVCacheManagementBenchmark(BaseBenchmark):
         self.inputs: Optional[list[torch.Tensor]] = None
         self.hidden_dim = 256
         self.num_heads = 8
-        self.batch_size = 4
+        self.batch_size = 8
         self.steps = 32
         tokens = self.batch_size * self.steps
         self._workload = WorkloadMetadata(
@@ -66,6 +66,14 @@ class BaselineKVCacheManagementBenchmark(BaseBenchmark):
     
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "kv_cache_management.batch_size": float(getattr(self, 'batch_size', 0)),
+            "kv_cache_management.seq_len": float(getattr(self, 'seq_len', 0)),
+            "kv_cache_management.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:

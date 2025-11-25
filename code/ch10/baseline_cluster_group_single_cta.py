@@ -1,6 +1,7 @@
 """Baseline fallback: per-element atomic reduction for cooperative group workload."""
 
 from __future__ import annotations
+from typing import Optional
 
 import sys
 from pathlib import Path
@@ -27,6 +28,15 @@ class BaselineClusterGroupSingleCtaBenchmark(CudaBinaryBenchmark):
             timeout_seconds=60,
         )
 
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific pipeline metrics."""
+        base_metrics = super().get_custom_metrics() or {}
+        base_metrics.update({
+            "pipeline.uses_clusters": 0.0,
+            "pipeline.uses_pipeline": 0.0,
+        })
+        return base_metrics
 
 def get_benchmark() -> BaselineClusterGroupSingleCtaBenchmark:
     return BaselineClusterGroupSingleCtaBenchmark()

@@ -30,7 +30,8 @@ except Exception:
             if not torch.cuda.is_available():
                 return False
             major, minor = torch.cuda.get_device_capability()
-            return major >= 12
+            # Blackwell is sm_100 (major=10), Grace-Blackwell is sm_12x
+            return major >= 10
 
 import torch
 import torch.nn as nn
@@ -41,8 +42,9 @@ from common.python.compile_utils import enable_tf32, compile_model
 
 assert torch.cuda.is_available(), "CUDA required for FlexAttention examples"
 _major, _minor = torch.cuda.get_device_capability()
-if _major < 12:
-    raise RuntimeError(f"SKIPPED: FlexAttention native kernels require Blackwell (sm_120); found sm_{_major}{_minor}")
+# Blackwell is sm_100 (major=10), not sm_120
+if _major < 10:
+    raise RuntimeError(f"SKIPPED: FlexAttention native kernels require Blackwell (sm_100+); found sm_{_major}{_minor}")
 
 QUICK_MODE = any(
     os.getenv(flag, "0") == "1"

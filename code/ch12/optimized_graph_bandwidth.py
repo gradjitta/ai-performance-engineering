@@ -101,6 +101,13 @@ class OptimizedGraphBandwidthBenchmark(BaseBenchmark):
             setup_timeout_seconds=120,  # CUDA extension compilation can take time
         )
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return CUDA graph metrics."""
+        return {
+            "graph_bandwidth.num_iterations": float(getattr(self, 'iterations', 1) or getattr(self, 'num_iterations', 1)),
+            "graph_bandwidth.uses_graph": 0.0,  # 0=baseline (no graph), 1=optimized
+        }
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.dst is None:

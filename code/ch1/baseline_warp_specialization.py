@@ -106,6 +106,13 @@ class BaselineWarpSpecializationBenchmark(BaseBenchmark):
             use_subprocess=False,
         )
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "warp_specialization.workload_size": float(getattr(self, 'batch_size', 0) or getattr(self, 'N', 0) or 0),
+        }
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.model is None:

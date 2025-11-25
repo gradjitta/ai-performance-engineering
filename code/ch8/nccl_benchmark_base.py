@@ -86,3 +86,13 @@ class NcclBenchmarkBase(BaseBenchmark):
             return "Output not initialized"
         return None
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return NCCL reduction benchmark metrics."""
+        total_elements = self.world_size * self.chunk_elems
+        bytes_transferred = float(total_elements * 4)  # float32
+        return {
+            f"{self.nvtx_label}.world_size": float(self.world_size),
+            f"{self.nvtx_label}.chunk_elems": float(self.chunk_elems),
+            f"{self.nvtx_label}.total_elements": float(total_elements),
+            f"{self.nvtx_label}.bytes_transferred": bytes_transferred,
+        }

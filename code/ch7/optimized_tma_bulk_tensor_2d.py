@@ -1,6 +1,7 @@
 """Python harness wrapper for optimized_tma_bulk_tensor_2d.cu."""
 
 from __future__ import annotations
+from typing import Optional
 
 import sys
 from pathlib import Path
@@ -28,6 +29,15 @@ class OptimizedTMABulkTensor2D(CudaBinaryBenchmark):
             require_tma_instructions=True,
         )
 
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific memory_access metrics."""
+        base_metrics = super().get_custom_metrics() or {}
+        base_metrics.update({
+            "memory_access.is_coalesced": 1.0,
+            "memory_access.expected_efficiency_pct": 100.0,
+        })
+        return base_metrics
 
 def get_benchmark() -> OptimizedTMABulkTensor2D:
     """Factory for discover_benchmarks()."""

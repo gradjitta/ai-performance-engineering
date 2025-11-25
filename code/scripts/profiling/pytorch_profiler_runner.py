@@ -142,10 +142,7 @@ def run_profiler(script: Path, output_dir: Path, mode: str, script_args: Optiona
     try:
         with profile(**profiler_kwargs) as prof:
             entry()
-            try:
-                prof.step()
-            except Exception:
-                pass
+            prof.step()
     except Exception as exc:  # pragma: no cover - surfaced in metadata
         error = f"{type(exc).__name__}: {exc}"
         raise
@@ -207,8 +204,6 @@ def run_profiler(script: Path, output_dir: Path, mode: str, script_args: Optiona
                         )
                     averages_path = output_dir / f"key_averages_{mode}.json"
                     averages_path.write_text(json.dumps(rows, indent=2))
-                except Exception:
-                    pass
             except AttributeError:
                 pass
 

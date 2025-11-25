@@ -17,9 +17,9 @@ class BaselineContinuousBatchingBenchmark(BaseBenchmark):
         super().__init__()
         self.model: Optional[nn.Module] = None
         self.batches: Optional[list[torch.Tensor]] = None
-        self.batch_size = 8
+        self.batch_size = 12
         self.hidden_dim = 1024
-        self.num_batches = 10
+        self.num_batches = 12
         tokens = self.batch_size * self.hidden_dim * self.num_batches
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.num_batches),
@@ -64,6 +64,14 @@ class BaselineContinuousBatchingBenchmark(BaseBenchmark):
     
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "continuous_batching.batch_size": float(getattr(self, 'batch_size', 0)),
+            "continuous_batching.seq_len": float(getattr(self, 'seq_len', 0)),
+            "continuous_batching.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:

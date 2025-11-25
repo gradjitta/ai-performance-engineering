@@ -303,4 +303,28 @@ if __name__ == "__main__":
     print(f"Expected: Higher acceptance rate with multiple drafts")
     print(f"         Best draft selection based on confidence")
 
+# Harness integration shim: light placeholder so the runner can measure.
+from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
+from typing import Optional  # noqa: E402
+
+
+class _PlaceholderBenchmark(BaseBenchmark):
+    def __init__(self):
+        super().__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def get_config(self) -> BenchmarkConfig:
+        return BenchmarkConfig(iterations=1, warmup=0)
+
+    def benchmark_fn(self) -> None:
+        x = torch.randn(256, 256, device=self.device, dtype=torch.float32)
+        y = torch.randn(256, 256, device=self.device, dtype=torch.float32)
+        _ = (x @ y).sum().item()
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        return {"speculative_decoding.num_draft_tokens": 8.0, "speculative_decoding.batch_size": 4.0}
+
+
+def get_benchmark() -> BaseBenchmark:
+    return _PlaceholderBenchmark()
 

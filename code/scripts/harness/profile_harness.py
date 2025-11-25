@@ -31,6 +31,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PYTHON = sys.executable
 DEFAULT_TIMEOUT = 900  # seconds
 
+# Add repo root to path for imports
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 CUDA_BIN_DIRS = [
     "/usr/local/cuda-13.0/bin",
     "/usr/local/cuda-13/bin",
@@ -459,10 +463,7 @@ def _find_command(cmd: str) -> Optional[str]:
 
 def _terminate_lingering_nsys() -> None:
     """Best-effort cleanup for stray Nsight Systems agents before NCU runs."""
-    try:
         subprocess.run(["pkill", "-f", "nsys"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
-        pass
 
 
 def check_preconditions(example: Example, profiler: str) -> Optional[str]:
@@ -785,6 +786,64 @@ def run_pytorch_profiler(
     return results
 
 
+def _find_deep_profile_json(session_dir: Path, example_name: str) -> Optional[Path]:
+    """Find deep profiling JSON report for an example in the session directory.
+    
+    Searches in ncu/ subdirectory for deep_profile_*.json files.
+    """
+    # Look in ncu subdirectory first
+    ncu_dir = session_dir / "ncu" / example_name
+    if ncu_dir.exists():
+        for json_file in ncu_dir.glob("deep_profile_*.json"):
+            return json_file
+    
+    # Also check for files directly named after the example
+    for json_file in session_dir.rglob(f"*{example_name}*deep_profile*.json"):
+        return json_file
+    
+    return None
+
+
+def _run_differential_analysis(
+    baseline_json: Path,
+    optimized_json: Path,
+    session_dir: Path,
+    base_name: str,
+) -> Optional[str]:
+    """Run differential analysis between baseline and optimized deep profiles.
+    
+    Returns markdown string with differential analysis, or None if analysis fails.
+    """
+    try:
+        from tools.analysis.differential_profile_analyzer import (
+            analyze_differential,
+            generate_markdown_report,
+        )
+        
+        report = analyze_differential(baseline_json, optimized_json)
+        
+        # Save JSON report
+        diff_json_path = session_dir / f"differential_analysis_{base_name}.json"
+        diff_json_path.write_text(json.dumps(report.to_dict(), indent=2))
+        
+        # Generate markdown
+        markdown = generate_markdown_report(report)
+        
+        # Also save markdown
+        diff_md_path = session_dir / f"differential_analysis_{base_name}.md"
+        diff_md_path.write_text(markdown)
+        
+        log_progress("differential", base_name, "analysis-complete", f"speedup={report.overall_speedup:.2f}x")
+        
+        return markdown
+    except ImportError as e:
+        log_progress("differential", base_name, "import-error", str(e))
+        return None
+    except Exception as e:
+        log_progress("differential", base_name, "analysis-error", str(e))
+        return None
+
+
 def generate_baseline_optimized_comparison(results: List[RunResult], session_dir: Path) -> Optional[str]:
     """Generate markdown comparison table for baseline vs optimized examples.
     
@@ -985,6 +1044,21 @@ def generate_baseline_optimized_comparison(results: List[RunResult], session_dir
                 else:
                     markdown_lines.append(f"| {metric_key} | {baseline_val_str} | {optimized_val_str} | Changed |")
         
+        # Look for deep profiling JSON reports and run differential analysis
+        baseline_deep_profile = _find_deep_profile_json(session_dir, baseline_example_name)
+        optimized_deep_profile = _find_deep_profile_json(session_dir, optimized_example_name)
+        
+        if baseline_deep_profile and optimized_deep_profile:
+            differential_md = _run_differential_analysis(
+                baseline_deep_profile, 
+                optimized_deep_profile,
+                session_dir,
+                base_name
+            )
+            if differential_md:
+                markdown_lines.append("")
+                markdown_lines.append(differential_md)
+        
         markdown_lines.append("")
     
     markdown_lines.append("=" * 100)
@@ -1062,7 +1136,6 @@ def summarize(results: List[RunResult], session_dir: Path) -> None:
     except Exception as exc:
         # Don't fail the whole run if metrics aggregation fails
         log_progress("session", str(session_dir), "metrics-aggregation-warning", str(exc))
-    try:
         latest_summary = REPO_ROOT / "profile_runs" / "harness" / "latest_summary.json"
         latest_failures = REPO_ROOT / "profile_runs" / "harness" / "latest_failures.txt"
         latest_summary.write_text(json.dumps(summary, indent=2))
@@ -1076,8 +1149,6 @@ def summarize(results: List[RunResult], session_dir: Path) -> None:
             )
         else:
             latest_failures.write_text("All tasks succeeded.\n")
-    except Exception:
-        pass
 
 
 def maybe_skip_output(out_dir: Path, skip_existing: bool) -> bool:

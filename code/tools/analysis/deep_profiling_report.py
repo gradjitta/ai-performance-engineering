@@ -89,8 +89,8 @@ except Exception:  # pragma: no cover - graceful fallback when the module is mis
                         peak_tf32_tflops=989.0,
                         memory_bandwidth_gbs=3350.0,
                     )
-        except Exception:  # pragma: no cover - defensive guard
-            pass
+        except (ImportError, RuntimeError):
+            pass  # torch not available or CUDA error
         return _ArchSpecs(
             name="CPU",
             peak_fp32_tflops=0.1,

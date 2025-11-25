@@ -305,8 +305,8 @@ def extract_from_ncu_report(ncu_rep: Path) -> Dict[str, float]:
             csv_text = companion_csv.read_text()
             csv_metrics = _parse_ncu_csv(csv_text)
             metrics.update(csv_metrics)
-        except Exception:
-            pass
+        except (ValueError, KeyError, OSError):
+            pass  # CSV parsing failed
     
     return metrics
 
@@ -407,8 +407,8 @@ def extract_from_pytorch_profile(profile_dir: Path) -> Dict[str, float]:
             
             if "duration_seconds" in metadata:
                 metrics["duration_seconds"] = metadata["duration_seconds"]
-        except Exception:
-            pass
+        except (json.JSONDecodeError, OSError, KeyError):
+            pass  # Metadata file corrupt or missing
     
     # Check for key_averages JSON files
     for json_file in profile_dir.glob("key_averages_*.json"):
@@ -429,8 +429,8 @@ def extract_from_pytorch_profile(profile_dir: Path) -> Dict[str, float]:
             )
             if total_cpu_time > 0:
                 metrics["pytorch_cpu_time_us"] = total_cpu_time
-        except Exception:
-            pass
+        except (json.JSONDecodeError, OSError, KeyError, TypeError):
+            pass  # JSON file corrupt or unexpected format
     
     # Check for summary text files
     for txt_file in profile_dir.glob("summary_*.txt"):
@@ -438,8 +438,8 @@ def extract_from_pytorch_profile(profile_dir: Path) -> Dict[str, float]:
             text = txt_file.read_text()
             text_metrics = extract_from_text(text)
             metrics.update(text_metrics)
-        except Exception:
-            pass
+        except OSError:
+            pass  # File read error
     
     return metrics
 
@@ -516,8 +516,8 @@ def discover_and_extract_all(directory: Path) -> Dict[str, Any]:
                         continue
                 if csv_metrics:
                     results["nsys"][csv_path.name] = csv_metrics
-        except Exception:
-            pass
+        except (OSError, csv.Error):
+            pass  # CSV read error
     
     # Extract from PyTorch profiler outputs
     for pytorch_dir in directory.rglob("pytorch*"):

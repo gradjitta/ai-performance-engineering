@@ -325,16 +325,15 @@ def demonstrate_pytorch_29_memory_features():
     x_profiler = torch.randn(16, 512, device=device)
     
     # Check if experimental config is available (PyTorch 2.10+)
-    try:
+    experimental_config = None
+    use_experimental = False
+    if hasattr(torch._C, '_profiler') and hasattr(torch._C._profiler, '_ExperimentalConfig'):
         experimental_config = torch._C._profiler._ExperimentalConfig(
             verbose=True,
             enable_cuda_sync_events=True,  # Blackwell-specific sync tracking
             adjust_timestamps=True,
         )
         use_experimental = True
-    except:
-        experimental_config = None
-        use_experimental = False
     
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],

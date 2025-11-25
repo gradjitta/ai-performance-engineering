@@ -1,6 +1,7 @@
 """Python wrapper for baseline_cluster_group_no_dsmem.cu."""
 
 from __future__ import annotations
+from typing import Optional
 
 import sys
 from pathlib import Path
@@ -29,6 +30,15 @@ class BaselineClusterGroupNoDSMEMBenchmark(CudaBinaryBenchmark):
             timeout_seconds=180,
             time_regex=r"TIME_MS:\s*([0-9.]+)",
         )
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific pipeline metrics."""
+        base_metrics = super().get_custom_metrics() or {}
+        base_metrics.update({
+            "pipeline.uses_clusters": 0.0,
+            "pipeline.uses_pipeline": 0.0,
+        })
+        return base_metrics
 
     def benchmark_fn(self) -> None:
         try:

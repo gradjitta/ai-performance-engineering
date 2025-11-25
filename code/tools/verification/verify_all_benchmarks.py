@@ -233,21 +233,15 @@ def test_benchmark(benchmark: object, timeout: int = DEFAULT_TIMEOUT) -> Tuple[b
                 # Synchronize to catch any pending CUDA errors
                 torch.cuda.synchronize()
                 # Clear any device-side errors
-                try:
-                    torch.cuda.reset_peak_memory_stats()
-                except:
-                    pass
+                torch.cuda.reset_peak_memory_stats()
                 # Clear cache
                 torch.cuda.empty_cache()
                 # Synchronize again after cleanup
                 torch.cuda.synchronize()
-        except Exception:
+        except RuntimeError:
             # If synchronization fails, try to reset device
-            try:
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-            except Exception:
-                pass
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
     
     # Reset CUDA state before running benchmark
     reset_cuda_state()

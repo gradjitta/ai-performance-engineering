@@ -26,8 +26,13 @@ def _disable_flash_sdp() -> None:
         torch.backends.cuda.enable_flash_sdp(False)
         torch.backends.cuda.enable_mem_efficient_sdp(False)
         torch.backends.cuda.enable_math_sdp(True)
-    except Exception:
-        pass
+    except Exception as e:
+        import warnings
+        warnings.warn(
+            f"SDPA backend configuration failed: {e}. Using default backends.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
 
 class OptimizedSpeculativeDecodingMathBenchmark(BaseBenchmark):
@@ -105,6 +110,13 @@ class OptimizedSpeculativeDecodingMathBenchmark(BaseBenchmark):
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(iterations=10, warmup=2)
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return speculative decoding metrics."""
+        return {
+            "speculative_decoding.num_draft_tokens": float(getattr(self, 'num_draft_tokens', 4)),
+            "speculative_decoding.batch_size": float(getattr(self, 'batch_size', 1)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.target_model is None or self.draft_model is None:

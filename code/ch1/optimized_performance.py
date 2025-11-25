@@ -61,11 +61,8 @@ class OptimizedPerformanceBatchBenchmark(BaseBenchmark):
         
         if self.device.type == "cuda":
             # Optimization: Use FP16 for faster computation
-            try:
-                self.model = self.model.half()
-                dtype = torch.float16
-            except Exception:
-                dtype = torch.float32
+            self.model = self.model.half()
+            dtype = torch.float16
             self.model = self.model.to(self.device)
             self.model = compile_model(
                 self.model,
@@ -112,19 +109,9 @@ class OptimizedPerformanceBatchBenchmark(BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Function to benchmark."""
-        # Use conditional NVTX ranges - only enabled when profiling
-
-        from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
-
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-
         with self._nvtx_range("optimized_performance_batch"):
             # Optimization: Larger batch size improves GPU utilization
             # Process more samples per forward pass, reducing overhead per sample
-            # This is the key optimization - larger batches are more efficient
             for data, target in zip(self._fused_batches, self._fused_targets):
                 self.optimizer.zero_grad(set_to_none=True)
                 logits = self.model(data)
@@ -132,11 +119,6 @@ class OptimizedPerformanceBatchBenchmark(BaseBenchmark):
                 loss.backward()
                 self.optimizer.step()
         self._synchronize()
-            
-            # Optimization: Larger batch benefits
-            # - Better GPU utilization (more parallelism)
-            # - Reduced overhead per sample
-            # - Higher throughput
 
     
     def teardown(self) -> None:
@@ -157,22 +139,27 @@ class OptimizedPerformanceBatchBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
     
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        return {
+            "performance.workload_size": float(getattr(self, 'batch_size', 0) or getattr(self, 'N', 0) or 0),
+        }
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.model is None:
             return "Model not initialized"
-        if self.microbatches is None:
+        if not self.microbatches:
             return "Data not initialized"
-        # Check that model can produce valid output
+        # Use first microbatch as validation probe
+        probe = self.microbatches[0]
         try:
             with torch.no_grad():
-                test_output = self.model(self.data)
-                if test_output.shape[0] != self.batch_size:
-                    return f"Output batch size mismatch: expected {self.batch_size}, got {test_output.shape[0]}"
+                test_output = self.model(probe)
+                if test_output.shape[0] != probe.shape[0]:
+                    return f"Output batch size mismatch: expected {probe.shape[0]}, got {test_output.shape[0]}"
                 if test_output.shape[1] != 10:
                     return f"Output shape mismatch: expected num_classes=10, got {test_output.shape[1]}"
-                if self.target.shape[0] != self.batch_size:
-                    return f"Target batch size mismatch: expected {self.batch_size}, got {self.target.shape[0]}"
         except Exception as e:
             return f"Model forward pass failed: {e}"
         return None

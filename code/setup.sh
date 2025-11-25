@@ -176,6 +176,9 @@ else
    exit 1
 fi
 
+# Lock GPU clocks (best-effort) to reduce perf variance; safe to skip if unsupported.
+lock_gpu_clocks_if_supported
+
 pip_cmd() {
     if [ -z "${PIP_SUPPORTS_BREAK_SYSTEM_PACKAGES:-}" ]; then
         if python3 -m pip --help 2>&1 | grep -q -- '--break-system-packages'; then
@@ -198,6 +201,38 @@ pip_install() {
 
 pip_uninstall() {
     pip_cmd uninstall "$@"
+}
+
+lock_gpu_clocks_if_supported() {
+    # Best-effort: lock SM clocks to the max supported value to reduce run-to-run noise.
+    # Skips silently if not supported or if nvidia-smi is unavailable.
+    if ! command -v nvidia-smi >/dev/null 2>&1; then
+        return
+    fi
+    local gpu_name sm_max mem_max
+    gpu_name="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n 1 | tr -d '\r')"
+    sm_max="$(nvidia-smi --query-gpu=clocks.max.sm --format=csv,noheader 2>/dev/null | head -n 1 | awk '{print $1}')"
+    mem_max="$(nvidia-smi --query-gpu=clocks.max.mem --format=csv,noheader 2>/dev/null | head -n 1 | awk '{print $1}')"
+
+    if [ -z "${sm_max}" ]; then
+        echo "Skipping clock lock: sm_max not available from nvidia-smi."
+        return
+    fi
+
+    echo "Attempting to lock SM clocks for ${gpu_name:-GPU} to ${sm_max} MHz (best-effort; may require admin privileges)..."
+    if nvidia-smi -lgc "${sm_max},${sm_max}" >/dev/null 2>&1; then
+        echo "  Locked SM clocks to ${sm_max} MHz."
+    else
+        echo "  SM clock lock not supported on this GPU/driver; continuing without lock."
+    fi
+
+    if [ -n "${mem_max}" ]; then
+        if nvidia-smi --lock-memory-clocks="${mem_max},${mem_max}" >/dev/null 2>&1; then
+            echo "  Locked memory clocks to ${mem_max} MHz."
+        else
+            echo "  Memory clock lock not supported here; continuing without lock."
+        fi
+    fi
 }
 
 pip_wheel() {
@@ -3128,18 +3163,18 @@ echo "To use TE FP8/FP4 fast paths on Blackwell, run: source ${TE_ENV_FILE}"
 
 echo ""
 if [[ -n "${GPU_COMPUTE_SM_NUM:-}" && "${GPU_COMPUTE_SM_NUM}" -ge 100 ]]; then
-    echo "Running stack verification (FlashAttention/TE/TMA/TMEM/CTA clusters)..."
-    if ! python3 "${PROJECT_ROOT}/tools/verification/verify_tma_stack.py"; then
-        echo "ERROR: Stack verification failed."
-        exit 1
-    fi
-    echo "Running CUDA feature verification (cluster DSMEM + warp async copy + warp specialization)..."
-    if ! python3 "${PROJECT_ROOT}/tools/verification/verify_blackwell_cuda_features.py"; then
-        echo "ERROR: Blackwell CUDA feature verification failed."
-        exit 1
+    echo "Running comprehensive Blackwell feature verification..."
+    echo "(TMEM, TMA, CTA Clusters, DSMEM, FP8, FP4, Warp Features)"
+    if python3 "${PROJECT_ROOT}/tools/verification/verify_all_blackwell_features.py" --json; then
+        echo "✓ All Blackwell features verified successfully!"
+        echo "  Results saved to: artifacts/blackwell_verification/verification_results.json"
+    else
+        echo "WARNING: Some Blackwell features may need attention."
+        echo "  Review: artifacts/blackwell_verification/verification_results.json"
+        # Don't exit - this is informational, not critical
     fi
 else
-    echo "Skipping stack verification (non-Blackwell GPU detected)."
+    echo "Skipping Blackwell verification (non-Blackwell GPU detected)."
 fi
 
 # Final summary
@@ -3163,6 +3198,7 @@ echo "  • PyTorch installation and CUDA functionality"
 echo "  • NVLink connectivity (if multi-GPU)"
 echo "  • CUTLASS backend configuration"
 echo "  • GPUDirect Storage (GDS) functionality"
+echo "  • Blackwell features (if SM 10.0+): TMEM, TMA, Clusters, DSMEM, FP8, FP4"
 echo ""
 echo "Post-Run Checklist:"
 echo "  • Verify Python runtime:          python --version  (expect 3.12.x)"

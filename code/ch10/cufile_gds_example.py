@@ -445,11 +445,8 @@ class GPUDirectStorageDemo:
     def cleanup(self):
         """Cleanup cuFile resources."""
         if self.driver_initialized:
-            try:
                 cufile.cuFileDriverClose()
                 print("cuFile driver closed")
-            except:
-                pass
 
 
 def simulate_gds_performance():

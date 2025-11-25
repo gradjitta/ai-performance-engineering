@@ -1,6 +1,7 @@
 """Ch7 optimized memory access benchmark (coalesced float4 copy)."""
 
 from __future__ import annotations
+from typing import Optional
 
 import sys
 from pathlib import Path
@@ -27,6 +28,15 @@ class OptimizedMemoryAccessBenchmark(CudaBinaryBenchmark):
             time_regex=r"TIME_MS:\s*([0-9.]+)",
         )
 
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific memory_access metrics."""
+        base_metrics = super().get_custom_metrics() or {}
+        base_metrics.update({
+            "memory_access.is_coalesced": 1.0,
+            "memory_access.expected_efficiency_pct": 100.0,
+        })
+        return base_metrics
 
 def get_benchmark() -> OptimizedMemoryAccessBenchmark:
     return OptimizedMemoryAccessBenchmark()

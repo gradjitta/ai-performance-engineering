@@ -37,14 +37,11 @@ def _tcgen05_cuda_flags() -> list[str]:
     for inc in _CUTLASS_INCLUDES:
         flags.append(f"-I{inc}")
     caps: list[tuple[int, int]] = [(10, 0)]
-    try:
-        major, minor = torch.cuda.get_device_capability()
-        if major >= 12:
-            caps.insert(0, (12, 0))
-        elif major >= 10 and (major, minor) not in caps:
-            caps.insert(0, (major, minor))
-    except Exception:
-        pass
+    major, minor = torch.cuda.get_device_capability()
+    if major >= 12:
+        caps.insert(0, (12, 0))
+    elif major >= 10 and (major, minor) not in caps:
+        caps.insert(0, (major, minor))
     seen = set()
     for maj, minr in caps:
         if (maj, minr) in seen:

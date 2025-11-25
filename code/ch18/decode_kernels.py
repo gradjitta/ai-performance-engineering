@@ -44,9 +44,9 @@ class VLLMDecodeKernel:
         self.scale = 1.0 / math.sqrt(float(self.head_size))
 
         self.max_batch = max_batch
-        # Keep one block per sequence; block size matches a single token.
-        self.block_size = 1
-        self.num_blocks = 1
+        # vLLM paged attention requires block_size >= 8 (typically 8, 16, or 32)
+        self.block_size = 16
+        self.num_blocks = 4  # Enough blocks for small-scale demo
 
         # Preallocate a tiny KV cache and the block tables/seq_lens used per call.
         kv_shape = PagedAttention.get_kv_cache_shape(
@@ -62,7 +62,7 @@ class VLLMDecodeKernel:
         )
 
         self.block_tables = torch.zeros(
-            (self.max_batch, 1), dtype=torch.int32, device=self.device
+            (self.max_batch, self.num_blocks), dtype=torch.int32, device=self.device
         )
         self.seq_lens = torch.ones(
             self.max_batch, dtype=torch.int32, device=self.device
@@ -148,8 +148,13 @@ def build_decode_kernel(
     if prefer_vllm:
         try:
             kernel = VLLMDecodeKernel(hidden=hidden, max_batch=max_batch, device=device)
+            # Test that it works with a small input
+            test_tokens = torch.randn(1, hidden, device=device, dtype=torch.float16)
+            test_kv = torch.randn(1, hidden, device=device, dtype=torch.float16)
+            _ = kernel(test_tokens, test_kv, None)
             return DecodeKernel(fn=kernel, backend="vllm")
         except Exception:
+            # vLLM kernel failed, fall back to torch
             pass
 
     torch_kernel = _torch_decode(hidden)

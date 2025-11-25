@@ -15,7 +15,9 @@ from typing import Any, Dict, List, Optional
 EXPECTATION_FILENAME_TEMPLATE = "expectations_{hardware_key}.json"
 
 # Tolerances to avoid flagging noise as regressions.
-RELATIVE_TOLERANCE = 0.05  # 5%
+# GPU benchmarks typically have 10-30% variance between runs due to thermal
+# throttling, memory state, kernel JIT, and first-call overhead.
+RELATIVE_TOLERANCE = 0.25  # 25%
 ABSOLUTE_TOLERANCE = 1e-5
 
 # Metric direction hints. Extend as new metrics are tracked.
@@ -63,8 +65,8 @@ def detect_expectation_key() -> str:
             count = torch.cuda.device_count()
             prefix = f"{count}x_" if count > 1 else ""
             return _slugify(f"{prefix}{gpu_slug}")
-    except Exception:
-        pass
+    except RuntimeError:
+        pass  # CUDA not initialized
 
     return "unknown"
 

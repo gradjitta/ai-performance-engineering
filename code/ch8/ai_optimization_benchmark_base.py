@@ -89,3 +89,14 @@ class AiOptimizationBenchmarkBase(BaseBenchmark):
             return "Output buffer not initialized"
         return None
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return AI optimization kernel metrics for roofline analysis."""
+        flops = float(self.rows * self.cols * 2)  # matmul + tanh approx
+        bytes_transferred = float((self.rows * self.cols + self.cols + self.rows) * 4)
+        return {
+            f"{self.nvtx_label}.rows": float(self.rows),
+            f"{self.nvtx_label}.cols": float(self.cols),
+            f"{self.nvtx_label}.flops": flops,
+            f"{self.nvtx_label}.bytes_transferred": bytes_transferred,
+            f"{self.nvtx_label}.arithmetic_intensity": flops / bytes_transferred if bytes_transferred > 0 else 0.0,
+        }

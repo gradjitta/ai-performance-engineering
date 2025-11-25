@@ -35,10 +35,9 @@ class OptimizedKubernetesBenchmark(BaseBenchmark):
         ).to(self.device)
         compile_fn = getattr(torch, "compile", None)
         if compile_fn is not None:
-            try:
-                model = compile_fn(model, mode="reduce-overhead")
-            except Exception:
-                pass
+            model = compile_fn(model, mode="reduce-overhead")
+        else:
+            raise RuntimeError("torch.compile is required for this benchmark")
         self.model = model
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-2, momentum=0.9)
         self.device_batches: List[torch.Tensor] = []
@@ -103,6 +102,13 @@ class OptimizedKubernetesBenchmark(BaseBenchmark):
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(iterations=30, warmup=5)
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "kubernetes.workload_size": float(getattr(self, 'batch_size', 0)),
+        }
 
     def validate_result(self) -> Optional[str]:
         if not self.device_batches:

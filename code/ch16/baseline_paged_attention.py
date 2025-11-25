@@ -111,6 +111,14 @@ class BaselinePagedAttentionBenchmark(BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return inference metrics."""
+        return {
+            "paged_attention.batch_size": float(getattr(self, 'batch_size', 0)),
+            "paged_attention.seq_len": float(getattr(self, 'seq_len', 0)),
+            "paged_attention.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+        }
+
     def validate_result(self) -> Optional[str]:
         if self.k_cache is None or self.v_cache is None:
             return "KV caches not initialized"

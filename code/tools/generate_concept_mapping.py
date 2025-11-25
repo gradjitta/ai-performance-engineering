@@ -90,8 +90,8 @@ def extract_notes_from_file(file_path: Path) -> Optional[str]:
                 )]
                 if note_lines:
                     return ' '.join(note_lines[:2])  # First 2 relevant lines
-    except Exception:
-        pass
+    except OSError:
+        pass  # File read error
     return None
 
 

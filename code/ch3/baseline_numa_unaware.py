@@ -58,6 +58,13 @@ class BaselineNUMAUnawareBenchmark(BaseBenchmark):
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(iterations=15, warmup=3)
 
+    def get_custom_metrics(self) -> Optional[dict]:
+        """Return domain-specific metrics for performance analysis."""
+        # Basic metrics - override in subclass for domain-specific values
+        return {
+            "numa_unaware.workload_size": float(getattr(self, 'batch_size', 0)),
+        }
+
     def validate_result(self) -> Optional[str]:
         if self.host_tensor is None:
             return "Host tensor not initialized"

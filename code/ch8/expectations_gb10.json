@@ -24,52 +24,6 @@
       },
       "type": "python"
     },
-    "double_buffering": {
-      "example": "double_buffering",
-      "metadata": {
-        "best_optimization": "optimized_double_buffering",
-        "best_optimization_file": "optimized_double_buffering.py",
-        "best_optimization_speedup": 6.921410418967871,
-        "best_optimization_time_ms": 0.2108778675397237,
-        "git_commit": "b6f3c2a4bf1a8f0758511ffc8a1ab9385da26754",
-        "updated_at": "2025-11-18T05:33:18.771548"
-      },
-      "metrics": {
-        "baseline_p75_ms": 1.6335680484771729,
-        "baseline_throughput.latency_ms": 1.4595722695191702,
-        "baseline_throughput.requests_per_s": 685.1322273541358,
-        "baseline_time_ms": 1.4595722695191702,
-        "best_optimized_p75_ms": 0.20979200303554535,
-        "best_optimized_speedup": 6.592383205075115,
-        "best_optimized_throughput.latency_ms": 0.2108778675397237,
-        "best_optimized_throughput.requests_per_s": 4742.081336779579,
-        "best_optimized_time_ms": 0.2108778675397237,
-        "best_speedup": 6.592383205075115
-      },
-      "type": "python"
-    },
-    "double_cuda": {
-      "example": "double",
-      "metadata": {
-        "best_optimization": "buffering_pipelined",
-        "best_optimization_file": "optimized_double_buffering_pipelined.cu",
-        "best_optimization_speedup": 1.5389535072603053,
-        "best_optimization_time_ms": 201.73835133330917,
-        "git_commit": "b6f3c2a4bf1a8f0758511ffc8a1ab9385da26754",
-        "updated_at": "2025-11-17T23:02:07.964041"
-      },
-      "metrics": {
-        "baseline_p75_ms": 308.8261639999246,
-        "baseline_p90_ms": 308.8261639999246,
-        "baseline_time_ms": 310.46594333330785,
-        "best_optimized_p75_ms": 203.79483299996082,
-        "best_optimized_p90_ms": 203.79483299996082,
-        "best_optimized_speedup": 1.5389535072603053,
-        "best_optimized_time_ms": 201.73835133330917,
-        "best_speedup": 1.5389535072603053
-      },
-      "type": "cuda"
-    },
     "hbm": {
       "example": "hbm",
       "metadata": {

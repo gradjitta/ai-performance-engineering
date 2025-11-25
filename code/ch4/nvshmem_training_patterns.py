@@ -225,14 +225,11 @@ class GradientBucket:
                 
                 # Send chunk to next rank
                 next_rank = (rank + 1) % self.world_size
-                try:
-                    remote_buf = self.handle.get_buffer(next_rank)
-                    remote_buf[send_chunk_start:send_chunk_end].copy_(
-                        self.tensor[send_chunk_start:send_chunk_end],
-                        non_blocking=True
-                    )
-                except Exception:
-                    pass
+                remote_buf = self.handle.get_buffer(next_rank)
+                remote_buf[send_chunk_start:send_chunk_end].copy_(
+                    self.tensor[send_chunk_start:send_chunk_end],
+                    non_blocking=True
+                )
                 
                 dist.barrier()
                 
@@ -241,13 +238,10 @@ class GradientBucket:
                     recv_chunk_start = recv_rank * chunk_size
                     recv_chunk_end = min(recv_chunk_start + chunk_size, self.numel)
                     prev_rank = (rank - 1 + self.world_size) % self.world_size
-                    try:
                         remote_buf = self.handle.get_buffer(prev_rank)
                         self.tensor[recv_chunk_start:recv_chunk_end].add_(
                             remote_buf[recv_chunk_start:recv_chunk_end]
                         )
-                    except Exception:
-                        pass
             
             # AllGather phase
             for step in range(self.world_size - 1):
@@ -256,14 +250,11 @@ class GradientBucket:
                 send_chunk_end = min(send_chunk_start + chunk_size, self.numel)
                 
                 next_rank = (rank + 1) % self.world_size
-                try:
                     remote_buf = self.handle.get_buffer(next_rank)
                     remote_buf[send_chunk_start:send_chunk_end].copy_(
                         self.tensor[send_chunk_start:send_chunk_end],
                         non_blocking=True
                     )
-                except Exception:
-                    pass
                 
                 dist.barrier()
             
@@ -441,12 +432,9 @@ class HybridFSDPParameterServer:
         if name in self.param_mirrors:
             bucket = self.param_mirrors[name]
             if bucket.handle is not None and nvshmem_available():
-                try:
                     # Can access from any peer rank
                     remote_buf = bucket.handle.get_buffer(rank)
                     return remote_buf
-                except Exception:
-                    pass
             return bucket.tensor
         return None
 
@@ -616,11 +604,8 @@ class PipelineParallelSymmetricMemory:
                     buffer.tensor.copy_(activation.flatten())
                     
                     if buffer.handle is not None and nvshmem_available():
-                        try:
                             remote_buf = buffer.handle.get_buffer(next_rank)
                             remote_buf.copy_(buffer.tensor, non_blocking=True)
-                        except Exception:
-                            pass
                     
                     dist.barrier()
                     return None  # This rank is done
@@ -749,13 +734,10 @@ def demo_tensor_parallel_activations(benchmark: bool = False) -> None:
     if nvshmem_available() and bucket.handle is not None:
         for peer in range(world_size):
             if peer != rank:
-                try:
                     remote_buf = bucket.handle.get_buffer(peer)
                     bucket.tensor[peer * shard_size:(peer + 1) * shard_size].copy_(
                         remote_buf[peer * shard_size:(peer + 1) * shard_size]
                     )
-                except Exception:
-                    pass
         dist.barrier()
     else:
         # Fallback to NCCL AllGather

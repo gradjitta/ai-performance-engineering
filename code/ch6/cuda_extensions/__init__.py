@@ -13,10 +13,7 @@ except ImportError:
         """Fallback: remove lock file if it exists."""
         lock_file = build_dir / "lock"
         if lock_file.exists():
-            try:
                 lock_file.unlink()
-            except Exception:
-                pass
 
 from common.python.nvtx_stub import ensure_nvtx_stub
 
