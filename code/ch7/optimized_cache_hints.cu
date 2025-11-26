@@ -273,7 +273,41 @@ void benchmark_cache_policies() {
     benchmark("Cache All (default)", vector_add_cache_all, grid, 1);
     benchmark("Cache Streaming (.cs)", vector_add_cache_streaming, grid, 1);
     benchmark("Cache Global (.cg)", vector_add_cache_global, grid, 1);
-    benchmark("Streaming + Vec4", vector_add_cache_streaming_vec4, grid_vec4, 4);
+    
+    // Special case for vec4 kernel - needs float4* pointers
+    {
+        const char* name = "Streaming + Vec4";
+        CUDA_CHECK(cudaMemset(d_c, 0, bytes));
+        CUDA_CHECK(cudaDeviceSynchronize());
+        
+        for (int i = 0; i < warmup; ++i) {
+            vector_add_cache_streaming_vec4<<<grid_vec4, block>>>(
+                reinterpret_cast<const float4*>(d_a),
+                reinterpret_cast<const float4*>(d_b),
+                reinterpret_cast<float4*>(d_c),
+                n / 4
+            );
+        }
+        CUDA_CHECK(cudaDeviceSynchronize());
+        
+        CUDA_CHECK(cudaEventRecord(start));
+        for (int i = 0; i < iterations; ++i) {
+            vector_add_cache_streaming_vec4<<<grid_vec4, block>>>(
+                reinterpret_cast<const float4*>(d_a),
+                reinterpret_cast<const float4*>(d_b),
+                reinterpret_cast<float4*>(d_c),
+                n / 4
+            );
+        }
+        CUDA_CHECK(cudaEventRecord(stop));
+        CUDA_CHECK(cudaEventSynchronize(stop));
+        
+        float ms;
+        CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
+        ms /= iterations;
+        float bandwidth = (3.0f * n * sizeof(float)) / (ms / 1000.0f) / 1e9f;
+        results.push_back({name, ms, bandwidth});
+    }
     
     // Print results
     printf("%-25s %10s %15s\n", "Variant", "Time (ms)", "Bandwidth (GB/s)");
@@ -308,5 +342,6 @@ int main() {
     benchmark_cache_policies();
     return 0;
 }
+
 
 

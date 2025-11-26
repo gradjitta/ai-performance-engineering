@@ -152,7 +152,6 @@ class OptimizedFlexAttentionBenchmark(BaseBenchmark):
             block_size=getattr(self, 'BLOCK_SIZE', 1024),
             num_warps=getattr(self, 'num_warps', 4),
         )
-}
 
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""

@@ -141,7 +141,7 @@
         .nav-tab {
             padding: 0.6rem 1.2rem;
             background: transparent;
-            border: 1px solid transparent;
+            border: 1px solid var(--border-glass);
             border-radius: 8px;
             color: var(--text-secondary);
             font-size: 0.9rem;
@@ -177,6 +177,8 @@
             border-radius: 20px;
             font-size: 0.8rem;
             color: var(--accent-success);
+            min-width: 420px;
+            white-space: nowrap;
         }
 
         .gpu-status.offline {
@@ -223,7 +225,7 @@
 
         /* Main container */
         .main {
-            padding: 10rem 2rem 2rem;
+            padding: 14rem 2rem 2rem;
             max-width: 1900px;
             margin: 0 auto;
         }
@@ -428,14 +430,19 @@
             font-size: 0.85rem;
         }
 
-        .benchmark-rank.gold { background: linear-gradient(135deg, #ffd700, #ffaa00); color: #000; }
-        .benchmark-rank.silver { background: linear-gradient(135deg, #c0c0c0, #a0a0a0); color: #000; }
-        .benchmark-rank.bronze { background: linear-gradient(135deg, #cd7f32, #b87333); color: #000; }
+
+        .benchmark-info {
+            overflow: hidden;
+            min-width: 0;
+        }
 
         .benchmark-info h4 {
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.95rem;
             margin-bottom: 0.25rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .benchmark-meta {
@@ -753,11 +760,161 @@
             background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
         }
 
+        /* Searchable Dropdown */
+        .searchable-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .searchable-dropdown-trigger {
+            padding: 0.75rem 2.5rem 0.75rem 1rem;
+            background: var(--bg-card);
+            border: 2px solid var(--accent-primary);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            cursor: pointer;
+            min-width: 320px;
+            font-weight: 500;
+            text-align: left;
+            position: relative;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .searchable-dropdown-trigger::after {
+            content: '';
+            position: absolute;
+            right: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 14px;
+            height: 14px;
+            background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%2300f5a0" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>');
+            background-repeat: no-repeat;
+            transition: transform 0.2s ease;
+        }
+        .searchable-dropdown.open .searchable-dropdown-trigger::after {
+            transform: translateY(-50%) rotate(180deg);
+        }
+        .searchable-dropdown-trigger:hover {
+            border-color: var(--accent-success);
+            box-shadow: 0 0 0 3px rgba(0, 245, 160, 0.15);
+        }
+        .searchable-dropdown-trigger.purple {
+            border-color: var(--accent-secondary);
+        }
+        .searchable-dropdown-trigger.purple::after {
+            background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%239d4edd" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>');
+        }
+        .searchable-dropdown-trigger.purple:hover {
+            border-color: var(--accent-secondary);
+            box-shadow: 0 0 0 3px rgba(157, 78, 221, 0.15);
+        }
+        .searchable-dropdown-trigger.pink {
+            border-color: var(--accent-tertiary);
+        }
+        .searchable-dropdown-trigger.pink::after {
+            background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%23f72585" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>');
+        }
+        .searchable-dropdown-trigger.pink:hover {
+            border-color: var(--accent-tertiary);
+            box-shadow: 0 0 0 3px rgba(247, 37, 133, 0.15);
+        }
+        .searchable-dropdown-menu {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-glass);
+            border-radius: 8px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            z-index: 1001;
+            display: none;
+            overflow: hidden;
+        }
+        .searchable-dropdown.open .searchable-dropdown-menu {
+            display: block;
+            animation: dropdownFadeIn 0.15s ease-out;
+        }
+        @keyframes dropdownFadeIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .searchable-dropdown-search {
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border-glass);
+        }
+        .searchable-dropdown-search input {
+            width: 100%;
+            padding: 0.6rem 0.75rem 0.6rem 2.25rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-glass);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s ease;
+            background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%23ffffff50" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>');
+            background-repeat: no-repeat;
+            background-position: 0.6rem center;
+        }
+        .searchable-dropdown-search input:focus {
+            border-color: var(--accent-primary);
+        }
+        .searchable-dropdown-search input::placeholder {
+            color: var(--text-muted);
+        }
+        .searchable-dropdown-options {
+            max-height: 280px;
+            overflow-y: auto;
+        }
+        .searchable-dropdown-option {
+            padding: 0.65rem 1rem;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        .searchable-dropdown-option:hover,
+        .searchable-dropdown-option.highlighted {
+            background: rgba(0, 245, 212, 0.1);
+            color: var(--text-primary);
+        }
+        .searchable-dropdown-option.selected {
+            background: rgba(0, 245, 212, 0.15);
+            color: var(--accent-primary);
+        }
+        .searchable-dropdown-option mark {
+            background: rgba(0, 245, 212, 0.3);
+            color: inherit;
+            border-radius: 2px;
+            padding: 0 2px;
+        }
+        .searchable-dropdown-empty {
+            padding: 1rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+        .searchable-dropdown-count {
+            padding: 0.5rem 1rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border-glass);
+            text-align: right;
+        }
+
         /* Responsive */
         @media (max-width: 1400px) {
             .hero-stats { grid-template-columns: repeat(3, 1fr); }
             .grid-3 { grid-template-columns: repeat(2, 1fr); }
-            .main { padding-top: 12rem; }
+            .main { padding-top: 16rem; }
+        }
+
+        @media (max-width: 1100px) {
+            .main { padding-top: 18rem; }
         }
 
         @media (max-width: 900px) {
@@ -765,7 +922,7 @@
             .grid-2, .grid-2-1, .grid-1-2 { grid-template-columns: 1fr; }
             .comparison-grid { grid-template-columns: 1fr; }
             .comparison-arrow { transform: rotate(90deg); padding: 1rem 0; }
-            .main { padding-top: 16rem; }
+            .main { padding-top: 22rem; }
         }
 
         /* Animations */
@@ -913,9 +1070,9 @@
             <button class="nav-tab" onclick="showTab('profiler')">🔥 Profiler</button>
             <button class="nav-tab" onclick="showTab('memory')">💾 Memory</button>
             <button class="nav-tab" onclick="showTab('compile')">⚡ Compile</button>
-            <button class="nav-tab" onclick="showTab('deepprofile')" style="background: linear-gradient(135deg, rgba(157, 78, 221, 0.1), rgba(0, 245, 212, 0.1));">🔬 Deep Profile</button>
-            <button class="nav-tab" onclick="showTab('liveopt')" style="background: linear-gradient(135deg, rgba(247, 37, 133, 0.1), rgba(255, 196, 61, 0.1));">🚀 Live Optimizer</button>
-            <button class="nav-tab" onclick="showTab('analysis')" style="background: linear-gradient(135deg, rgba(0, 245, 160, 0.1), rgba(76, 201, 240, 0.1));">📊 Analysis</button>
+            <button class="nav-tab" onclick="showTab('deepprofile')">🔬 Deep Profile</button>
+            <button class="nav-tab" onclick="showTab('liveopt')">🚀 Live Optimizer</button>
+            <button class="nav-tab" onclick="showTab('analysis')">📊 Analysis</button>
         </div>
         <div class="nav-actions">
             <div class="gpu-status" id="gpuStatus">
@@ -1020,6 +1177,10 @@
             <div class="card animate delay-4 mb-3">
                 <div class="card-header">
                     <h3 class="card-title">🏆 Optimization Leaderboard</h3>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="chip active" onclick="sortLeaderboard('desc')">Most → Least</button>
+                        <button class="chip" onclick="sortLeaderboard('asc')">Least → Most</button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="benchmark-list" id="benchmarkList">
@@ -1039,7 +1200,7 @@
                     <div class="section-title-icon">⚖️</div>
                     Baseline vs Optimized Comparison
                 </h2>
-                <select id="compareSelect" onchange="updateComparison()" style="padding: 0.75rem 2.5rem 0.75rem 1rem; background: var(--bg-card); border: 2px solid var(--accent-primary); border-radius: 8px; color: var(--text-primary); font-size: 0.95rem; cursor: pointer; min-width: 320px; appearance: none; -webkit-appearance: none; background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%2300f5a0\" stroke-width=\"2\"><polyline points=\"6 9 12 15 18 9\"></polyline></svg>'); background-repeat: no-repeat; background-position: right 0.75rem center; font-weight: 500;">
+                <select id="compareSelect" style="display: none;">
                     <option value="">Loading benchmarks...</option>
                 </select>
             </div>
@@ -1438,7 +1599,7 @@
                 <div class="card-body" style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
                     <div style="display: flex; align-items: center; gap: 0.75rem;">
                         <span style="color: var(--text-muted); font-weight: 500;">Select Profile:</span>
-                        <select id="profileChapterSelect" onchange="loadProfileComparison()" style="padding: 0.75rem 2.5rem 0.75rem 1rem; background: var(--bg-tertiary); border: 2px solid var(--accent-secondary); border-radius: 8px; color: var(--text-primary); font-size: 0.95rem; cursor: pointer; min-width: 320px; appearance: none; background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%239d4edd\" stroke-width=\"2\"><polyline points=\"6 9 12 15 18 9\"></polyline></svg>'); background-repeat: no-repeat; background-position: right 0.75rem center; font-weight: 500;">
+                        <select id="profileChapterSelect" style="display: none;">
                             <option value="">Loading profiles...</option>
                         </select>
                     </div>
@@ -1575,7 +1736,7 @@
                     Live Optimization Console
                 </h2>
                 <div style="display: flex; gap: 1rem; align-items: center;">
-                    <select id="optimizeTarget" style="padding: 0.75rem 1.5rem 0.75rem 1rem; background: var(--bg-card); border: 2px solid var(--accent-tertiary); border-radius: 8px; color: var(--text-primary); font-size: 0.95rem; cursor: pointer; min-width: 280px;">
+                    <select id="optimizeTarget" style="display: none;">
                         <option value="">Select target...</option>
                     </select>
                     <button id="startOptBtn" class="btn btn-primary" onclick="startOptimization()" style="background: linear-gradient(135deg, var(--accent-tertiary), var(--accent-secondary));">
@@ -1641,6 +1802,7 @@
                         <button class="chip" onclick="filterConsole('llm')">🧠 LLM</button>
                         <button class="chip" onclick="filterConsole('patch')">🔧 Patches</button>
                         <button class="chip" onclick="filterConsole('benchmark')">📊 Benchmarks</button>
+                        <button class="chip" onclick="copyConsole()">📋 Copy</button>
                         <button class="chip" onclick="clearConsole()">🗑️ Clear</button>
                     </div>
                 </div>
@@ -1879,11 +2041,236 @@
         let benchmarkData = null;
         let llmAnalysisData = null;
         let gpuInfo = null;
+        let leaderboardSortOrder = 'desc'; // 'desc' = most to least, 'asc' = least to most
         let speedupChart = null;
         let statusChart = null;
         let rooflineChart = null;
         let distributionChart = null;
         let currentChartFilter = 'all';
+        const searchableDropdowns = {};
+
+        // Searchable Dropdown Class
+        class SearchableDropdown {
+            constructor(selectEl, options = {}) {
+                this.selectEl = selectEl;
+                this.onChange = options.onChange || (() => {});
+                this.colorClass = options.colorClass || '';
+                this.placeholder = options.placeholder || 'Select...';
+                this.minItemsForSearch = options.minItemsForSearch || 10;
+                this.highlightedIndex = -1;
+                
+                this.createDropdown();
+                this.bindEvents();
+            }
+
+            createDropdown() {
+                // Hide original select
+                this.selectEl.style.display = 'none';
+                
+                // Create wrapper
+                this.wrapper = document.createElement('div');
+                this.wrapper.className = 'searchable-dropdown';
+                this.selectEl.parentNode.insertBefore(this.wrapper, this.selectEl);
+                this.wrapper.appendChild(this.selectEl);
+                
+                // Create trigger button
+                this.trigger = document.createElement('button');
+                this.trigger.type = 'button';
+                this.trigger.className = 'searchable-dropdown-trigger' + (this.colorClass ? ' ' + this.colorClass : '');
+                this.trigger.textContent = this.placeholder;
+                this.wrapper.appendChild(this.trigger);
+                
+                // Create dropdown menu
+                this.menu = document.createElement('div');
+                this.menu.className = 'searchable-dropdown-menu';
+                this.menu.innerHTML = `
+                    <div class="searchable-dropdown-search">
+                        <input type="text" placeholder="Search..." autocomplete="off">
+                    </div>
+                    <div class="searchable-dropdown-options"></div>
+                    <div class="searchable-dropdown-count"></div>
+                `;
+                this.wrapper.appendChild(this.menu);
+                
+                this.searchInput = this.menu.querySelector('input');
+                this.optionsContainer = this.menu.querySelector('.searchable-dropdown-options');
+                this.countEl = this.menu.querySelector('.searchable-dropdown-count');
+            }
+
+            bindEvents() {
+                this.trigger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.toggle();
+                });
+                
+                this.searchInput.addEventListener('input', () => {
+                    this.filterOptions();
+                });
+                
+                this.searchInput.addEventListener('keydown', (e) => {
+                    this.handleKeydown(e);
+                });
+                
+                document.addEventListener('click', (e) => {
+                    if (!this.wrapper.contains(e.target)) {
+                        this.close();
+                    }
+                });
+            }
+
+            handleKeydown(e) {
+                const visibleOptions = this.optionsContainer.querySelectorAll('.searchable-dropdown-option:not([style*="display: none"])');
+                
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    this.highlightedIndex = Math.min(this.highlightedIndex + 1, visibleOptions.length - 1);
+                    this.updateHighlight(visibleOptions);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    this.highlightedIndex = Math.max(this.highlightedIndex - 1, 0);
+                    this.updateHighlight(visibleOptions);
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (this.highlightedIndex >= 0 && visibleOptions[this.highlightedIndex]) {
+                        visibleOptions[this.highlightedIndex].click();
+                    }
+                } else if (e.key === 'Escape') {
+                    this.close();
+                }
+            }
+
+            updateHighlight(options) {
+                options.forEach((opt, i) => {
+                    opt.classList.toggle('highlighted', i === this.highlightedIndex);
+                    if (i === this.highlightedIndex) {
+                        opt.scrollIntoView({ block: 'nearest' });
+                    }
+                });
+            }
+
+            renderOptions() {
+                const options = Array.from(this.selectEl.options);
+                const selectedValue = this.selectEl.value;
+                
+                // Check if we need search (more than minItemsForSearch items)
+                const needsSearch = options.length > this.minItemsForSearch;
+                this.menu.querySelector('.searchable-dropdown-search').style.display = needsSearch ? 'block' : 'none';
+                
+                this.optionsContainer.innerHTML = options.map((opt, i) => {
+                    if (i === 0 && !opt.value) return ''; // Skip placeholder option
+                    const isSelected = opt.value === selectedValue;
+                    return `<div class="searchable-dropdown-option${isSelected ? ' selected' : ''}" data-value="${opt.value}">${opt.textContent}</div>`;
+                }).join('');
+                
+                // Bind click events
+                this.optionsContainer.querySelectorAll('.searchable-dropdown-option').forEach(optEl => {
+                    optEl.addEventListener('click', () => {
+                        this.selectValue(optEl.dataset.value, optEl.textContent);
+                    });
+                });
+                
+                this.updateCount();
+                
+                // Update trigger text
+                const selectedOpt = options.find(o => o.value === selectedValue);
+                this.trigger.textContent = selectedOpt && selectedOpt.value ? selectedOpt.textContent : this.placeholder;
+            }
+
+            filterOptions() {
+                const query = this.searchInput.value.toLowerCase();
+                const options = this.optionsContainer.querySelectorAll('.searchable-dropdown-option');
+                let visibleCount = 0;
+                
+                this.highlightedIndex = -1;
+                
+                options.forEach(opt => {
+                    const text = opt.textContent.toLowerCase();
+                    const matches = text.includes(query);
+                    opt.style.display = matches ? '' : 'none';
+                    opt.classList.remove('highlighted');
+                    
+                    // Highlight matching text
+                    if (matches && query) {
+                        const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                        opt.innerHTML = opt.textContent.replace(regex, '<mark>$1</mark>');
+                        visibleCount++;
+                    } else if (matches) {
+                        opt.innerHTML = opt.textContent;
+                        visibleCount++;
+                    }
+                });
+                
+                this.updateCount(visibleCount, options.length);
+                
+                // Show empty state if no matches
+                const existingEmpty = this.optionsContainer.querySelector('.searchable-dropdown-empty');
+                if (existingEmpty) existingEmpty.remove();
+                
+                if (visibleCount === 0 && query) {
+                    const empty = document.createElement('div');
+                    empty.className = 'searchable-dropdown-empty';
+                    empty.textContent = `No results for "${query}"`;
+                    this.optionsContainer.appendChild(empty);
+                }
+            }
+
+            updateCount(visible, total) {
+                const options = this.optionsContainer.querySelectorAll('.searchable-dropdown-option');
+                total = total || options.length;
+                visible = visible !== undefined ? visible : total;
+                
+                if (total > this.minItemsForSearch) {
+                    this.countEl.style.display = 'block';
+                    this.countEl.textContent = visible === total ? `${total} items` : `${visible} of ${total} items`;
+                } else {
+                    this.countEl.style.display = 'none';
+                }
+            }
+
+            selectValue(value, text) {
+                this.selectEl.value = value;
+                this.trigger.textContent = text;
+                
+                // Update selected styling
+                this.optionsContainer.querySelectorAll('.searchable-dropdown-option').forEach(opt => {
+                    opt.classList.toggle('selected', opt.dataset.value === value);
+                });
+                
+                this.close();
+                this.onChange(value);
+            }
+
+            toggle() {
+                if (this.wrapper.classList.contains('open')) {
+                    this.close();
+                } else {
+                    this.open();
+                }
+            }
+
+            open() {
+                // Close other dropdowns
+                document.querySelectorAll('.searchable-dropdown.open').forEach(d => {
+                    d.classList.remove('open');
+                });
+                
+                this.wrapper.classList.add('open');
+                this.searchInput.value = '';
+                this.filterOptions();
+                this.highlightedIndex = -1;
+                
+                setTimeout(() => this.searchInput.focus(), 10);
+            }
+
+            close() {
+                this.wrapper.classList.remove('open');
+                this.highlightedIndex = -1;
+            }
+
+            refresh() {
+                this.renderOptions();
+            }
+        }
 
         // Tab switching
         function showTab(tabId) {
@@ -1940,10 +2327,24 @@
             if (gpuInfo && gpuInfo.live) {
                 status.classList.remove('offline');
                 const clockStr = gpuInfo.clock_graphics ? ` • ${gpuInfo.clock_graphics}MHz` : '';
-                text.textContent = `${gpuInfo.name.replace('NVIDIA ', '')} • ${gpuInfo.temperature}°C • ${Math.round(gpuInfo.power)}W${clockStr}`;
+                const utilStr = gpuInfo.utilization !== undefined ? ` • ${Math.round(gpuInfo.utilization)}%` : '';
+                const memStr = gpuInfo.memory_used && gpuInfo.memory_total ? 
+                    ` • ${(gpuInfo.memory_used / 1024).toFixed(1)}/${Math.round(gpuInfo.memory_total / 1024)}GB` : '';
+                text.textContent = `${gpuInfo.name.replace('NVIDIA ', '')} • ${gpuInfo.temperature}°C • ${Math.round(gpuInfo.power)}W${clockStr}${utilStr}${memStr}`;
             } else if (gpuInfo) {
                 status.classList.add('offline');
                 text.textContent = `${gpuInfo.name} (offline)`;
+            }
+        }
+
+        // Real-time GPU status refresh
+        async function refreshGpuStatus() {
+            try {
+                const res = await fetch('/api/gpu');
+                gpuInfo = await res.json();
+                renderGpuStatus();
+            } catch (e) {
+                // Silent fail - don't spam console
             }
         }
 
@@ -1990,8 +2391,15 @@
             const list = document.getElementById('benchmarkList');
             const maxSpeedup = Math.max(...benchmarkData.benchmarks.map(b => b.speedup));
             
-            list.innerHTML = benchmarkData.benchmarks.map((b, i) => {
-                const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+            // Sort benchmarks based on current sort order
+            let sortedBenchmarks = benchmarkData.benchmarks.map((b, idx) => ({...b, originalRank: idx + 1}));
+            if (leaderboardSortOrder === 'asc') {
+                sortedBenchmarks.reverse();
+            }
+            
+            list.innerHTML = sortedBenchmarks.map((b, i) => {
+                const rank = b.originalRank;
+                const rankClass = '';
                 const isMemoryOpt = b.optimization_goal === 'memory';
                 const memorySavingsPct = b.memory_savings_pct || 0;
                 
@@ -2055,9 +2463,9 @@
                     `${b.type} • ${b.baseline_time_ms?.toFixed(2) || '?'}ms → ${b.optimized_time_ms?.toFixed(2) || '?'}ms`;
                 
                 return `
-                    <div class="benchmark-item" onclick="showBenchmarkDetail(${i})">
-                        <div class="benchmark-rank ${rankClass}">${i + 1}</div>
-                        <div class="benchmark-info">
+                    <div class="benchmark-item" onclick="showBenchmarkDetail(${b.originalRank - 1})">
+                        <div class="benchmark-rank ${rankClass}">${rank}</div>
+                        <div class="benchmark-info" title="${b.chapter}:${b.name}">
                             <h4>${b.chapter}:${b.name}${isMemoryOpt ? ' <span style="color: var(--accent-info); font-size: 0.7em;">MEM</span>' : ''}${llmBadge}${refineBadge}${verificationBadge}</h4>
                             <div class="benchmark-meta">${metaLine}</div>
                         </div>
@@ -2075,6 +2483,20 @@
             if (speedup >= 2) return 'good';
             if (speedup >= 1.1) return 'fair';
             return 'poor';
+        }
+
+        // Sort leaderboard
+        function sortLeaderboard(order) {
+            leaderboardSortOrder = order;
+            // Update button states
+            document.querySelectorAll('.card-header .chip').forEach(btn => {
+                btn.classList.remove('active');
+                if ((order === 'desc' && btn.textContent.includes('Most')) ||
+                    (order === 'asc' && btn.textContent.includes('Least'))) {
+                    btn.classList.add('active');
+                }
+            });
+            renderBenchmarkList();
         }
 
         // Filter chart by type (all, python, cuda)
@@ -2224,16 +2646,26 @@
             
             if (!benchmarkData || !benchmarkData.benchmarks || benchmarkData.benchmarks.length === 0) {
                 select.innerHTML = '<option value="">No benchmarks available</option>';
+                if (searchableDropdowns.compare) searchableDropdowns.compare.refresh();
                 return;
             }
             
             const count = benchmarkData.benchmarks.length;
-            select.innerHTML = `<option value="">▼ Select from ${count} benchmarks...</option>` +
+            select.innerHTML = `<option value="">Select from ${count} benchmarks...</option>` +
                 benchmarkData.benchmarks.map((b, i) => {
                     const speedupStr = b.speedup >= 1 ? `${b.speedup.toFixed(2)}x ↑` : `${b.speedup.toFixed(2)}x`;
                     const statusIcon = b.status === 'succeeded' ? '✓' : b.status === 'failed' ? '✗' : '⚠';
-                    return `<option value="${i}">${statusIcon} ${b.chapter} › ${b.name} (${speedupStr})</option>`;
+                    return `<option value="${i}">${statusIcon} ${b.chapter}:${b.name} (${speedupStr})</option>`;
                 }).join('');
+            
+            // Initialize or refresh searchable dropdown
+            if (!searchableDropdowns.compare) {
+                searchableDropdowns.compare = new SearchableDropdown(select, {
+                    placeholder: `Select from ${count} benchmarks...`,
+                    onChange: updateComparison
+                });
+            }
+            searchableDropdowns.compare.refresh();
         }
 
         // Update comparison view
@@ -3181,7 +3613,7 @@
                 document.getElementById('profilePairs').textContent = data.count || '0';
                 
                 if (data.pairs && data.pairs.length > 0) {
-                    select.innerHTML = '<option value="">▼ Select a chapter to compare...</option>' +
+                    select.innerHTML = '<option value="">Select a chapter to compare...</option>' +
                         data.pairs.map(p => {
                             const badges = [];
                             if (p.has_nsys) badges.push('📊 nsys');
@@ -3194,12 +3626,23 @@
                     select.innerHTML = '<option value="">⚠️ No profile pairs found - run with --profile deep_dive</option>';
                 }
                 
+                // Initialize or refresh searchable dropdown
+                if (!searchableDropdowns.profile) {
+                    searchableDropdowns.profile = new SearchableDropdown(select, {
+                        placeholder: 'Select a chapter to compare...',
+                        colorClass: 'purple',
+                        onChange: loadProfileComparison
+                    });
+                }
+                searchableDropdowns.profile.refresh();
+                
                 // Also populate the optimize target dropdown
                 populateOptimizeTargets();
             } catch (e) {
                 console.error('Error loading deep profile list:', e);
                 select.innerHTML = '<option value="">❌ Failed to load - check server</option>';
                 document.getElementById('profilePairs').textContent = '?';
+                if (searchableDropdowns.profile) searchableDropdowns.profile.refresh();
             }
         }
         
@@ -3485,6 +3928,16 @@
                 }
                 
                 select.innerHTML = options;
+                
+                // Initialize or refresh searchable dropdown
+                if (!searchableDropdowns.optimize) {
+                    searchableDropdowns.optimize = new SearchableDropdown(select, {
+                        placeholder: 'Select target...',
+                        colorClass: 'pink',
+                        onChange: () => {} // No auto-action on select
+                    });
+                }
+                searchableDropdowns.optimize.refresh();
             } catch (e) {
                 console.error('Error loading optimize targets:', e);
             }
@@ -3727,6 +4180,25 @@
             });
         }
         
+        function copyConsole() {
+            const consoleEl = document.getElementById('liveConsole');
+            const lines = consoleEl.querySelectorAll('.console-line');
+            if (lines.length === 0) {
+                // No logs to copy
+                return;
+            }
+            const text = Array.from(lines).map(line => line.textContent).join('\n');
+            navigator.clipboard.writeText(text).then(() => {
+                // Show brief feedback
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Copied!';
+                setTimeout(() => { btn.textContent = originalText; }, 1500);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+
         function clearConsole() {
             document.getElementById('liveConsole').innerHTML = `
                 <div class="console-welcome" style="color: var(--text-muted); padding: 2rem; text-align: center;">
@@ -4057,6 +4529,16 @@
             } catch (e) { console.error('Failed to update cost analysis:', e); }
         }
 
+        // Adjust main padding based on actual nav height
+        function adjustMainPadding() {
+            const nav = document.querySelector('.nav');
+            const main = document.querySelector('.main');
+            if (nav && main) {
+                const navHeight = nav.offsetHeight;
+                main.style.paddingTop = (navHeight + 32) + 'px'; // 32px extra breathing room
+            }
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             fetchData();
@@ -4067,6 +4549,12 @@
             loadAnalysisData();     // Load analysis data
             // Auto-refresh every 30 seconds
             setInterval(fetchData, 30000);
+            // Real-time GPU status polling every 2 seconds
+            setInterval(refreshGpuStatus, 2000);
+            
+            // Adjust padding for header height
+            adjustMainPadding();
+            window.addEventListener('resize', adjustMainPadding);
         });
 
         // Close modal on escape

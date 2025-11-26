@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -12,8 +13,24 @@ try:  # Ensure arch_config clamps TORCH_CUDA_ARCH_LIST before building.
 except ImportError:  # pragma: no cover - optional when module unavailable
     arch_config = None  # type: ignore[assignment]
 
+try:
+    from common.python.build_utils import ensure_clean_build_directory
+except ImportError:
+    def ensure_clean_build_directory(build_dir: Path, max_lock_age_seconds: int = 300) -> None:
+        pass
+
 _MODULE = None
 _BUILD_ERROR: Optional[str] = None
+_EXT_NAME = "blackwell_capstone_tcgen05_inline_ext"
+
+
+def _get_build_dir() -> Path:
+    """Get the torch extension build directory."""
+    base = os.environ.get("TORCH_EXTENSIONS_DIR")
+    repo_root = Path(__file__).resolve().parents[2]
+    if base:
+        return Path(base) / _EXT_NAME
+    return repo_root / ".torch_extensions" / _EXT_NAME
 
 
 def load_tcgen05_module():
@@ -30,6 +47,11 @@ def load_tcgen05_module():
     clang_host = repo_root / "third_party" / "llvm" / "bin" / "clang++"
     ccbin_flag = f"-ccbin={clang_host}" if clang_host.exists() else None
     src = repo_root / "labs" / "fullstack_cluster" / "capstone_kernels_tcgen05.cu"
+
+    # Clean stale builds before attempting to load
+    build_dir = _get_build_dir()
+    build_dir.mkdir(parents=True, exist_ok=True)
+    ensure_clean_build_directory(build_dir)
 
     include_flags = []
     if te_cutlass_include.exists():
@@ -48,7 +70,7 @@ def load_tcgen05_module():
 
     try:
         _MODULE = load(
-            name="blackwell_capstone_tcgen05_inline_ext",
+            name=_EXT_NAME,
             sources=[str(src)],
             extra_cuda_cflags=extra_cuda_cflags,
             extra_cflags=extra_cflags,

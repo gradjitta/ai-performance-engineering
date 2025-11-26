@@ -46,3 +46,5 @@ if __name__ == "__main__":
     result = harness.benchmark(benchmark)
     print(f"\nScalar/float4 Loads: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
 
+
+

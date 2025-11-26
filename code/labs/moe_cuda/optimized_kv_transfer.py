@@ -107,10 +107,10 @@ class OptimizedKVTransferBenchmark(BaseBenchmark):
         bytes_moved = batch * n * 4.0  # Input/output bytes
         arithmetic_intensity = flops / max(bytes_moved, 1.0)
         return {
-    "kv_transfer.estimated_flops": flops,
-    "kv_transfer.estimated_bytes": bytes_moved,
-    "kv_transfer.arithmetic_intensity": arithmetic_intensity,
-}
+            "kv_transfer.estimated_flops": flops,
+            "kv_transfer.estimated_bytes": bytes_moved,
+            "kv_transfer.arithmetic_intensity": arithmetic_intensity,
+        }
 
     def validate_result(self) -> Optional[str]:
         if any(t is None for t in (self.input_chunks, self.weight, self.workspace, self.kv_dest)):

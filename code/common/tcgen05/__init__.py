@@ -53,15 +53,66 @@ def _tcgen05_cuda_flags() -> list[str]:
     return flags
 
 
+def _get_extension_build_dir(name: str) -> Path:
+    """Get the torch extension build directory for a given extension name."""
+    # torch extensions default to ~/.cache/torch_extensions or TORCH_EXTENSIONS_DIR
+    import os
+    base = os.environ.get("TORCH_EXTENSIONS_DIR")
+    if base:
+        return Path(base) / name
+    # Fall back to workspace .torch_extensions
+    return _REPO_ROOT / ".torch_extensions" / name
+
+
+def _clean_stale_build(name: str) -> None:
+    """Remove stale build artifacts if .so is missing but build.ninja exists."""
+    import shutil
+    build_dir = _get_extension_build_dir(name)
+    ninja_file = build_dir / "build.ninja"
+    so_file = build_dir / f"{name}.so"
+    
+    if ninja_file.exists() and not so_file.exists():
+        # Stale build directory - ninja exists but .so missing means build failed
+        try:
+            shutil.rmtree(build_dir)
+        except Exception:
+            pass  # Best effort cleanup
+
+
 def _load_extension(name: str, sources: Sequence[Path]):
-    return load(
-        name=name,
-        sources=[str(src) for src in sources],
-        extra_cuda_cflags=_tcgen05_cuda_flags(),
-        extra_cflags=["-std=c++20"],
-        extra_ldflags=["-lcuda"],
-        verbose=False,
-    )
+    # Clean up stale build artifacts to force rebuild if needed
+    _clean_stale_build(name)
+    
+    try:
+        return load(
+            name=name,
+            sources=[str(src) for src in sources],
+            extra_cuda_cflags=_tcgen05_cuda_flags(),
+            extra_cflags=["-std=c++20"],
+            extra_ldflags=["-lcuda"],
+            verbose=False,
+        )
+    except Exception as e:
+        # On failure, retry with verbose=True to capture build errors
+        error_msg = str(e)
+        if "cannot open shared object file" in error_msg or "No such file" in error_msg:
+            # Clean up and retry with verbose output
+            _clean_stale_build(name)
+            try:
+                return load(
+                    name=name,
+                    sources=[str(src) for src in sources],
+                    extra_cuda_cflags=_tcgen05_cuda_flags(),
+                    extra_cflags=["-std=c++20"],
+                    extra_ldflags=["-lcuda"],
+                    verbose=True,  # Show build errors on retry
+                )
+            except Exception as retry_e:
+                raise RuntimeError(
+                    f"Failed to build tcgen05 extension '{name}'. "
+                    f"Build errors (see above). Original error: {retry_e}"
+                ) from retry_e
+        raise
 
 
 @lru_cache(None)

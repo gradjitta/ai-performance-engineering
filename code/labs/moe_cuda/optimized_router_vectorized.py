@@ -156,10 +156,10 @@ class VectorizedRouterBenchmark(BaseBenchmark):
         bytes_moved = batch * n * 4.0  # Input/output bytes
         arithmetic_intensity = flops / max(bytes_moved, 1.0)
         return {
-    "router_vectorized.estimated_flops": flops,
-    "router_vectorized.estimated_bytes": bytes_moved,
-    "router_vectorized.arithmetic_intensity": arithmetic_intensity,
-}
+            "router_vectorized.estimated_flops": flops,
+            "router_vectorized.estimated_bytes": bytes_moved,
+            "router_vectorized.arithmetic_intensity": arithmetic_intensity,
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:

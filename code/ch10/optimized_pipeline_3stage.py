@@ -44,3 +44,5 @@ if __name__ == "__main__":
     result = harness.benchmark(benchmark)
     print(f"\n3-Stage Pipeline GEMV: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
 
+
+

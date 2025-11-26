@@ -8,9 +8,11 @@
 #include <cutlass/half.h>
 
 #include <cute/algorithm/axpby.hpp>
+#include <cute/arch/copy_sm90_tma.hpp>
 #include <cute/arch/mma_sm100_umma.hpp>
 #include <cute/arch/tmem_allocator_sm100.hpp>
 #include <cute/atom/copy_traits_sm90_tma.hpp>
+#include <cute/atom/mma_atom.hpp>
 #include <cute/numeric/integral_constant.hpp>
 #include <cute/tensor.hpp>
 
@@ -217,11 +219,11 @@ torch::Tensor run_tcgen05_matmul(torch::Tensor a, torch::Tensor b) {
                         make_shape(size<1>(mma_tiler), size<2>(mma_tiler)));
 
   auto sA_layout =
-      UMMA::tile_to_mma_shape(UMMA::Layout_K_SW128_Atom<TypeA>{},
-                              mma_shape_A);
+      tile_to_mma_shape(UMMA::Layout_K_SW128_Atom<TypeA>{},
+                        mma_shape_A);
   auto sB_layout =
-      UMMA::tile_to_mma_shape(UMMA::Layout_K_SW128_Atom<TypeB>{},
-                              mma_shape_B);
+      tile_to_mma_shape(UMMA::Layout_K_SW128_Atom<TypeB>{},
+                        mma_shape_B);
 
   using SharedStorageT =
       SharedStorage<TypeA, TypeB, decltype(sA_layout), decltype(sB_layout)>;

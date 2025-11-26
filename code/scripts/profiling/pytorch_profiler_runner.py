@@ -204,7 +204,9 @@ def run_profiler(script: Path, output_dir: Path, mode: str, script_args: Optiona
                         )
                     averages_path = output_dir / f"key_averages_{mode}.json"
                     averages_path.write_text(json.dumps(rows, indent=2))
-            except AttributeError:
+                except AttributeError:
+                    pass
+            except Exception:
                 pass
 
 

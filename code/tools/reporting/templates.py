@@ -377,3 +377,5 @@ def generate_summary_report(
     generator = ReportGenerator(config)
     return generator.generate_pdf(benchmark_data, output_path)
 
+
+

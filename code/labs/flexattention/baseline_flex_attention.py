@@ -97,15 +97,15 @@ class BaselineFlexAttentionBenchmark(BaseBenchmark):
         bytes_moved = batch * n * 4.0  # Input/output bytes
         arithmetic_intensity = flops / max(bytes_moved, 1.0)
         return {
-    "flex_attention.estimated_flops": flops,
-    "flex_attention.estimated_bytes": bytes_moved,
-    "flex_attention.arithmetic_intensity": arithmetic_intensity,
-}
+            "flex_attention.estimated_flops": flops,
+            "flex_attention.estimated_bytes": bytes_moved,
+            "flex_attention.arithmetic_intensity": arithmetic_intensity,
+        }
 
-def validate_result(self) -> Optional[str]:
-    if self.inputs is None or self.score_mod is None:
-        return "FlexAttention inputs are not initialized"
-    return None
+    def validate_result(self) -> Optional[str]:
+        if self.inputs is None or self.score_mod is None:
+            return "FlexAttention inputs are not initialized"
+        return None
 
 
 def get_benchmark() -> BaseBenchmark:

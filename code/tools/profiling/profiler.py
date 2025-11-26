@@ -531,3 +531,5 @@ class UnifiedProfiler:
         
         return sorted(changes, key=lambda x: abs(x.get('diff_us', x.get('baseline_us', 0))), reverse=True)[:20]
 
+
+

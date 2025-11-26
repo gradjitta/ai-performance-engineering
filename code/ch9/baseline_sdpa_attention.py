@@ -142,3 +142,5 @@ if __name__ == "__main__":
     result = harness.benchmark(get_benchmark())
     print(f"Baseline SDPA attention (unfused): {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
 
+
+

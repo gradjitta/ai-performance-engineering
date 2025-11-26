@@ -79,17 +79,55 @@ def _kill_processes_using_directory(directory: Path) -> None:
         pass  # Fail silently if we can't check processes
 
 
+def cleanup_stale_so_builds(build_dir: Path) -> bool:
+    """Remove stale build artifacts if .so is missing but build.ninja exists.
+    
+    This handles the case where a previous compilation failed, leaving
+    build.ninja but no .so file. torch.utils.cpp_extension.load() will
+    try to import the .so directly without rebuilding, causing an error.
+    
+    Args:
+        build_dir: Directory containing build artifacts
+        
+    Returns:
+        True if cleanup was performed, False otherwise
+    """
+    import shutil
+    
+    if not build_dir.exists():
+        return False
+    
+    ninja_file = build_dir / "build.ninja"
+    so_files = list(build_dir.glob("*.so"))
+    
+    # If ninja exists but no .so files, the build failed - clean up
+    if ninja_file.exists() and not so_files:
+        try:
+            shutil.rmtree(build_dir)
+            build_dir.mkdir(parents=True, exist_ok=True)
+            return True
+        except Exception:
+            pass  # Best effort cleanup
+    
+    return False
+
+
 def ensure_clean_build_directory(build_dir: Path, max_lock_age_seconds: int = 300) -> None:
     """Ensure build directory is clean before starting a build.
     
     This is a convenience function that:
-    1. Cleans stale locks
-    2. Removes old build artifacts if needed
+    1. Cleans stale builds (build.ninja exists but .so missing)
+    2. Cleans stale locks
+    3. Removes old build artifacts if needed
     
     Args:
         build_dir: Directory containing build artifacts
         max_lock_age_seconds: Consider locks older than this stale
     """
+    # First, check for stale builds (ninja exists but .so missing)
+    cleanup_stale_so_builds(build_dir)
+    
+    # Then clean stale locks
     cleanup_stale_build_locks(build_dir, max_lock_age_seconds)
     
     # Optionally clean old .o files if directory is getting large

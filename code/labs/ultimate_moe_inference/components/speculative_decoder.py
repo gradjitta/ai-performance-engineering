@@ -308,3 +308,5 @@ class SpeculativeDecoder:
         self.accepted_tokens = 0
 
 
+
+

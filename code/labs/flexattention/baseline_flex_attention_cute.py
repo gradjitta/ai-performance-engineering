@@ -95,13 +95,13 @@ class BaselineFlexAttentionCuteBenchmark(BaseBenchmark):
         bytes_moved = batch * n * 4.0  # Input/output bytes
         arithmetic_intensity = flops / max(bytes_moved, 1.0)
         return {
-    "flex_attention_cute.estimated_flops": flops,
-    "flex_attention_cute.estimated_bytes": bytes_moved,
-    "flex_attention_cute.arithmetic_intensity": arithmetic_intensity,
-}
+            "flex_attention_cute.estimated_flops": flops,
+            "flex_attention_cute.estimated_bytes": bytes_moved,
+            "flex_attention_cute.arithmetic_intensity": arithmetic_intensity,
+        }
 
-def validate_result(self) -> Optional[str]:
-    return None
+    def validate_result(self) -> Optional[str]:
+        return None
 
 
 def get_benchmark() -> BaseBenchmark:

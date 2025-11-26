@@ -152,3 +152,5 @@ if __name__ == "__main__":
     print(f"\nArithmetic intensity improvement: ~{optimized_ai/baseline_ai:.1f}x")
     print("(Fused attention avoids writing S×S attention scores to HBM)")
 
+
+

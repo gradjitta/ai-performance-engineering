@@ -176,7 +176,7 @@ inline int run_ilp_low_occupancy_vec4(const char* title, int max_active_blocks_o
     printf("   Time: %.3f ms\n", unrolled_time);
     cudaMemcpyAsync(h_output_unrolled, d_output, N * sizeof(float),
                    cudaMemcpyDeviceToHost, stream);
-    cudaStreamSynchronize(stream)
+    cudaStreamSynchronize(stream);
 
     bool indep_correct = true;
     bool unrolled_correct = true;

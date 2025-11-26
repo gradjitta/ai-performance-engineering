@@ -290,3 +290,5 @@ def detect_input_type(input_str: str) -> Tuple[str, InputAdapter]:
     
     raise ValueError(f"Unknown input type: {input_str}")
 
+
+

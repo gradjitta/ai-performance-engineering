@@ -67,7 +67,6 @@ class BaselineAttentionBenchmark(BaseBenchmark):
             num_stages=getattr(self, 'num_stages', 4),
             stage_times_ms=getattr(self, '_stage_times_ms', [1.0]),
         )
-}
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:

@@ -238,10 +238,10 @@ class GradientBucket:
                     recv_chunk_start = recv_rank * chunk_size
                     recv_chunk_end = min(recv_chunk_start + chunk_size, self.numel)
                     prev_rank = (rank - 1 + self.world_size) % self.world_size
-                        remote_buf = self.handle.get_buffer(prev_rank)
-                        self.tensor[recv_chunk_start:recv_chunk_end].add_(
-                            remote_buf[recv_chunk_start:recv_chunk_end]
-                        )
+                    remote_buf = self.handle.get_buffer(prev_rank)
+                    self.tensor[recv_chunk_start:recv_chunk_end].add_(
+                        remote_buf[recv_chunk_start:recv_chunk_end]
+                    )
             
             # AllGather phase
             for step in range(self.world_size - 1):
@@ -250,11 +250,11 @@ class GradientBucket:
                 send_chunk_end = min(send_chunk_start + chunk_size, self.numel)
                 
                 next_rank = (rank + 1) % self.world_size
-                    remote_buf = self.handle.get_buffer(next_rank)
-                    remote_buf[send_chunk_start:send_chunk_end].copy_(
-                        self.tensor[send_chunk_start:send_chunk_end],
-                        non_blocking=True
-                    )
+                remote_buf = self.handle.get_buffer(next_rank)
+                remote_buf[send_chunk_start:send_chunk_end].copy_(
+                    self.tensor[send_chunk_start:send_chunk_end],
+                    non_blocking=True
+                )
                 
                 dist.barrier()
             

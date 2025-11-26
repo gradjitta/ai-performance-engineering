@@ -61,7 +61,7 @@ class NsightSystemsProfiler:
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
             finally:
-                    torch.cuda.nvtx.range_pop()
+                torch.cuda.nvtx.range_pop()
                 self._nvtx_pushed = False
 
     @staticmethod

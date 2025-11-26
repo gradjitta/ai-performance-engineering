@@ -75,3 +75,5 @@ benchmark = OptimizedFSDP2FP8(
 - **Ch13**: PyTorch profiling and FP8
 - **Ch13**: FSDP2 and communication patterns
 
+
+

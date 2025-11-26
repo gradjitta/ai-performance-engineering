@@ -80,10 +80,10 @@ class OptimizedDecodeKernelBenchmark(BaseBenchmark):
         bytes_moved = batch * n * 4.0  # Input/output bytes
         arithmetic_intensity = flops / max(bytes_moved, 1.0)
         return {
-    "decode_kernel.estimated_flops": flops,
-    "decode_kernel.estimated_bytes": bytes_moved,
-    "decode_kernel.arithmetic_intensity": arithmetic_intensity,
-}
+            "decode_kernel.estimated_flops": flops,
+            "decode_kernel.estimated_bytes": bytes_moved,
+            "decode_kernel.arithmetic_intensity": arithmetic_intensity,
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.input is None or self.output is None:

@@ -270,14 +270,88 @@ void benchmark_vector_widths() {
     printf("%-20s %8s  %10s\n", "-------", "----", "---------");
     
     float scalar_ms = benchmark_kernel("Scalar (4B)", vector_add_scalar, 1);
-    float vec4_ms = benchmark_kernel("float4 (16B)", 
-        [](const float4* a, const float4* b, float4* c, int n) {
-            vector_add_float4<<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(a, b, c, n);
-        }, 4);
-    float vec8_ms = benchmark_kernel("float8 (32B)", 
-        [](const float8* a, const float8* b, float8* c, int n) {
-            vector_add_float8<<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(a, b, c, n);
-        }, 8);
+    
+    // float4 benchmark (need explicit casts for pointer types)
+    float vec4_ms;
+    {
+        const char* name = "float4 (16B)";
+        int num_elements = N / 4;
+        dim3 block(BLOCK_SIZE);
+        dim3 grid((num_elements + BLOCK_SIZE - 1) / BLOCK_SIZE);
+        
+        CUDA_CHECK(cudaMemset(d_c, 0, bytes));
+        CUDA_CHECK(cudaDeviceSynchronize());
+        
+        for (int i = 0; i < warmup; ++i) {
+            vector_add_float4<<<grid, block>>>(
+                reinterpret_cast<const float4*>(d_a),
+                reinterpret_cast<const float4*>(d_b),
+                reinterpret_cast<float4*>(d_c),
+                num_elements
+            );
+        }
+        CUDA_CHECK(cudaDeviceSynchronize());
+        
+        CUDA_CHECK(cudaEventRecord(start));
+        for (int i = 0; i < iterations; ++i) {
+            vector_add_float4<<<grid, block>>>(
+                reinterpret_cast<const float4*>(d_a),
+                reinterpret_cast<const float4*>(d_b),
+                reinterpret_cast<float4*>(d_c),
+                num_elements
+            );
+        }
+        CUDA_CHECK(cudaEventRecord(stop));
+        CUDA_CHECK(cudaEventSynchronize(stop));
+        
+        float ms;
+        CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
+        ms /= iterations;
+        float bandwidth = (3.0f * bytes) / (ms / 1000.0f) / 1e9f;
+        printf("%-20s %8.3f ms  %8.1f GB/s\n", name, ms, bandwidth);
+        vec4_ms = ms;
+    }
+    
+    // float8 benchmark (need explicit casts for pointer types)
+    float vec8_ms;
+    {
+        const char* name = "float8 (32B)";
+        int num_elements = N / 8;
+        dim3 block(BLOCK_SIZE);
+        dim3 grid((num_elements + BLOCK_SIZE - 1) / BLOCK_SIZE);
+        
+        CUDA_CHECK(cudaMemset(d_c, 0, bytes));
+        CUDA_CHECK(cudaDeviceSynchronize());
+        
+        for (int i = 0; i < warmup; ++i) {
+            vector_add_float8<<<grid, block>>>(
+                reinterpret_cast<const float8*>(d_a),
+                reinterpret_cast<const float8*>(d_b),
+                reinterpret_cast<float8*>(d_c),
+                num_elements
+            );
+        }
+        CUDA_CHECK(cudaDeviceSynchronize());
+        
+        CUDA_CHECK(cudaEventRecord(start));
+        for (int i = 0; i < iterations; ++i) {
+            vector_add_float8<<<grid, block>>>(
+                reinterpret_cast<const float8*>(d_a),
+                reinterpret_cast<const float8*>(d_b),
+                reinterpret_cast<float8*>(d_c),
+                num_elements
+            );
+        }
+        CUDA_CHECK(cudaEventRecord(stop));
+        CUDA_CHECK(cudaEventSynchronize(stop));
+        
+        float ms;
+        CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
+        ms /= iterations;
+        float bandwidth = (3.0f * bytes) / (ms / 1000.0f) / 1e9f;
+        printf("%-20s %8.3f ms  %8.1f GB/s\n", name, ms, bandwidth);
+        vec8_ms = ms;
+    }
     
     printf("\nSpeedup vs scalar:\n");
     printf("  float4 (16B): %.2fx\n", scalar_ms / vec4_ms);
@@ -301,5 +375,6 @@ int main() {
     benchmark_vector_widths();
     return 0;
 }
+
 
 

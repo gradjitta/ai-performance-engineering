@@ -67,6 +67,9 @@ python tools/cli/benchmark_cli.py run --targets ch7 --profile minimal
 
 # Compare baseline vs optimized
 python -m tools.cli.benchmark_cli compare ch7.baseline_memory_access ch7.optimized_memory_access
+
+# Quick verification (lightweight smoke test)
+python -m tools.cli.benchmark_cli verify --targets ch7
 ```
 
 ### Using the Harness Directly
@@ -154,6 +157,29 @@ See `CONTRIBUTING.md` for full coding standards.
 
 ---
 
+## Memory Tracking
+
+All benchmarks automatically track GPU memory usage:
+
+| Metric | Description |
+|--------|-------------|
+| `peak_mb` | Maximum memory allocated during execution |
+| `allocated_mb` | Memory allocated at measurement point |
+| `reserved_mb` | Total memory reserved by CUDA allocator |
+| `memory_savings_pct` | Reduction vs baseline (for memory optimizations) |
+
+Memory tracking is **always enabled** globally—individual benchmarks cannot disable it. This ensures consistent data for trade-off analysis.
+
+```bash
+# View memory data in results
+python -m tools.cli.benchmark_cli analyze
+
+# Memory-focused benchmarks show savings prominently
+# Example: Gradient checkpointing shows "💾 57% memory saved"
+```
+
+---
+
 ## Analysis & Visualization
 
 ### Dashboard UI
@@ -211,6 +237,29 @@ python -m tools.cli.benchmark_cli analyze
 | A10G | $1.00/hr | Cost-optimized |
 | T4 | $0.50/hr | Budget inference |
 
+### API Endpoints
+
+The dashboard server exposes REST APIs for programmatic access:
+
+| Endpoint | Description |
+|----------|-------------|
+| `/api/benchmarks` | All benchmark results with multi-metric data |
+| `/api/summary` | Aggregated statistics |
+| `/api/analysis/leaderboards` | Speed and memory leaderboards |
+| `/api/analysis/pareto` | Pareto-optimal benchmarks |
+| `/api/analysis/tradeoffs` | Speed vs memory trade-off data |
+| `/api/analysis/recommendations` | Use-case based recommendations |
+| `/api/analysis/whatif` | Constraint-based solver |
+| `/api/analysis/stacking` | Optimization compatibility matrix |
+| `/api/analysis/power` | Power efficiency rankings |
+| `/api/analysis/cost` | Cost per operation analysis |
+| `/api/analysis/scaling` | Scaling characteristics |
+
+```bash
+# Example: Get trade-off data as JSON
+curl http://localhost:8100/api/analysis/tradeoffs | jq .
+```
+
 ---
 
 ## CLI Utilities
@@ -263,9 +312,44 @@ Each lab has a README.md with detailed instructions.
 
 ---
 
+## Informational Benchmarks
+
+Some benchmarks are marked "informational"—they demonstrate techniques but may not show speedup due to:
+- Multi-GPU requirements (pipeline parallelism, disaggregated inference)
+- System topology dependencies (NUMA awareness)
+- Experimental APIs (FlexAttention on Blackwell)
+
+These are valuable for learning HOW to implement patterns, even if not faster on single-GPU setups.
+
+```python
+# In run_all_benchmarks.py
+INFORMATIONAL_BENCHMARKS = {
+    "ch3": {"numa_unaware"},        # NUMA topology dependent
+    "ch4": {"dataparallel_basic"},  # Requires multi-GPU
+    "ch14": {"sliding_window_bench"},  # FlexAttention API
+    "ch15": {"disaggregated_inference", "inference_placement"},  # Multi-GPU
+    # ...
+}
+```
+
+---
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `TORCHINDUCTOR_CACHE_DIR` | Torch Inductor cache location | `.torch_inductor` |
+| `CUDA_HOME` | CUDA installation path | `/usr/local/cuda` |
+| `RANK` | Process rank for distributed training | `0` |
+| `WORLD_SIZE` | Total processes for distributed training | GPU count |
+| `LOCAL_RANK` | Local GPU rank | `0` |
+| `MASTER_ADDR` | Distributed training coordinator | `localhost` |
+| `MASTER_PORT` | Distributed training port | `29500` |
+
+---
+
 ## Notes
 
 - `setup.sh` installs system prerequisites (drivers, CUDA, Nsight)
 - `python tools/testing/run_all_benchmarks.py --targets ch*` for regression suites
-- Set `AIPERF_FAST_BENCH=1` for lightweight CI validation
 - `artifacts/` holds run outputs; clean via `python cleanup.py`

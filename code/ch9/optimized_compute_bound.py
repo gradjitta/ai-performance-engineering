@@ -170,7 +170,6 @@ class OptimizedComputeBoundBenchmark(BaseBenchmark):
             elapsed_ms=getattr(self, '_last_elapsed_ms', 1.0),
             precision="fp16",
         )
-}
 
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""

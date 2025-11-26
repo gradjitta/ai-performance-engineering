@@ -91,3 +91,5 @@ x_fp8 = (x_blocks / scales).to(torch.float8_e4m3fn)
 - **Ch19**: NVFP4 and dynamic precision switching
 - **Ch18**: Speculative decoding (benefits from longer context)
 
+
+

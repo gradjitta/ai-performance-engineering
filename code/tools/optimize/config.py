@@ -327,3 +327,5 @@ def generate_config_template(path: Union[str, Path] = "optimize_config.yaml"):
     path.write_text(DEFAULT_CONFIG_TEMPLATE)
     return path
 
+
+

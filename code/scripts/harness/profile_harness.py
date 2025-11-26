@@ -463,7 +463,7 @@ def _find_command(cmd: str) -> Optional[str]:
 
 def _terminate_lingering_nsys() -> None:
     """Best-effort cleanup for stray Nsight Systems agents before NCU runs."""
-        subprocess.run(["pkill", "-f", "nsys"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["pkill", "-f", "nsys"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def check_preconditions(example: Example, profiler: str) -> Optional[str]:

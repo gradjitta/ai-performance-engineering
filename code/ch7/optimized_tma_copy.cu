@@ -339,8 +339,14 @@ void benchmark_tma_2d(cudaDeviceProp& prop) {
     // Calculate bandwidth
     const double bytes_transferred = 2.0 * matrix_bytes;  // Read + Write
     const double bandwidth_gbps = (bytes_transferred / 1e9) / (avg_tma2d_ms / 1000.0);
-    const double peak_bandwidth = static_cast<double>(prop.memoryClockRate) * 1e3 * 
-                                   (prop.memoryBusWidth / 8) * 2 / 1e9;  // HBM is DDR
+    // Peak bandwidth estimation: B200 = ~8 TB/s, use conservative estimate
+    // memoryClockRate is deprecated in newer CUDA, use known peak for Blackwell
+    double peak_bandwidth = 8000.0;  // B200 theoretical peak (8 TB/s)
+#if __CUDACC_VER_MAJOR__ < 12 || (__CUDACC_VER_MAJOR__ == 12 && __CUDACC_VER_MINOR__ < 6)
+    // Older CUDA versions have memoryClockRate
+    peak_bandwidth = static_cast<double>(prop.memoryClockRate) * 1e3 * 
+                     (prop.memoryBusWidth / 8) * 2 / 1e9;  // HBM is DDR
+#endif
     const double efficiency = 100.0 * bandwidth_gbps / peak_bandwidth;
     
     std::printf("TMA 2D tiled copy (%dx%d, tile=%dx%d): %.3f ms\n", 
