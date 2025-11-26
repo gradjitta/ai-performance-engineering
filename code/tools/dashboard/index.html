@@ -1765,6 +1765,87 @@
                     </div>
                 </div>
             </div>
+
+            <!-- What-If Solver -->
+            <div class="card animate delay-5 mb-3">
+                <div class="card-header">
+                    <h3 class="card-title">🔍 What-If Constraint Solver</h3>
+                </div>
+                <div class="card-body">
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                        <div style="flex: 1; min-width: 150px;">
+                            <label style="display: block; color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.25rem;">Max VRAM (GB)</label>
+                            <input type="number" id="whatifVram" placeholder="e.g., 24" style="width: 100%; padding: 0.5rem; background: var(--bg-tertiary); border: 1px solid var(--border-glass); border-radius: 6px; color: var(--text-primary);">
+                        </div>
+                        <div style="flex: 1; min-width: 150px;">
+                            <label style="display: block; color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.25rem;">Max Latency (ms)</label>
+                            <input type="number" id="whatifLatency" placeholder="e.g., 100" style="width: 100%; padding: 0.5rem; background: var(--bg-tertiary); border: 1px solid var(--border-glass); border-radius: 6px; color: var(--text-primary);">
+                        </div>
+                        <div style="flex: 1; min-width: 150px;">
+                            <label style="display: block; color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.25rem;">Memory Budget (GB)</label>
+                            <input type="number" id="whatifMemory" placeholder="e.g., 16" style="width: 100%; padding: 0.5rem; background: var(--bg-tertiary); border: 1px solid var(--border-glass); border-radius: 6px; color: var(--text-primary);">
+                        </div>
+                        <div style="display: flex; align-items: flex-end;">
+                            <button onclick="runWhatIf()" style="padding: 0.5rem 1.5rem; background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); border: none; border-radius: 6px; color: white; font-weight: 600; cursor: pointer;">Find Optimizations</button>
+                        </div>
+                    </div>
+                    <div id="whatifResults" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <div style="color: var(--text-muted); text-align: center;">Enter constraints and click "Find Optimizations"</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid-2 mb-3">
+                <!-- Stacking Guide -->
+                <div class="card animate delay-5">
+                    <div class="card-header">
+                        <h3 class="card-title">🔗 Optimization Stacking</h3>
+                    </div>
+                    <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                        <div id="stackingGuide" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <div style="color: var(--text-muted); text-align: center;">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Power Efficiency -->
+                <div class="card animate delay-6">
+                    <div class="card-header">
+                        <h3 class="card-title">⚡ Power Efficiency (ops/watt)</h3>
+                    </div>
+                    <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                        <div id="powerEfficiency" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div style="color: var(--text-muted); text-align: center;">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid-2 mb-3">
+                <!-- Cost Analysis -->
+                <div class="card animate delay-6">
+                    <div class="card-header">
+                        <h3 class="card-title">💰 Cost Analysis ($/operation)</h3>
+                    </div>
+                    <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                        <div id="costAnalysis" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div style="color: var(--text-muted); text-align: center;">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scaling Analysis -->
+                <div class="card animate delay-7">
+                    <div class="card-header">
+                        <h3 class="card-title">📈 Scaling Recommendations</h3>
+                    </div>
+                    <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                        <div id="scalingAnalysis" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <div style="color: var(--text-muted); text-align: center;">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </main>
 
@@ -3651,11 +3732,15 @@
         async function loadAnalysisData() {
             try {
                 // Load all analysis data in parallel
-                const [leaderboards, pareto, tradeoffs, recommendations] = await Promise.all([
+                const [leaderboards, pareto, tradeoffs, recommendations, stacking, power, cost, scaling] = await Promise.all([
                     fetch('/api/analysis/leaderboards').then(r => r.json()),
                     fetch('/api/analysis/pareto').then(r => r.json()),
                     fetch('/api/analysis/tradeoffs').then(r => r.json()),
                     fetch('/api/analysis/recommendations').then(r => r.json()),
+                    fetch('/api/analysis/stacking').then(r => r.json()),
+                    fetch('/api/analysis/power').then(r => r.json()),
+                    fetch('/api/analysis/cost').then(r => r.json()),
+                    fetch('/api/analysis/scaling').then(r => r.json()),
                 ]);
                 
                 renderLeaderboards(leaderboards);
@@ -3663,6 +3748,10 @@
                 renderTradeoffChart(tradeoffs, pareto);
                 renderRecommendations(recommendations);
                 renderEfficiencyRankings(tradeoffs);
+                renderStackingGuide(stacking);
+                renderPowerEfficiency(power);
+                renderCostAnalysis(cost);
+                renderScalingAnalysis(scaling);
             } catch (e) {
                 console.error('Failed to load analysis data:', e);
             }
@@ -3876,6 +3965,74 @@
             } else {
                 el.innerHTML = '<div style="color: var(--text-muted); text-align: center;">No efficiency data available</div>';
             }
+        }
+
+        async function runWhatIf() {
+            const vram = document.getElementById('whatifVram').value;
+            const latency = document.getElementById('whatifLatency').value;
+            const memory = document.getElementById('whatifMemory').value;
+            let url = '/api/analysis/whatif?';
+            if (vram) url += `vram=${vram}&`;
+            if (latency) url += `latency=${latency}&`;
+            if (memory) url += `memory_budget=${memory}&`;
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                renderWhatIfResults(data);
+            } catch (e) { console.error('What-If query failed:', e); }
+        }
+        
+        function renderWhatIfResults(data) {
+            const el = document.getElementById('whatifResults');
+            const recs = data.recommendations || [];
+            if (recs.length === 0) { el.innerHTML = '<div style="color: var(--text-muted);">No matching optimizations found</div>'; return; }
+            let html = '<div style="display:flex;gap:1rem;margin-bottom:1rem;"><div style="padding:0.5rem 1rem;background:var(--bg-glass);border-radius:6px;"><span style="color:var(--text-muted);">Matching:</span> <span style="color:var(--accent-success);font-weight:600;">' + data.matching_count + '</span> / ' + data.total_benchmarks + '</div></div>';
+            if (data.best_for_speed) html += '<div style="padding:0.5rem;background:rgba(0,245,160,0.1);border-radius:6px;border-left:3px solid var(--accent-success);"><strong>🚀 Best for Speed:</strong> ' + data.best_for_speed.name + ' (' + data.best_for_speed.speedup.toFixed(2) + 'x)</div>';
+            if (data.best_for_memory && data.best_for_memory.memory_savings_pct > 0) html += '<div style="padding:0.5rem;background:rgba(76,201,240,0.1);border-radius:6px;border-left:3px solid var(--accent-info);"><strong>💾 Best for Memory:</strong> ' + data.best_for_memory.name + ' (-' + data.best_for_memory.memory_savings_pct.toFixed(0) + '%)</div>';
+            html += '<div style="margin-top:1rem;"><strong>Top Matches:</strong></div>';
+            html += recs.slice(0, 6).map(function(r) { return '<div style="display:flex;justify-content:space-between;padding:0.4rem 0.75rem;background:var(--bg-glass);border-radius:4px;"><span>' + r.name + '</span><span style="color:var(--accent-success);font-weight:600;">' + r.speedup.toFixed(2) + 'x</span></div>'; }).join('');
+            el.innerHTML = html;
+        }
+        
+        function renderStackingGuide(data) {
+            const el = document.getElementById('stackingGuide');
+            const compatible = data.compatible_combinations || [];
+            const incompatible = data.incompatible_combinations || [];
+            const stacks = data.recommended_stacks || [];
+            let html = '<div style="margin-bottom:1rem;"><strong style="color:var(--accent-success);">✅ Compatible:</strong></div>';
+            html += compatible.slice(0, 4).map(function(c) { return '<div style="padding:0.5rem;background:rgba(0,245,160,0.05);border-radius:6px;border-left:2px solid var(--accent-success);"><div><strong>' + c.opt1 + '</strong> + <strong>' + c.opt2 + '</strong></div><div style="font-size:0.8rem;color:var(--text-secondary);">' + c.benefit + '</div></div>'; }).join('');
+            html += '<div style="margin:1rem 0 0.5rem;"><strong style="color:var(--accent-danger);">❌ Incompatible:</strong></div>';
+            html += incompatible.slice(0, 2).map(function(c) { return '<div style="padding:0.5rem;background:rgba(255,71,87,0.05);border-radius:6px;border-left:2px solid var(--accent-danger);"><div><strong>' + c.opt1 + '</strong> + <strong>' + c.opt2 + '</strong></div><div style="font-size:0.8rem;color:var(--text-secondary);">' + c.reason + '</div></div>'; }).join('');
+            html += '<div style="margin:1rem 0 0.5rem;"><strong style="color:var(--accent-primary);">🎯 Recommended Stacks:</strong></div>';
+            html += stacks.map(function(s) { return '<div style="padding:0.5rem;background:var(--bg-glass);border-radius:6px;"><div style="font-weight:600;">' + s.name + '</div><div style="font-size:0.8rem;color:var(--accent-info);">' + s.stack.join(' → ') + '</div><div style="font-size:0.8rem;color:var(--accent-success);">Expected: ' + s.expected_benefit + '</div></div>'; }).join('');
+            el.innerHTML = html;
+        }
+        
+        function renderPowerEfficiency(data) {
+            const el = document.getElementById('powerEfficiency');
+            const rankings = data.efficiency_rankings || [];
+            let html = '<div style="display:flex;gap:1rem;margin-bottom:1rem;"><div style="padding:0.5rem 1rem;background:var(--bg-glass);border-radius:6px;"><span style="color:var(--text-muted);">Avg Power:</span> <span style="font-weight:600;">' + (data.avg_power_w ? data.avg_power_w.toFixed(0) : 'N/A') + 'W</span></div><div style="padding:0.5rem 1rem;background:var(--bg-glass);border-radius:6px;"><span style="color:var(--text-muted);">Benchmarks:</span> <span style="font-weight:600;">' + (data.total_benchmarks_with_power || 0) + '</span></div></div>';
+            if (data.most_efficient) html += '<div style="padding:0.75rem;background:linear-gradient(135deg,rgba(255,215,0,0.1),rgba(255,196,61,0.1));border-radius:8px;border-left:3px solid #FFD700;margin-bottom:1rem;"><div style="font-weight:600;">🏆 Most Efficient</div><div>' + data.most_efficient.name + '</div><div style="color:var(--accent-success);">' + (data.most_efficient.ops_per_watt ? data.most_efficient.ops_per_watt.toFixed(2) : '0') + ' ops/watt</div></div>';
+            html += rankings.slice(0, 6).map(function(e, i) { return '<div style="display:flex;justify-content:space-between;padding:0.4rem 0.75rem;background:var(--bg-glass);border-radius:4px;"><span>' + (i+1) + '. ' + e.name.substring(0,30) + (e.name.length>30?'...':'') + '</span><span style="color:var(--accent-primary);">' + (e.ops_per_watt ? e.ops_per_watt.toFixed(2) : '0') + '</span></div>'; }).join('');
+            el.innerHTML = html;
+        }
+        
+        function renderCostAnalysis(data) {
+            const el = document.getElementById('costAnalysis');
+            const rankings = data.cost_rankings || [];
+            let html = '<div style="padding:0.75rem;background:var(--bg-glass);border-radius:8px;margin-bottom:1rem;"><div style="color:var(--text-muted);font-size:0.8rem;">Assuming ' + data.assumed_gpu + ' @ $' + (data.hourly_rate ? data.hourly_rate.toFixed(2) : '0') + '/hr</div></div>';
+            if (data.highest_savings) { var h=data.highest_savings; html += '<div style="padding:0.75rem;background:linear-gradient(135deg,rgba(0,245,160,0.1),rgba(76,201,240,0.1));border-radius:8px;border-left:3px solid var(--accent-success);margin-bottom:1rem;"><div style="font-weight:600;">💰 Highest Savings</div><div>' + h.name + '</div><div style="color:var(--accent-success);">$' + (h.baseline_cost_per_m ? h.baseline_cost_per_m.toFixed(4) : '0') + ' → $' + (h.optimized_cost_per_m ? h.optimized_cost_per_m.toFixed(4) : '0') + ' per 1M ops</div><div style="color:var(--accent-success);font-weight:600;">' + (h.savings_pct ? h.savings_pct.toFixed(0) : '0') + '% savings</div></div>'; }
+            html += rankings.slice(0, 6).map(function(c) { return '<div style="display:flex;justify-content:space-between;padding:0.4rem 0.75rem;background:var(--bg-glass);border-radius:4px;"><span>' + c.name.substring(0,25) + (c.name.length>25?'...':'') + '</span><span style="color:var(--accent-success);font-weight:600;">' + (c.savings_pct ? c.savings_pct.toFixed(0) : '0') + '%</span></div>'; }).join('');
+            el.innerHTML = html;
+        }
+        
+        function renderScalingAnalysis(data) {
+            const el = document.getElementById('scalingAnalysis');
+            const recs = data.scaling_recommendations || [];
+            let html = '<div style="padding:0.75rem;background:var(--bg-glass);border-radius:8px;margin-bottom:1rem;"><div style="color:var(--accent-info);">💡 ' + (data.key_insight || '') + '</div></div>';
+            html += '<div style="margin-bottom:0.5rem;"><strong>Scaling Tips:</strong></div>';
+            html += recs.map(function(r) { return '<div style="padding:0.75rem;background:var(--bg-glass);border-radius:6px;"><div style="font-weight:600;color:var(--accent-primary);">' + r.factor + '</div><div style="font-size:0.85rem;color:var(--text-secondary);margin:0.25rem 0;">' + r.insight + '</div><div style="font-size:0.85rem;color:var(--accent-success);">→ ' + r.recommendation + '</div></div>'; }).join('');
+            el.innerHTML = html;
         }
 
         // Initialize
