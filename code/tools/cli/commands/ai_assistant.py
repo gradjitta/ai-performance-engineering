@@ -22,7 +22,7 @@ def _print_header(title: str, emoji: str = "🤖"):
 def _get_book_citations(query: str, max_results: int = 2) -> str:
     """Get relevant citations from the book."""
     try:
-        from tools.core.book import get_citations, format_citations
+        from core.book import get_citations, format_citations
         citations = get_citations(query, max_results)
         if citations:
             return format_citations(citations)
@@ -344,4 +344,3 @@ def llm_status(args) -> int:
     
     print()
     return 0
-

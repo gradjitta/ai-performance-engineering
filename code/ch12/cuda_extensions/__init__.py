@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from common.python.extension_loader_template import load_cuda_extension_v2
-from common.python.nvtx_stub import ensure_nvtx_stub
+from core.utils.extension_loader_template import load_cuda_extension_v2
+from profiling.nvtx_stub import ensure_nvtx_stub
 
 NVTX_CFLAG = "-DENABLE_NVTX_PROFILING"
 _NVTX_STUB_LIB = ensure_nvtx_stub()

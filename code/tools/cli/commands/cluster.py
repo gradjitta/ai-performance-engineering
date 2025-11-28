@@ -15,7 +15,7 @@ import json
 import subprocess
 from typing import Optional, Dict, Any
 
-from tools.core.engine import get_engine
+from core.engine import get_engine
 
 
 def _print_header(title: str, emoji: str = "🖥️"):

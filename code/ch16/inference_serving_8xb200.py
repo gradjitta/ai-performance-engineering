@@ -57,10 +57,10 @@ from pathlib import Path
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from common.python.symmetric_memory_patch import (
+from optimization.symmetric_memory_patch import (
     ensure_symmetric_memory_api as _ensure_symmetric_memory_api,
 )
-from common.python.compile_utils import compile_callable, compile_model
+from core.utils.compile_utils import compile_callable, compile_model
 
 _ensure_symmetric_memory_api()
 

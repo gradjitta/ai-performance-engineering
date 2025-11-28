@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 from typing import Optional
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 
 class MyBenchmark(BaseBenchmark):
@@ -180,7 +180,7 @@ def get_benchmark():
 
 # Optional: Add a main function for standalone testing
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness
+    from core.harness.benchmark_harness import BenchmarkHarness
     
     # Create benchmark instance
     benchmark = get_benchmark()

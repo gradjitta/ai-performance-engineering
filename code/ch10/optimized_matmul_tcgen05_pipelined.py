@@ -23,8 +23,8 @@ from typing import Optional
 import torch
 
 from ch10.matmul_extension_tcgen05 import load_matmul_tcgen05_module
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from common.python.tcgen05_requirements import check_tcgen05_support
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from benchmark.tcgen05_requirements import check_tcgen05_support
 
 
 class OptimizedMatmulTCGen05PipelinedBenchmark(BaseBenchmark):
@@ -96,7 +96,7 @@ def get_benchmark() -> OptimizedMatmulTCGen05PipelinedBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
     
     print("TCGen05 Pipelined Matmul Benchmark")
     print("=" * 50)

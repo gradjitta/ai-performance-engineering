@@ -17,8 +17,8 @@ import sys
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from tools.core.perf_core import get_core
-from tools.profiling.flame_graph import FlameGraphGenerator
+from core.perf_core import get_core
+from core.profiling.flame_graph import FlameGraphGenerator
 
 
 def _print_header(title: str, emoji: str = "🔍"):
@@ -377,7 +377,7 @@ def warp_divergence(args) -> int:
     
     # Get book citations
     try:
-        from tools.core.book import get_citations, format_citations
+        from core.book import get_citations, format_citations
         citations = get_citations("warp divergence branch efficiency", max_results=2)
         if citations:
             print(format_citations(citations))
@@ -411,7 +411,7 @@ def bank_conflicts(args) -> int:
     
     # Get book citations
     try:
-        from tools.core.book import get_citations, format_citations
+        from core.book import get_citations, format_citations
         citations = get_citations("bank conflicts shared memory", max_results=2)
         if citations:
             print(format_citations(citations))
@@ -455,7 +455,7 @@ def occupancy_analysis(args) -> int:
     
     # Get book citations
     try:
-        from tools.core.book import get_citations, format_citations
+        from core.book import get_citations, format_citations
         citations = get_citations("occupancy warps SM utilization", max_results=2)
         if citations:
             print(format_citations(citations))
@@ -512,4 +512,3 @@ def register_commands(subparsers):
     # Occupancy
     occ_p = profile_subparsers.add_parser("occupancy", help="Occupancy analysis")
     occ_p.set_defaults(func=occupancy_analysis)
-

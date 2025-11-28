@@ -20,13 +20,13 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.env_defaults import apply_env_defaults
+from core.env import apply_env_defaults
 apply_env_defaults()
 
 import torch
-from common.python.chapter_compare_template import discover_benchmarks, load_benchmark
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
-from common.python.benchmark_comparison import compare_results, ComparisonResult, format_comparison
+from core.utils.chapter_compare_template import discover_benchmarks, load_benchmark
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
+from benchmark.comparison import compare_results, ComparisonResult, format_comparison
 
 
 # Skip tests if CUDA is not available (NVIDIA GPU required)

@@ -5,7 +5,7 @@ import curses
 import json
 from typing import Optional, List, Dict, Any
 
-from tools.analysis.performance_analyzer import (
+from core.analysis.performance_analyzer import (
     PerformanceAnalyzer,
     load_benchmark_data as load_benchmark_results,
 )
@@ -529,7 +529,7 @@ class BenchmarkTUI:
             y += 1
         
         self.stdscr.attron(self.COLOR_INFO)
-        self.stdscr.addstr(y + 1, 2, "Note: Edit tools/dashboard/server.py to modify pricing")
+        self.stdscr.addstr(y + 1, 2, "Note: Edit dashboard/api/server.py to modify pricing")
         self.stdscr.attroff(self.COLOR_INFO)
     
     def handle_input(self, key: int) -> bool:

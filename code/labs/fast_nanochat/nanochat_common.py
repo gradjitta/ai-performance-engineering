@@ -21,12 +21,12 @@ if str(REPO_ROOT) not in sys.path:
 
 try:
     from arch_config import prefer_sdpa_backends  # type: ignore
-    from common.python.compile_utils import enable_tf32  # type: ignore
+    from core.utils.compile_utils import enable_tf32  # type: ignore
 except Exception:  # pragma: no cover - defensive import
     prefer_sdpa_backends = None  # type: ignore
     enable_tf32 = None  # type: ignore
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
 
 try:  # Optional but strongly recommended for fast variants
     import transformer_engine.pytorch as te

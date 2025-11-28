@@ -20,11 +20,11 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.env_defaults import apply_env_defaults
+from core.env import apply_env_defaults
 apply_env_defaults()
 
 import torch
-from common.python.benchmark_harness import BaseBenchmark
+from core.harness.benchmark_harness import BaseBenchmark
 
 
 # =============================================================================
@@ -251,7 +251,7 @@ class TestVerifyInputEquivalence:
     @pytest.fixture
     def verify_fn(self):
         """Import the verification function."""
-        from tools.testing.run_all_benchmarks import _verify_input_equivalence
+        from core.harness.run_all_benchmarks import _verify_input_equivalence
         return _verify_input_equivalence
     
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
@@ -342,7 +342,7 @@ class TestVerificationIntegration:
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
     def test_end_to_end_equivalent_benchmarks(self):
         """Test full verification flow with equivalent benchmarks."""
-        from tools.testing.run_all_benchmarks import _verify_input_equivalence
+        from core.harness.run_all_benchmarks import _verify_input_equivalence
         
         # Create two equivalent benchmarks
         baseline = MockBenchmarkWithSignature(batch_size=32, seq_len=128, hidden_size=768)
@@ -373,7 +373,7 @@ class TestVerificationIntegration:
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
     def test_end_to_end_different_workloads_detected(self):
         """Test that different workloads are detected before benchmark runs."""
-        from tools.testing.run_all_benchmarks import _verify_input_equivalence
+        from core.harness.run_all_benchmarks import _verify_input_equivalence
         
         # Create benchmarks with different workloads
         baseline = MockBenchmarkWithSignature(batch_size=32, seq_len=128, hidden_size=768)
@@ -449,7 +449,7 @@ class TestEdgeCases:
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
     def test_numeric_tolerance_for_floats(self):
         """Test that float attributes use appropriate tolerance."""
-        from tools.testing.run_all_benchmarks import _verify_input_equivalence
+        from core.harness.run_all_benchmarks import _verify_input_equivalence
         
         class BenchmarkWithFloat(BaseBenchmark):
             def __init__(self, learning_rate):
@@ -480,4 +480,3 @@ class TestEdgeCases:
         assert "float" in signature["data_dtype"].lower()
         
         benchmark.teardown()
-

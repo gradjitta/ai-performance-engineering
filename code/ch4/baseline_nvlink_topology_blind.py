@@ -11,8 +11,8 @@ from typing import Optional
 
 import torch
 
-from common.python.gpu_requirements import skip_if_insufficient_gpus, require_peer_access
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from benchmark.gpu_requirements import skip_if_insufficient_gpus, require_peer_access
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
 class BaselineNvlinkTopologyBlindBenchmark(BaseBenchmark):
@@ -58,7 +58,7 @@ class BaselineNvlinkTopologyBlindBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_memory_transfer_metrics
+        from benchmark.metrics import compute_memory_transfer_metrics
         return compute_memory_transfer_metrics(
             bytes_transferred=self._bytes_transferred if hasattr(self, '_bytes_transferred') else float(getattr(self, 'N', 1024) * 4),
             elapsed_ms=getattr(self, '_last_elapsed_ms', 1.0),
@@ -76,7 +76,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     harness = BenchmarkHarness(
         mode=BenchmarkMode.CUSTOM,

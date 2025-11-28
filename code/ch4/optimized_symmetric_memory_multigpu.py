@@ -17,7 +17,7 @@ from ch4.nccl_blackwell_config import (
     detect_8xb200_topology,
 )
 from ch4.symmetric_memory_example import main as symmetric_memory_main
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 
 def _configure_blackwell_nccl() -> None:
@@ -50,7 +50,7 @@ class OptimizedSymmetricMemoryMultiGPU(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_memory_transfer_metrics
+        from benchmark.metrics import compute_memory_transfer_metrics
         return compute_memory_transfer_metrics(
             bytes_transferred=self._bytes_transferred if hasattr(self, '_bytes_transferred') else float(getattr(self, 'N', 1024) * 4),
             elapsed_ms=getattr(self, '_last_elapsed_ms', 1.0),
@@ -62,7 +62,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     bench = get_benchmark()
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())

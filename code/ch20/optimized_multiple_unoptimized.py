@@ -25,8 +25,8 @@ from ch20.inductor_guard import (
     InductorCudagraphState,
 )
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from common.python.compile_utils import compile_model
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from core.utils.compile_utils import compile_model
 
 
 class SimpleModel(nn.Module):

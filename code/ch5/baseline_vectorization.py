@@ -6,7 +6,7 @@ from typing import Optional
 
 import torch
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
 class BaselineVectorizationBenchmark(BaseBenchmark):
@@ -55,7 +55,7 @@ class BaselineVectorizationBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_storage_io_metrics
+        from benchmark.metrics import compute_storage_io_metrics
         return compute_storage_io_metrics(
             bytes_read=getattr(self, '_bytes_read', 0.0),
             bytes_written=getattr(self, '_bytes_written', 0.0),

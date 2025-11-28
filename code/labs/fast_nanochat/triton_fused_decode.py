@@ -17,7 +17,7 @@ try:
 except Exception:
     _triton_alloc = None
 
-from common.python.triton_compat import ensure_triton_compat
+from benchmark.triton_compat import ensure_triton_compat
 
 # Configure Triton allocator at import time so kernels can allocate scratch.
 def _install_triton_allocator() -> None:

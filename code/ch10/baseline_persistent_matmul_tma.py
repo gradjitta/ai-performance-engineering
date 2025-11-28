@@ -71,7 +71,7 @@ if __name__ == "__main__":
 
 # Minimal harness hook to allow skipping in automated sweeps.
 try:
-    from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+    from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 except Exception:
     BaseBenchmark = None  # type: ignore
     BenchmarkConfig = None  # type: ignore
@@ -90,7 +90,7 @@ def get_benchmark():
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_pipeline_metrics
+        from benchmark.metrics import compute_pipeline_metrics
         return compute_pipeline_metrics(
             num_stages=getattr(self, 'num_stages', 4),
             stage_times_ms=getattr(self, '_stage_times_ms', [1.0]),

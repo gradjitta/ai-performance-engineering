@@ -42,7 +42,7 @@ def get_benchmark() -> OptimizedCapstoneGemmTCGen05CTA2Benchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode
 
     benchmark = get_benchmark()
     harness = BenchmarkHarness(

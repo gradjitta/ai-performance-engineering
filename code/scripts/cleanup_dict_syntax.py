@@ -106,7 +106,11 @@ def main() -> None:
         'ch*/**/baseline_*.py',
         'ch*/**/optimized_*.py',
         'labs/**/*.py',
-        'common/python/*.py',
+        'benchmark/*.py',
+        'profiling/*.py',
+        'core/**/*.py',
+        'optimization/*.py',
+        'analysis/*.py',
         'tools/**/*.py',
     ]
     

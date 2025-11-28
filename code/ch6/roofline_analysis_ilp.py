@@ -18,7 +18,7 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from ch6.baseline_gemm_ilp import BaselineGEMMILPBenchmark
 from ch6.optimized_gemm_tensor_cores import OptimizedGEMMTensorCoresBenchmark
 
@@ -43,7 +43,7 @@ class RooflineAnalyzer:
     
     def analyze_kernel(self, benchmark: BaseBenchmark, iterations: int = 50) -> Dict:
         """Analyze a kernel's performance on roofline model."""
-        from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+        from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
         harness = BenchmarkHarness(
             mode=BenchmarkMode.CUSTOM,
             config=BenchmarkConfig(iterations=iterations, warmup=10)

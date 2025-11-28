@@ -20,13 +20,7 @@ except ImportError:
 
 from typing import Optional
 
-from common.python.benchmark_harness import (  # noqa: E402
-    BaseBenchmark,
-    BenchmarkConfig,
-    BenchmarkHarness,
-    BenchmarkMode,
-    WorkloadMetadata,
-)
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, BenchmarkHarness, BenchmarkMode, WorkloadMetadata
 from ch1.workload_config import WORKLOAD
 
 
@@ -51,7 +45,7 @@ class OptimizedPerformanceBatchBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup: initialize model and data with larger batch."""
         
-        from common.python.compile_utils import compile_model
+        from core.utils.compile_utils import compile_model
         
         self.model = torch.nn.Sequential(
             torch.nn.Linear(256, 256),
@@ -137,7 +131,7 @@ class OptimizedPerformanceBatchBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_environment_metrics
+        from benchmark.metrics import compute_environment_metrics
         return compute_environment_metrics(
             gpu_count=getattr(self, 'gpu_count', 1),
             gpu_memory_gb=getattr(self, 'gpu_memory_gb', 80.0),
@@ -170,7 +164,7 @@ def get_benchmark() -> BaseBenchmark:
 
 def main() -> None:
     """Standalone execution (for testing)."""
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
     
     harness = BenchmarkHarness(
         mode=BenchmarkMode.CUSTOM,

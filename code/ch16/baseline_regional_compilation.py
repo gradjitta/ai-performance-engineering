@@ -13,17 +13,17 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
-from common.python.compile_utils import error_on_graph_break, maybe_nested_compile_region  # noqa: E402
-from common.python.benchmark_harness import (  # noqa: E402
+from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
+from core.utils.compile_utils import error_on_graph_break, maybe_nested_compile_region  # noqa: E402
+from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
     BenchmarkMode,
     WorkloadMetadata,
 )
-from common.python.benchmark_utils import warn_benchmark_scaling  # noqa: E402
-from common.python.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
+from benchmark.utils import warn_benchmark_scaling  # noqa: E402
+from profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
 
 MODEL_CANDIDATES: List[Dict[str, Any]] = [
     {"label": "20B (48x7168)", "n_layers": 48, "d_model": 7168, "d_ff": 28672, "seq_len": 2048},
@@ -143,7 +143,7 @@ class BaselineRegionalCompilationBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_inference_metrics
+        from benchmark.metrics import compute_inference_metrics
         return compute_inference_metrics(
             ttft_ms=getattr(self, '_ttft_ms', 50.0),
             tpot_ms=getattr(self, '_tpot_ms', 10.0),

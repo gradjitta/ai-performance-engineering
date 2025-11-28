@@ -27,7 +27,7 @@ def get_benchmark() -> HBMBenchmarkBase:
 
 
 def main() -> None:
-    from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, BenchmarkHarness, BenchmarkMode
 
     harness = BenchmarkHarness(
         mode=BenchmarkMode.CUSTOM,

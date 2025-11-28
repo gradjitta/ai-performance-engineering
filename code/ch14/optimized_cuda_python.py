@@ -33,7 +33,7 @@ import torch
 from typing import Optional
 import math
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -369,7 +369,7 @@ class OptimizedCudaPythonBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_triton_metrics
+        from benchmark.metrics import compute_triton_metrics
         return compute_triton_metrics(
             num_elements=getattr(self, 'N', getattr(self, 'num_elements', 1024)),
             elapsed_ms=getattr(self, '_last_elapsed_ms', 1.0),
@@ -440,7 +440,7 @@ def main() -> None:
     demonstrate_cuda_python_api()
     print()
     
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
     
     harness = BenchmarkHarness(
         mode=BenchmarkMode.CUSTOM,

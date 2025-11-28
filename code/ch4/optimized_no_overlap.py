@@ -18,13 +18,13 @@ if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 import torch
-from common.python.compile_utils import enable_tf32, compile_model
+from core.utils.compile_utils import enable_tf32, compile_model
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
 
-from common.python.gpu_requirements import skip_if_insufficient_gpus
-from common.python.benchmark_harness import (
+from benchmark.gpu_requirements import skip_if_insufficient_gpus
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -142,7 +142,7 @@ class OptimizedOverlapDdpBenchmark(BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: DDP training step with communication overlap."""
-        from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
@@ -202,7 +202,7 @@ class OptimizedOverlapDdpBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_memory_transfer_metrics
+        from benchmark.metrics import compute_memory_transfer_metrics
         return compute_memory_transfer_metrics(
             bytes_transferred=self._bytes_transferred if hasattr(self, '_bytes_transferred') else float(getattr(self, 'N', 1024) * 4),
             elapsed_ms=getattr(self, '_last_elapsed_ms', 1.0),

@@ -12,7 +12,7 @@ if str(REPO_ROOT) not in sys.path:
 
 
 def test_microbench_disk_and_loopback():
-    from tools import microbench
+    from monitoring import microbench
 
     disk = microbench.disk_io_test(file_size_mb=1, block_size_kb=64)
     assert "read_gbps" in disk and disk["read_gbps"] is not None
@@ -25,7 +25,7 @@ def test_microbench_disk_and_loopback():
 def test_microbench_pcie_mem_tensor_sfu_cuda():
     """These assume CUDA + torch available on this hardware."""
     import torch
-    from tools import microbench
+    from monitoring import microbench
 
     assert torch.cuda.is_available(), "CUDA expected to be available"
 
@@ -44,7 +44,7 @@ def test_microbench_pcie_mem_tensor_sfu_cuda():
 
 
 def test_nsys_ncu_available_keys():
-    from tools.profiling.nsight_automation import NsightAutomation
+    from core.profiling.nsight_automation import NsightAutomation
 
     automation = NsightAutomation(Path("artifacts/mcp-profiles"))
     # We only assert keys exist; availability may depend on environment.
@@ -53,7 +53,7 @@ def test_nsys_ncu_available_keys():
 
 
 def test_mcp_tools_registration():
-    from tools.mcp import server
+    from mcp import server
 
     required = {
         "aisp_test_disk",
@@ -81,6 +81,7 @@ def test_mcp_tools_registration():
 
 def test_cli_microbench_disk():
     import subprocess, sys
-    cmd = [sys.executable, "tools/cli/aisp.py", "microbench", "disk", "--file_size_mb", "1", "--block_size_kb", "64"]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    cmd = [sys.executable, "cli/aisp.py", "microbench", "disk", "--size-mb", "1", "--block-kb", "64"]
+    env = {**os.environ, "PYTHONPATH": str(REPO_ROOT)}
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env)
     assert result.returncode == 0, f"CLI failed: {result.stderr}"

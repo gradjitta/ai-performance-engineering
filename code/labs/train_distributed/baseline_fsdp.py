@@ -10,7 +10,7 @@ from pathlib import Path
 
 import torch
 import torch.distributed as dist
-from common.python.compile_utils import enable_tf32
+from core.utils.compile_utils import enable_tf32
 from torch.distributed.fsdp import (
     BackwardPrefetch,
     FullyShardedDataParallel as FSDP,

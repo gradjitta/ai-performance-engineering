@@ -12,12 +12,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from common.python.benchmark_harness import (  # noqa: E402
+from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode  # noqa: E402
+from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode  # noqa: E402
 
 from .plan import (  # noqa: E402
     DEFAULT_CLUSTER,

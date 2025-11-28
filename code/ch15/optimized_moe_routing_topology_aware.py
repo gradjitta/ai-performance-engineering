@@ -18,14 +18,14 @@ from pathlib import Path
 # Add common to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
     BenchmarkMode,
     WorkloadMetadata,
 )
-from common.python.logger import get_logger
+from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -295,7 +295,7 @@ class MoERoutingTopologyAwareBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_inference_metrics
+        from benchmark.metrics import compute_inference_metrics
         return compute_inference_metrics(
             ttft_ms=getattr(self, '_ttft_ms', 50.0),
             tpot_ms=getattr(self, '_tpot_ms', 10.0),

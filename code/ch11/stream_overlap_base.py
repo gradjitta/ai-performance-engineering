@@ -6,8 +6,8 @@ from typing import List, Optional
 
 import torch
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
 
 def resolve_device() -> torch.device:

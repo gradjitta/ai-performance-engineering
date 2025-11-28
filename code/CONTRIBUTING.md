@@ -45,7 +45,7 @@ ch{N}/
 Every benchmark inheriting from `BaseBenchmark` must implement:
 
 ```python
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 class MyBenchmark(BaseBenchmark):
     """One-line description of what this benchmark measures."""
@@ -156,8 +156,8 @@ import torch.nn as nn
 
 # Local
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from common.python.benchmark_harness import BaseBenchmark
-from common.python.benchmark_metrics import compute_memory_transfer_metrics
+from core.harness.benchmark_harness import BaseBenchmark
+from benchmark.metrics import compute_memory_transfer_metrics
 ```
 
 ### Type Hints
@@ -213,10 +213,10 @@ def benchmark_fn(self) -> None:
 
 ### Use Helper Functions
 
-Always use the standardized metric helpers from `common/python/benchmark_metrics.py`:
+Always use the standardized metric helpers from `benchmark/metrics.py`:
 
 ```python
-from common.python.benchmark_metrics import (
+from benchmark.metrics import (
     compute_memory_transfer_metrics,    # Ch2: bandwidth
     compute_kernel_fundamentals_metrics, # Ch6: bank conflicts
     compute_memory_access_metrics,       # Ch7: coalescing
@@ -284,14 +284,14 @@ pytest tests/ -v
 pytest tests/test_benchmark_metrics.py -v
 
 # Run with coverage
-pytest tests/ --cov=common/python --cov-report=html
+pytest tests/ --cov=benchmark --cov=core --cov=profiling --cov-report=html
 ```
 
 ### Writing Tests
 
 ```python
 import pytest
-from common.python.benchmark_metrics import compute_memory_transfer_metrics
+from benchmark.metrics import compute_memory_transfer_metrics
 
 class TestMemoryTransferMetrics:
     def test_basic_transfer(self):
@@ -380,7 +380,7 @@ python -m cli.aisp bench compare \
 nsys profile -o output python ch7/optimized_memory_access.py
 
 # ncu profile with chapter-specific metrics
-ncu --set full --metrics $(python -c "from common.python.profiler_config import get_chapter_metrics; print(','.join(get_chapter_metrics(7)))") python ch7/optimized_memory_access.py
+ncu --set full --metrics $(python -c "from profiling.profiler_config import get_chapter_metrics; print(','.join(get_chapter_metrics(7)))") python ch7/optimized_memory_access.py
 ```
 
 ---

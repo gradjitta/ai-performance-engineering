@@ -12,7 +12,7 @@ SERVER_PORT = 8123
 
 def start_server():
     proc = subprocess.Popen(
-        [sys.executable, "tools/dashboard/server.py"],
+        [sys.executable, "dashboard/api/server.py"],
         cwd=Path(__file__).resolve().parent.parent,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

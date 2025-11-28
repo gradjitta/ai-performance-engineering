@@ -23,7 +23,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,

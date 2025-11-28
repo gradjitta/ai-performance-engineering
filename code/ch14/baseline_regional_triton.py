@@ -19,8 +19,8 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
-from common.python.benchmark_harness import (  # noqa: E402
+from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
+from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -148,7 +148,7 @@ class BaselineRegionalTritonBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_triton_metrics
+        from benchmark.metrics import compute_triton_metrics
         return compute_triton_metrics(
             num_elements=getattr(self, 'N', getattr(self, 'num_elements', 1024)),
             elapsed_ms=getattr(self, '_last_elapsed_ms', 1.0),

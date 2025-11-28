@@ -31,7 +31,7 @@ import psutil
 import torch
 import torch.cuda.nvtx as nvtx
 
-from common.python.hardware_capabilities import (
+from core.harness.hardware_capabilities import (
     detect_capabilities,
     format_capability_report,
 )

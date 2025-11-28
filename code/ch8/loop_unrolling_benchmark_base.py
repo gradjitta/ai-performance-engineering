@@ -13,8 +13,8 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from common.python.extension_loader_template import load_cuda_extension
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.utils.extension_loader_template import load_cuda_extension
 
 _KERNEL_SOURCE = Path(__file__).with_name("loop_unrolling_kernels.cu")
 _EXTENSION_NAME = "ch8_loop_unrolling_kernels"
@@ -74,7 +74,7 @@ class LoopUnrollingBenchmarkBase(BaseBenchmark):
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        from common.python.nvtx_helper import get_nvtx_enabled, nvtx_range
+        from profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False

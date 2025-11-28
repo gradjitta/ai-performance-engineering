@@ -8,8 +8,8 @@ from typing import Optional, List
 import torch
 import torch.nn as nn
 
-from common.python.compile_utils import enable_tf32
-from common.python.benchmark_harness import (
+from core.utils.compile_utils import enable_tf32
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,

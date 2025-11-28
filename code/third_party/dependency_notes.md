@@ -38,10 +38,10 @@ Always verify after setup:
 make verify-cutlass
 
 # Full verification
-python tools/verification/verify_cutlass_setup.py
+python core/verification/verify_cutlass_setup.py
 
 # System-wide validation
-./tools/verification/validate_system.sh
+./core/verification/validate_system.sh
 ```
 
 ### Version Pinning (setup.sh)
@@ -71,7 +71,7 @@ Despite the complexity, TE provides critical functionality:
 - cuDNN fused attention paths
 
 Used in: `ch16/`, `ch19/`, `labs/nanochat/`, `labs/ultimate_moe_inference/`,
-`tools/benchmarking/benchmark_peak.py`, and 230+ other files.
+`benchmark/benchmark_peak.py`, and 230+ other files.
 
 ### Troubleshooting
 

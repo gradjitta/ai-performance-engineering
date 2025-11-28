@@ -13,14 +13,14 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.benchmark_harness import (  # noqa: E402
+from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
     BenchmarkMode,
     WorkloadMetadata,
 )
-from common.python.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
+from profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
 
 
 class BaselineComputeBoundBenchmark(BaseBenchmark):
@@ -74,7 +74,7 @@ class BaselineComputeBoundBenchmark(BaseBenchmark):
         These metrics help understand WHY the kernel is compute-bound
         and HOW to improve tensor core utilization.
         """
-        from common.python.benchmark_metrics import compute_roofline_metrics
+        from benchmark.metrics import compute_roofline_metrics
         
         # Estimate FLOPs for the model (2 linear layers: 2*M*N*K per layer)
         # Layer 1: N -> N*2, Layer 2: N*2 -> N

@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 def test_export_csv_html_pdf_minimal():
-    from tools.core.engine import get_engine
+    from core.engine import get_engine
 
     engine = get_engine()
     csv_basic = engine.export.csv()

@@ -30,7 +30,7 @@ from enum import Enum
 import json
 import hashlib
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -494,7 +494,7 @@ def get_benchmark() -> BaseBenchmark:
 
 def main() -> None:
     """Standalone execution with detailed output."""
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
     
     print("=" * 70)
     print("Optimized: ProofWright-Style Agentic Formal Verification")

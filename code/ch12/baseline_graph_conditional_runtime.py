@@ -20,7 +20,7 @@ if str(repo_root) not in sys.path:
 
 import torch
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -105,7 +105,7 @@ class BaselineGraphBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return baseline graph metrics using standard helpers."""
-        from common.python.benchmark_metrics import compute_graph_metrics
+        from benchmark.metrics import compute_graph_metrics
         
         # Baseline has full launch overhead per iteration
         baseline_launch_us = 8.0 * 35  # ~35 ops × 8us each

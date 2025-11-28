@@ -10,8 +10,8 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode
-from common.python.cuda_binary_benchmark import CudaBinaryBenchmark
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode
+from benchmark.cuda_binary_benchmark import CudaBinaryBenchmark
 
 
 class OptimizedCutlassGemmBenchmark(CudaBinaryBenchmark):
@@ -31,7 +31,7 @@ class OptimizedCutlassGemmBenchmark(CudaBinaryBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return roofline metrics for cutlass_gemm."""
-        from common.python.benchmark_metrics import compute_roofline_metrics
+        from benchmark.metrics import compute_roofline_metrics
         return compute_roofline_metrics(
             total_flops=self._total_flops,
             total_bytes=self._total_bytes,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     LaunchVia,

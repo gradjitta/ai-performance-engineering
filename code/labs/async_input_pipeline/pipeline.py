@@ -10,7 +10,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 
 @dataclass

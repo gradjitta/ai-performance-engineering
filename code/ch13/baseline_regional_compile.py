@@ -20,8 +20,8 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
-from common.python.benchmark_harness import (  # noqa: E402
+from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
+from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -165,7 +165,7 @@ class BaselineFullGraphCompileBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_precision_metrics
+        from benchmark.metrics import compute_precision_metrics
         return compute_precision_metrics(
             fp32_time_ms=getattr(self, '_fp32_ms', 10.0),
             reduced_precision_time_ms=getattr(self, '_reduced_ms', 5.0),

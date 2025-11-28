@@ -59,7 +59,7 @@ The optimizer will automatically find and use `optimize_config.yaml` if present.
 
 ```python
 # Optimize a file
-from tools.optimize import AutoOptimizer
+from core.optimization.auto import AutoOptimizer
 
 optimizer = AutoOptimizer()
 result = optimizer.optimize_file("model.py", output_path="optimized_model.py")
@@ -68,7 +68,7 @@ print(f"Speedup: {result.speedup:.2f}x")
 
 ```python
 # Profile GPU code
-from tools.profiling import UnifiedProfiler
+from core.profiling import UnifiedProfiler
 
 profiler = UnifiedProfiler()
 with profiler.profile("my_model") as session:
@@ -86,6 +86,5 @@ Examples generate output files in `/tmp/`:
 - `/tmp/timeline.html` - CPU/GPU timeline
 - `/tmp/memory_profile.json` - Memory usage data
 - `/tmp/compile_report.html` - torch.compile analysis
-
 
 

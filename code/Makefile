@@ -192,7 +192,7 @@ test-fast:
 	python -m pytest tests/ -v --tb=short -m "not slow"
 
 test-cov:
-	python -m pytest tests/ -v --tb=short --cov=common/python --cov-report=term-missing --cov-report=html
+	python -m pytest tests/ -v --tb=short --cov=benchmark --cov=core --cov=profiling --cov-report=term-missing --cov-report=html
 
 # =============================================================================
 # Validation
@@ -207,17 +207,17 @@ validate-ch%:
 # CUTLASS setup verification (critical for Blackwell/SM100a builds)
 verify-cutlass:
 	@echo "Verifying CUTLASS setup for Blackwell..."
-	python tools/verification/verify_cutlass_setup.py
+	python core/verification/verify_cutlass_setup.py
 	@echo ""
 	@echo "Verifying CUTLASS runtime (torch.compile backend)..."
-	python tools/verification/verify_cutlass.py
+	python core/verification/verify_cutlass.py
 
 # Quick pre-build check for third-party dependencies
 verify-deps:
 	@echo "Checking third-party dependency setup..."
 	@echo ""
 	@echo "1. CUTLASS Setup:"
-	@python tools/verification/verify_cutlass_setup.py
+	@python core/verification/verify_cutlass_setup.py
 	@echo ""
 	@echo "2. TransformerEngine:"
 	@python -c "import transformer_engine.pytorch as te; print('   ✓ TransformerEngine imported successfully')" 2>/dev/null || echo "   ✗ TransformerEngine not available"
@@ -249,188 +249,188 @@ alert-updates-quiet:
 
 # System diagnostics
 system-info:
-	@python -m tools.cli.diagnostics_cli info
+	@python -m cli.diagnostics_cli info
 
 system-info-quick:
-	@python -m tools.cli.diagnostics_cli info --quick
+	@python -m cli.diagnostics_cli info --quick
 
 system-test-all:
-	@python -m tools.cli.diagnostics_cli test all
+	@python -m cli.diagnostics_cli test all
 
 # GPU control
 gpu-status:
-	@python -m tools.cli.perf_cli gpu status
+	@python -m cli.perf_cli gpu status
 
 gpu-pin:
-	@python -m tools.cli.perf_cli gpu pin --max
+	@python -m cli.perf_cli gpu pin --max
 
 gpu-unpin:
-	@python -m tools.cli.perf_cli gpu unpin
+	@python -m cli.perf_cli gpu unpin
 
 # Batch optimization analysis
 models-fit:
-	@python -m tools.cli.batch_cli models-fit --memory $(or $(MEMORY),80)
+	@python -m cli.batch_cli models-fit --memory $(or $(MEMORY),80)
 
 quantization-compare:
-	@python -m tools.cli.batch_cli quantization --model $(or $(MODEL),llama-70b)
+	@python -m cli.batch_cli quantization --model $(or $(MODEL),llama-70b)
 
 multi-gpu-scaling:
-	@python -m tools.cli.batch_cli multi-gpu --model $(or $(MODEL),llama-70b)
+	@python -m cli.batch_cli multi-gpu --model $(or $(MODEL),llama-70b)
 
 cloud-cost:
-	@python -m tools.cli.batch_cli cloud-cost --model $(or $(MODEL),llama-70b)
+	@python -m cli.batch_cli cloud-cost --model $(or $(MODEL),llama-70b)
 
 deploy-config:
-	@python -m tools.cli.batch_cli deploy-config --model $(or $(MODEL),llama-70b) --gpus $(or $(GPUS),4)
+	@python -m cli.batch_cli deploy-config --model $(or $(MODEL),llama-70b) --gpus $(or $(GPUS),4)
 
 finetune-estimate:
-	@python -m tools.cli.batch_cli finetune --model $(or $(MODEL),llama-70b)
+	@python -m cli.batch_cli finetune --model $(or $(MODEL),llama-70b)
 
 compound-optimizations:
-	@python -m tools.cli.batch_cli compound --model $(or $(MODEL),llama-70b)
+	@python -m cli.batch_cli compound --model $(or $(MODEL),llama-70b)
 
 # Profiling
 profile-flame:
-	@python -m tools.profiling flame
+	@python -m core.profiling flame
 
 profile-memory:
-	@python -m tools.profiling memory
+	@python -m core.profiling memory
 
 profile-kernels:
-	@python -m tools.profiling kernels
+	@python -m core.profiling kernels
 
 profile-roofline:
-	@python -m tools.profiling roofline
+	@python -m core.profiling roofline
 
 # Analysis
 analyze-bottlenecks:
-	@python -m tools.cli.perf_cli bottlenecks
+	@python -m cli.perf_cli bottlenecks
 
 analyze-recommendations:
-	@python -m tools.cli.perf_cli recommend
+	@python -m cli.perf_cli recommend
 
 analyze-pareto:
-	@python -m tools.cli.perf_cli pareto
+	@python -m cli.perf_cli pareto
 
 analyze-scaling:
-	@python -m tools.cli.perf_cli scaling
+	@python -m cli.perf_cli scaling
 
 analyze-cost:
-	@python -m tools.cli.perf_cli cost
+	@python -m cli.perf_cli cost
 
 # Advanced Analysis (NEW!)
 analyze-cpu-mem:
-	@python -m tools.advanced_analysis cpu-mem
+	@python -m analysis.advanced_analysis cpu-mem
 
 analyze-sysparams:
-	@python -m tools.advanced_analysis sysparams
+	@python -m analysis.advanced_analysis sysparams
 
 analyze-container:
-	@python -m tools.advanced_analysis container
+	@python -m analysis.advanced_analysis container
 
 analyze-divergence:
-	@python -m tools.advanced_analysis divergence
+	@python -m analysis.advanced_analysis divergence
 
 analyze-bank-conflicts:
-	@python -m tools.advanced_analysis bank-conflicts
+	@python -m analysis.advanced_analysis bank-conflicts
 
 analyze-memory-access:
-	@python -m tools.advanced_analysis memory-access
+	@python -m analysis.advanced_analysis memory-access
 
 analyze-full:
-	@python -m tools.advanced_analysis full
+	@python -m analysis.advanced_analysis full
 
 # Auto-tuning
 tune-matmul:
-	@python -m tools.advanced_analysis tune --kernel matmul
+	@python -m analysis.advanced_analysis tune --kernel matmul
 
 tune-attention:
-	@python -m tools.advanced_analysis tune --kernel attention
+	@python -m analysis.advanced_analysis tune --kernel attention
 
 # Optimization Stack
 optimization-list:
-	@python -m tools.advanced_analysis list
+	@python -m analysis.advanced_analysis list
 
 optimization-playbooks:
-	@python -m tools.advanced_analysis playbook
+	@python -m analysis.advanced_analysis playbook
 
 optimization-optimal:
-	@python -m tools.advanced_analysis optimal --target $(or $(TARGET),10) --difficulty $(or $(DIFFICULTY),medium)
+	@python -m analysis.advanced_analysis optimal --target $(or $(TARGET),10) --difficulty $(or $(DIFFICULTY),medium)
 
 # Parallelism planning
 parallelism-topology:
-	@python -m tools.parallelism_planner topology
+	@python -m core.optimization.parallelism_planner topology
 
 parallelism-recommend:
-	@python -m tools.parallelism_planner recommend $(or $(MODEL),llama-3.1-70b)
+	@python -m core.optimization.parallelism_planner recommend $(or $(MODEL),llama-3.1-70b)
 
 parallelism-launch:
-	@python -m tools.parallelism_planner launch
+	@python -m core.optimization.parallelism_planner launch
 
 parallelism-sharding:
-	@python -m tools.parallelism_planner sharding $(or $(MODEL),llama-3.1-70b)
+	@python -m core.optimization.parallelism_planner sharding $(or $(MODEL),llama-3.1-70b)
 
 parallelism-bottleneck:
-	@python -m tools.parallelism_planner bottleneck $(or $(MODEL),llama-3.1-70b)
+	@python -m core.optimization.parallelism_planner bottleneck $(or $(MODEL),llama-3.1-70b)
 
 parallelism-scaling:
-	@python -m tools.parallelism_planner scaling $(or $(MODEL),llama-3.1-70b)
+	@python -m core.optimization.parallelism_planner scaling $(or $(MODEL),llama-3.1-70b)
 
 parallelism-whatif:
-	@python -m tools.parallelism_planner whatif $(or $(MODEL),llama-3.1-70b)
+	@python -m core.optimization.parallelism_planner whatif $(or $(MODEL),llama-3.1-70b)
 
 parallelism-batch-size:
-	@python -m tools.parallelism_planner batch-size $(or $(MODEL),llama-3.1-70b)
+	@python -m core.optimization.parallelism_planner batch-size $(or $(MODEL),llama-3.1-70b)
 
 parallelism-auto-tune:
-	@python -m tools.parallelism_planner auto-tune $(or $(MODEL),llama-3.1-70b)
+	@python -m core.optimization.parallelism_planner auto-tune $(or $(MODEL),llama-3.1-70b)
 
 parallelism-inference:
-	@python -m tools.parallelism_planner inference $(or $(MODEL),llama-3.1-70b)
+	@python -m core.optimization.parallelism_planner inference $(or $(MODEL),llama-3.1-70b)
 
 parallelism-validate:
-	@python -m tools.parallelism_planner validate $(or $(MODEL),llama-3.1-70b)
+	@python -m core.optimization.parallelism_planner validate $(or $(MODEL),llama-3.1-70b)
 
 parallelism-dry-run:
-	@python -m tools.parallelism_planner dry-run $(or $(MODEL),llama-3.1-70b)
+	@python -m core.optimization.parallelism_planner dry-run $(or $(MODEL),llama-3.1-70b)
 
 parallelism-pareto:
-	@python -m tools.parallelism_planner pareto $(or $(MODEL),llama-3.1-70b)
+	@python -m core.optimization.parallelism_planner pareto $(or $(MODEL),llama-3.1-70b)
 
 parallelism-slurm:
-	@python -m tools.parallelism_planner slurm
+	@python -m core.optimization.parallelism_planner slurm
 
 # DISTRIBUTED TRAINING & ADVANCED (NEW!)
 nccl-tune:
-	@python -m tools.parallelism_planner nccl --nodes=$(or $(NODES),1) --gpus=$(or $(GPUS),8)
+	@python -m core.optimization.parallelism_planner nccl --nodes=$(or $(NODES),1) --gpus=$(or $(GPUS),8)
 
 nccl-diagnose:
-	@python -m tools.parallelism_planner nccl --diagnose
+	@python -m core.optimization.parallelism_planner nccl --diagnose
 
 rlhf-memory:
-	@python -m tools.parallelism_planner rlhf $(or $(MODEL),llama-3.1-70b)
+	@python -m core.optimization.parallelism_planner rlhf $(or $(MODEL),llama-3.1-70b)
 
 rlhf-compare:
-	@python -m tools.parallelism_planner rlhf $(or $(MODEL),llama-3.1-70b) --compare
+	@python -m core.optimization.parallelism_planner rlhf $(or $(MODEL),llama-3.1-70b) --compare
 
 moe-optimize:
-	@python -m tools.parallelism_planner moe $(or $(MODEL),mixtral-8x7b)
+	@python -m core.optimization.parallelism_planner moe $(or $(MODEL),mixtral-8x7b)
 
 long-context:
-	@python -m tools.parallelism_planner long-context $(or $(MODEL),llama-3.1-70b) --seq-length=$(or $(SEQ),128000)
+	@python -m core.optimization.parallelism_planner long-context $(or $(MODEL),llama-3.1-70b) --seq-length=$(or $(SEQ),128000)
 
 vllm-config:
-	@python -m tools.parallelism_planner vllm $(or $(MODEL),llama-3.1-70b) --target=$(or $(TARGET),throughput)
+	@python -m core.optimization.parallelism_planner vllm $(or $(MODEL),llama-3.1-70b) --target=$(or $(TARGET),throughput)
 
 vllm-compare-engines:
-	@python -m tools.parallelism_planner vllm $(or $(MODEL),llama-3.1-70b) --compare-engines
+	@python -m core.optimization.parallelism_planner vllm $(or $(MODEL),llama-3.1-70b) --compare-engines
 
 comm-overlap:
-	@python -m tools.parallelism_planner comm-overlap $(or $(MODEL),llama-3.1-70b)
+	@python -m core.optimization.parallelism_planner comm-overlap $(or $(MODEL),llama-3.1-70b)
 
 # LLM-POWERED OPTIMIZATION (NEW!)
 llm-advisor:
-	@python -m tools.parallelism_planner llm-advisor $(or $(MODEL),llama-3.1-70b) --goal=$(or $(GOAL),throughput)
+	@python -m core.optimization.parallelism_planner llm-advisor $(or $(MODEL),llama-3.1-70b) --goal=$(or $(GOAL),throughput)
 
 # CLUSTER RESILIENCE (Fault Tolerance, Spot, Elastic)
 fault-tolerance:
@@ -446,38 +446,38 @@ cluster-diagnose:
 	@curl -s "http://localhost:8765/api/cluster/diagnose?error=$(or $(ERROR),NCCL%20timeout)" | python3 -m json.tool
 
 llm-advisor-inference:
-	@python -m tools.parallelism_planner llm-advisor $(or $(MODEL),llama-3.1-70b) --goal=latency --inference
+	@python -m core.optimization.parallelism_planner llm-advisor $(or $(MODEL),llama-3.1-70b) --goal=latency --inference
 
 # Intelligent Optimizer - THE BRAIN of the optimization system
 smart-optimize:
-	@python -m tools.intelligent_optimizer optimize --goal=$(or $(GOAL),throughput)
+	@python -m core.unified_api optimize --goal=$(or $(GOAL),throughput)
 
 smart-vllm:
-	@python -m tools.intelligent_optimizer vllm --url=$(or $(URL),http://localhost:8000)
+	@python -m core.unified_api vllm --url=$(or $(URL),http://localhost:8000)
 
 smart-tgi:
-	@python -m tools.intelligent_optimizer tgi --url=$(or $(URL),http://localhost:8080)
+	@python -m core.unified_api tgi --url=$(or $(URL),http://localhost:8080)
 
 smart-discover:
-	@python -m tools.intelligent_optimizer discover --workload=$(or $(WORKLOAD),training)
+	@python -m core.unified_api discover --workload=$(or $(WORKLOAD),training)
 
 smart-monitor:
-	@python -m tools.intelligent_optimizer monitor --interval=$(or $(INTERVAL),30)
+	@python -m core.unified_api monitor --interval=$(or $(INTERVAL),30)
 
 smart-cluster:
-	@python -m tools.intelligent_optimizer cluster --model=$(or $(MODEL),llama-3.1-70b) --gpus=$(or $(GPUS),8) --nodes=$(or $(NODES),1) --scheduler=$(or $(SCHEDULER),slurm)
+	@python -m core.unified_api cluster --model=$(or $(MODEL),llama-3.1-70b) --gpus=$(or $(GPUS),8) --nodes=$(or $(NODES),1) --scheduler=$(or $(SCHEDULER),slurm)
 
 smart-status:
-	@python -m tools.intelligent_optimizer status
+	@python -m core.unified_api status
 
 # Dashboard
 dashboard:
 	@echo "Starting dashboard at http://localhost:8765"
-	@python -m tools.dashboard.server
+	@python -m dashboard.api.server
 
 # TUI (Terminal UI)
 tui:
-	@python -m tools.cli.tui
+	@python -m cli.tui
 
 # =============================================================================
 # UNIFIED PERF CLI (LLM-Powered)
@@ -485,48 +485,48 @@ tui:
 
 # Quick status overview
 perf-status:
-	@python -m tools.cli.perf status
+	@python -m cli.perf status
 
 # LLM-powered Q&A (QUESTION="Why is my kernel slow?")
 perf-ask:
-	@python -m tools.cli.perf ask $(QUESTION)
+	@python -m cli.perf ask $(QUESTION)
 
 # Explain with book + LLM (TOPIC=flash-attention)
 perf-explain:
-	@python -m tools.cli.perf explain $(or $(TOPIC),flash-attention)
+	@python -m cli.perf explain $(or $(TOPIC),flash-attention)
 
 # Troubleshoot errors (ERROR="CUDA OOM")
 perf-troubleshoot:
-	@python -m tools.cli.perf troubleshoot $(ERROR)
+	@python -m cli.perf troubleshoot $(ERROR)
 
 # Auto-optimization with LLM
 perf-optimize:
-	@python -m tools.cli.perf optimize --auto $(if $(MODEL),--model $(MODEL))
+	@python -m cli.perf optimize --auto $(if $(MODEL),--model $(MODEL))
 
 # Parallelism recommendations
 perf-recommend:
-	@python -m tools.cli.perf recommend $(or $(MODEL),llama-3.1-70b)
+	@python -m cli.perf recommend $(or $(MODEL),llama-3.1-70b)
 
 # Run benchmark (TARGET=ch08:matmul)
 perf-benchmark:
-	@python -m tools.cli.perf benchmark $(TARGET)
+	@python -m cli.perf benchmark $(TARGET)
 
 # Real-time monitoring
 perf-monitor:
-	@python -m tools.cli.perf monitor
+	@python -m cli.perf monitor
 
 # Troubleshooting shortcuts
 troubleshoot-oom:
-	@python -m tools.cli.perf troubleshoot "CUDA out of memory"
+	@python -m cli.perf troubleshoot "CUDA out of memory"
 
 troubleshoot-nccl:
-	@python -m tools.cli.perf troubleshoot "NCCL timeout"
+	@python -m cli.perf troubleshoot "NCCL timeout"
 
 troubleshoot-slow:
-	@python -m tools.cli.perf troubleshoot "training is slow"
+	@python -m cli.perf troubleshoot "training is slow"
 
 troubleshoot-nan:
-	@python -m tools.cli.perf troubleshoot "loss is NaN"
+	@python -m cli.perf troubleshoot "loss is NaN"
 
 # =============================================================================
 # Advanced Optimization Features (Complete UI Parity)
@@ -534,60 +534,60 @@ troubleshoot-nan:
 
 # Optimization playbooks
 playbooks:
-	@python -m tools.cli.advanced_cli playbooks
+	@python -m cli.advanced_cli playbooks
 
 playbook-apply:
-	@python -m tools.cli.advanced_cli playbooks --apply $(or $(PLAYBOOK),inference-speed)
+	@python -m cli.advanced_cli playbooks --apply $(or $(PLAYBOOK),inference-speed)
 
 # What-if simulation
 whatif:
-	@python -m tools.cli.advanced_cli whatif
+	@python -m cli.advanced_cli whatif
 
 whatif-fp8:
-	@python -m tools.cli.advanced_cli whatif --fp8 --compile --flash-attn
+	@python -m cli.advanced_cli whatif --fp8 --compile --flash-attn
 
 # Auto-optimization
 auto-optimize:
-	@python -m tools.cli.advanced_cli auto-optimize --dry-run
+	@python -m cli.advanced_cli auto-optimize --dry-run
 
 auto-optimize-apply:
-	@python -m tools.cli.advanced_cli auto-optimize --apply
+	@python -m cli.advanced_cli auto-optimize --apply
 
 # Leaderboard
 leaderboard:
-	@python -m tools.cli.advanced_cli leaderboard
+	@python -m cli.advanced_cli leaderboard
 
 # Kernel efficiency
 kernel-efficiency:
-	@python -m tools.cli.advanced_cli kernel-efficiency
+	@python -m cli.advanced_cli kernel-efficiency
 
 # Stacking analysis (compound optimizations)
 stacking:
-	@python -m tools.cli.advanced_cli stacking
+	@python -m cli.advanced_cli stacking
 
 # Tradeoffs analysis
 tradeoffs:
-	@python -m tools.cli.advanced_cli tradeoffs
+	@python -m cli.advanced_cli tradeoffs
 
 # LLM assistant
 ask:
-	@python -m tools.cli.advanced_cli ask "$(or $(Q),How can I improve performance?)"
+	@python -m cli.advanced_cli ask "$(or $(Q),How can I improve performance?)"
 
 # Generate optimization patches
 generate-patch:
-	@python -m tools.cli.advanced_cli generate-patch
+	@python -m cli.advanced_cli generate-patch
 
 # Historical trends
 history:
-	@python -m tools.cli.advanced_cli history
+	@python -m cli.advanced_cli history
 
 # ROI calculator
 roi:
-	@python -m tools.cli.advanced_cli roi --current-cost $(or $(COST),10000)
+	@python -m cli.advanced_cli roi --current-cost $(or $(COST),10000)
 
 # Full report generation
 report:
-	@python -m tools.cli.advanced_cli report --output performance_report.html
+	@python -m cli.advanced_cli report --output performance_report.html
 
 # =============================================================================
 # Comparison & Monitoring
@@ -595,15 +595,15 @@ report:
 
 # A/B comparison
 compare:
-	@python -m tools.cli.perf_engineer compare $(or $(A),baseline) $(or $(B),optimized)
+	@python -m cli.perf_engineer compare $(or $(A),baseline) $(or $(B),optimized)
 
 # Real-time monitoring
 monitor:
-	@python -m tools.cli.perf_engineer monitor --duration $(or $(DURATION),60)
+	@python -m cli.perf_engineer monitor --duration $(or $(DURATION),60)
 
 # Regression detection
 regression:
-	@python -m tools.cli.perf_engineer regression
+	@python -m cli.perf_engineer regression
 
 # =============================================================================
 # Model Zoo
@@ -611,15 +611,15 @@ regression:
 
 # List pre-optimized configs
 model-list:
-	@python -m tools.cli.perf_engineer model list
+	@python -m cli.perf_engineer model list
 
 # Get optimal config for a model
 model-config:
-	@python -m tools.cli.perf_engineer model config $(or $(MODEL),llama-70b)
+	@python -m cli.perf_engineer model config $(or $(MODEL),llama-70b)
 
 # Hardware recommendations
 model-recommend:
-	@python -m tools.cli.perf_engineer model recommend
+	@python -m cli.perf_engineer model recommend
 
 # =============================================================================
 # Unified CLI Entry Point
@@ -627,11 +627,11 @@ model-recommend:
 
 # Unified perf CLI
 perf:
-	@python -m tools.cli.perf_engineer $(ARGS)
+	@python -m cli.perf_engineer $(ARGS)
 
 # Quick status
 status:
-	@python -m tools.cli.perf_engineer status
+	@python -m cli.perf_engineer status
 
 # =============================================================================
 # LLM-Powered Analysis (DYNAMIC - NOT HARD-CODED!)
@@ -639,15 +639,15 @@ status:
 
 # Ask LLM about performance
 llm-ask:
-	@python -m tools.llm_engine ask $(or $(Q),"How can I improve my model's inference performance?")
+	@python -m core.llm ask $(or $(Q),"How can I improve my model's inference performance?")
 
 # LLM-powered profile analysis
 llm-analyze:
-	@python -m tools.llm_engine analyze $(if $(PROFILE),--profile $(PROFILE))
+	@python -m core.llm analyze $(if $(PROFILE),--profile $(PROFILE))
 
 # Check LLM backend status
 llm-status:
-	@python -m tools.llm_engine status
+	@python -m core.llm status
 
 # =============================================================================
 # Distributed Training (Multi-Node Clusters)
@@ -655,15 +655,15 @@ llm-status:
 
 # Discover cluster topology
 cluster-topology:
-	@python -m tools.distributed_analysis topology
+	@python -m analysis.distributed_analysis topology
 
 # Multi-node scaling analysis
 cluster-scaling:
-	@python -m tools.distributed_analysis scaling --model-params $(or $(MODEL_PARAMS),70)
+	@python -m analysis.distributed_analysis scaling --model-params $(or $(MODEL_PARAMS),70)
 
 # Parallelism recommendation
 cluster-recommend:
-	@python -m tools.distributed_analysis recommend --model-params $(or $(MODEL_PARAMS),70) $(if $(NODES),--nodes $(NODES))
+	@python -m analysis.distributed_analysis recommend --model-params $(or $(MODEL_PARAMS),70) $(if $(NODES),--nodes $(NODES))
 
 # =============================================================================
 # Inference Optimization (vLLM Integration)
@@ -671,22 +671,22 @@ cluster-recommend:
 
 # Generate vLLM config
 inference-config:
-	@python -m tools.inference_optimizer config --model $(or $(MODEL),llama-70b) --target $(or $(TARGET),balanced)
+	@python -m core.optimization.auto config --model $(or $(MODEL),llama-70b) --target $(or $(TARGET),balanced)
 
 # Benchmark inference endpoint
 inference-benchmark:
-	@python -m tools.inference_optimizer benchmark --endpoint $(or $(ENDPOINT),http://localhost:8000)
+	@python -m core.optimization.auto benchmark --endpoint $(or $(ENDPOINT),http://localhost:8000)
 
 # RLHF training configuration
 rlhf-config:
-	@python -m tools.inference_optimizer rlhf --model-params $(or $(MODEL_PARAMS),70) --algorithm $(or $(ALGO),ppo)
+	@python -m core.optimization.auto rlhf --model-params $(or $(MODEL_PARAMS),70) --algorithm $(or $(ALGO),ppo)
 
 lint:
 	@echo "Running flake8..."
-	-flake8 common/python/ scripts/ --max-line-length=120 --ignore=E501,W503
+	-flake8 benchmark/ profiling/ core/ optimization/ analysis/ scripts/ --max-line-length=120 --ignore=E501,W503
 	@echo ""
 	@echo "Running mypy..."
-	-mypy common/python/benchmark_metrics.py common/python/profiler_config.py --ignore-missing-imports
+	-mypy benchmark/metrics.py profiling/profiler_config.py --ignore-missing-imports
 
 metrics:
 	python scripts/update_custom_metrics.py --analyze
@@ -747,6 +747,3 @@ check: validate metrics lint audit-warmup
 all: test validate metrics coverage
 	@echo ""
 	@echo "✅ All tasks completed!"
-
-
-

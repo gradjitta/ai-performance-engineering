@@ -11,7 +11,7 @@ if str(REPO_ROOT) not in sys.path:
 
 import torch
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.persistent_decode.persistent_decode_common import (
     build_inputs,
     resolve_device,
@@ -98,7 +98,7 @@ def get_benchmark() -> BaseBenchmark:
     return BaselineNativeTmaPrefillDecodeBenchmark()
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     try:
         bench = get_benchmark()

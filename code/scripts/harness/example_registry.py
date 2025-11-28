@@ -543,7 +543,7 @@ EXAMPLES: List[Example] = [
     ),
     _example(
         name="tool_continuous_benchmark",
-        path="tools/benchmarking/continuous_benchmark.py",
+        path="benchmark/continuous_benchmark.py",
         description="Run a suite of benchmarks and store aggregated results.",
         tags=["tools", "automation"],
         requires_modules=["json"],

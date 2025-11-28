@@ -23,8 +23,8 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from common.python.logger import get_logger
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -134,7 +134,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
     
     benchmark = get_benchmark()
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=benchmark.get_config())

@@ -31,7 +31,7 @@ if _repo_root not in sys.path:
 
 
 import torch
-from common.python.compile_utils import enable_tf32
+from core.utils.compile_utils import enable_tf32
 import torch.nn as nn
 import triton.testing
 

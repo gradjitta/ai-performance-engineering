@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 from pathlib import Path
 
-from common.python.extension_loader_template import load_cuda_extension_v2
+from core.utils.extension_loader_template import load_cuda_extension_v2
 
 _EXT_NAME = "grace_blackwell_capstone_ext"
 _ROOT = Path(__file__).resolve().parent

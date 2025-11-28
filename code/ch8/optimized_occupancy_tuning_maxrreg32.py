@@ -23,7 +23,7 @@ class OptimizedOccupancyTuningMaxReg32(OccupancyBinaryBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return optimization metrics for occupancy_tuning_maxrreg32."""
-        from common.python.benchmark_metrics import compute_speedup_metrics
+        from benchmark.metrics import compute_speedup_metrics
         return compute_speedup_metrics(
             baseline_ms=getattr(self, '_baseline_ms', 1.0),
             optimized_ms=getattr(self, '_last_elapsed_ms', 1.0),
@@ -36,7 +36,7 @@ def get_benchmark() -> OptimizedOccupancyTuningMaxReg32:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     benchmark = get_benchmark()
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=benchmark.get_config())

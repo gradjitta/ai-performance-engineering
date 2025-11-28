@@ -25,12 +25,12 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.env_defaults import apply_env_defaults
+from core.env import apply_env_defaults
 apply_env_defaults()
 
 import torch
-from common.python.chapter_compare_template import discover_benchmarks, load_benchmark
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
+from core.utils.chapter_compare_template import discover_benchmarks, load_benchmark
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
 
 
 # Skip tests if CUDA is not available (NVIDIA GPU required)
@@ -246,7 +246,7 @@ def test_benchmark_validation(request):
 
 def test_benchmark_protocol_compliance():
     """Test that benchmarks implement the BaseBenchmark correctly (quick check only)."""
-    from common.python.benchmark_harness import Benchmark
+    from core.harness.benchmark_harness import Benchmark
     
     # Test that a sample benchmark implements the protocol
     repo_root = Path(__file__).parent.parent

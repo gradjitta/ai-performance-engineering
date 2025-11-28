@@ -12,9 +12,9 @@ BACKEND_PORT="${BACKEND_PORT:-6970}"
 
 PORTS=("$PORT" "$BACKEND_PORT")
 PATTERNS=(
-  "python -m tools.dashboard.server"
-  "tools/dashboard/server.py"
-  "tools/dashboard-next"
+  "python -m dashboard.api.server"
+  "dashboard/api/server.py"
+  "dashboard/web"
 )
 
 declare -A SEEN

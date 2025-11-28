@@ -55,7 +55,7 @@ from torch.nn.attention.flex_attention import (
 )
 from typing import Optional, Tuple
 import time
-from common.python.compile_utils import compile_callable, compile_model
+from core.utils.compile_utils import compile_callable, compile_model
 
 # Check for FP8 support
 try:

@@ -25,7 +25,7 @@ def get_benchmark() -> OptimizedTmemCutlassBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     benchmark = get_benchmark()
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=benchmark.get_config())

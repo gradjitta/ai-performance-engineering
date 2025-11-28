@@ -9,7 +9,7 @@ from pathlib import Path
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from common.python.compile_utils import enable_tf32
+from core.utils.compile_utils import enable_tf32
 from torch.distributed.fsdp import (
     BackwardPrefetch,
     CPUOffload,

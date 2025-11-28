@@ -10,14 +10,15 @@ from __future__ import annotations
 
 import os
 import sys
+import subprocess
 from pathlib import Path
 from enum import Enum
 from types import SimpleNamespace
 from typing import List, Optional
 
-from tools.plugins.loader import load_plugin_apps
+from core.plugins.loader import load_plugin_apps
 try:
-    from common.python.capabilities import has_capability
+    from core.capabilities import has_capability
 except Exception:
     def has_capability(name: str) -> bool:
         return False
@@ -140,6 +141,13 @@ def _run(func, ctx: typer.Context, **kwargs) -> None:
     raise typer.Exit(code=code)
 
 
+def _run_module(module: str, args: List[str]) -> None:
+    """Execute a module as a subprocess and propagate its exit code."""
+    cmd = [sys.executable, "-m", module, *args]
+    result = subprocess.run(cmd)
+    raise typer.Exit(code=result.returncode)
+
+
 def _rewrite_help_aliases(argv: List[str]) -> List[str]:
     """Support `aisp help` and `aisp <category> help` as help aliases."""
     if len(argv) > 1 and argv[1] == "help":
@@ -164,6 +172,8 @@ if typer:
     system_app = typer.Typer(help="System diagnostics, environment, and GPU status")
     test_app = typer.Typer(help="Lightweight tests (bandwidth, network, warmup)")
     microbench_app = typer.Typer(help="Microbenchmarks (disk, PCIe, memory, tensor)")
+    ops_app = typer.Typer(help="Advanced system analysis and distributed planning")
+    monitoring_app = typer.Typer(help="Monitoring and diagnostics runners")
 
     # Extension categories (added only if extensions are enabled)
     ai_app = typer.Typer(help="LLM-powered Q&A, explanations, troubleshooting")
@@ -844,6 +854,56 @@ if typer:
         from tools.cli.commands import microbench
         _run(microbench.loopback, ctx, size_mb=size_mb, port=port)
 
+    # =============================================================================
+    # Ops / analysis runners (pass-through to legacy CLIs)
+    # =============================================================================
+
+    @ops_app.command("advanced", help="Run advanced system analysis toolkit (forwards to analysis.advanced_analysis).")
+    def ops_advanced(
+        args: List[str] = typer.Argument(None, help="Arguments forwarded to analysis.advanced_analysis"),
+    ) -> None:
+        _run_module("analysis.advanced_analysis", args or [])
+
+    @ops_app.command("distributed", help="Run distributed training analysis (forwards to analysis.distributed_analysis).")
+    def ops_distributed(
+        args: List[str] = typer.Argument(None, help="Arguments forwarded to analysis.distributed_analysis"),
+    ) -> None:
+        _run_module("analysis.distributed_analysis", args or [])
+
+    # =============================================================================
+    # Monitoring runners
+    # =============================================================================
+
+    @monitoring_app.command("cluster", help="Cluster monitor (agent/master) runner.")
+    def monitoring_cluster(
+        args: List[str] = typer.Argument(None, help="Arguments forwarded to monitoring.cluster_monitor"),
+    ) -> None:
+        _run_module("monitoring.cluster_monitor", args or [])
+
+    @monitoring_app.command("prometheus", help="Start Prometheus exporter for GPU metrics.")
+    def monitoring_prometheus(
+        args: List[str] = typer.Argument(None, help="Arguments forwarded to monitoring.prometheus_exporter"),
+    ) -> None:
+        _run_module("monitoring.prometheus_exporter", args or [])
+
+    @monitoring_app.command("uma-baseline", help="UMA memory reporting baseline.")
+    def monitoring_uma_baseline(
+        args: List[str] = typer.Argument(None, help="Arguments forwarded to monitoring.diagnostics.uma_memory.baseline_uma_memory_reporting"),
+    ) -> None:
+        _run_module("monitoring.diagnostics.uma_memory.baseline_uma_memory_reporting", args or [])
+
+    @monitoring_app.command("uma-optimized", help="UMA memory reporting with reclaimable DRAM awareness.")
+    def monitoring_uma_optimized(
+        args: List[str] = typer.Argument(None, help="Arguments forwarded to monitoring.diagnostics.uma_memory.optimized_uma_memory_reporting"),
+    ) -> None:
+        _run_module("monitoring.diagnostics.uma_memory.optimized_uma_memory_reporting", args or [])
+
+    @monitoring_app.command("microbench", help="Lightweight diagnostics microbenchmarks.")
+    def monitoring_microbench(
+        args: List[str] = typer.Argument(None, help="Arguments forwarded to monitoring.microbench"),
+    ) -> None:
+        _run_module("monitoring.microbench", args or [])
+
 
 # =============================================================================
 # Top-level commands (bench, version, help; extensions add more)
@@ -853,7 +913,7 @@ if typer:
 
     # Bench integration (core)
     try:
-        from tools.cli import bench as bench_cli
+        from cli import bench as bench_cli
         BENCH_APP = bench_cli.app if getattr(bench_cli, "TYPER_AVAILABLE", False) else None
     except Exception:
         BENCH_APP = None
@@ -892,7 +952,7 @@ if typer:
             data: Optional[Path] = typer.Option(None, "--data", "-d", help="Path to benchmark results JSON file"),
             no_browser: bool = typer.Option(False, "--no-browser", help="Do not open browser automatically"),
         ) -> None:
-            from tools.dashboard.server import serve_dashboard
+            from dashboard.api.server import serve_dashboard
             serve_dashboard(port=port, data_file=data, open_browser=not no_browser)
 
         @app.command("mcp", help="Start MCP server for AI chat integration")
@@ -902,7 +962,7 @@ if typer:
             test: Optional[str] = typer.Option(None, "--test", help="Test a specific tool"),
             serve: bool = typer.Option(False, "--serve", help="Start MCP server (stdio)"),
         ) -> None:
-            from tools.mcp import server
+            from mcp import server
 
             old_argv = sys.argv
             new_argv = [old_argv[0]]
@@ -949,6 +1009,8 @@ if typer:
     app.add_typer(system_app, name="system")
     app.add_typer(test_app, name="test")
     app.add_typer(microbench_app, name="microbench")
+    app.add_typer(ops_app, name="ops")
+    app.add_typer(monitoring_app, name="monitor")
     if EXT_ENABLED:
         app.add_typer(ai_app, name="ai")
         app.add_typer(analyze_app, name="analyze")

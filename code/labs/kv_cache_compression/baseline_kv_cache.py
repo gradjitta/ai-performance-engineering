@@ -7,7 +7,7 @@ from typing import Callable, List, Optional
 import torch
 import torch.nn as nn
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.kv_cache_compression.kv_cache_common import (
     KVCache,
     KVCacheAttention,

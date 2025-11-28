@@ -7,7 +7,7 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 
 class BaselineMatmulTCGen05EpilogueBenchmark(BaseBenchmark):

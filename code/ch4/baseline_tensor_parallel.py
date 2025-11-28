@@ -16,14 +16,14 @@ import os
 # Add common to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
     BenchmarkMode,
     WorkloadMetadata,
 )
-from common.python.logger import get_logger
+from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -238,7 +238,7 @@ class TensorParallelBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_memory_transfer_metrics
+        from benchmark.metrics import compute_memory_transfer_metrics
         return compute_memory_transfer_metrics(
             bytes_transferred=self._bytes_transferred if hasattr(self, '_bytes_transferred') else float(getattr(self, 'N', 1024) * 4),
             elapsed_ms=getattr(self, '_last_elapsed_ms', 1.0),

@@ -76,7 +76,7 @@ except (OSError, AttributeError):
 
 import torch
 
-from common.python.compile_utils import enable_tf32
+from core.utils.compile_utils import enable_tf32
 
 # Suppress known warnings that don't affect functionality
 # TF32 deprecation warning - PyTorch internally uses old API when set_float32_matmul_precision is called

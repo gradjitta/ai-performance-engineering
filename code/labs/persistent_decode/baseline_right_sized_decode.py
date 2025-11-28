@@ -12,7 +12,7 @@ if str(REPO_ROOT) not in sys.path:
 import argparse
 from typing import List, Tuple
 
-from common.python.benchmark_harness import BaseBenchmark
+from core.harness.benchmark_harness import BaseBenchmark
 from labs.persistent_decode.optimized_persistent_decode_graphs import GraphMode, OptimizedPersistentDecodeGraphsBenchmark
 from labs.persistent_decode.optimized_persistent_decode_triton import OptimizedPersistentDecodeTritonBenchmark
 from labs.persistent_decode.persistent_decode_common import DecodeOptions, set_decode_options
@@ -62,7 +62,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     bench = get_benchmark()
     cfg = bench.get_config()

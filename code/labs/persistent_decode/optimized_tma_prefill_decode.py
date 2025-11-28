@@ -21,7 +21,7 @@ from pathlib import Path
 
 import torch
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.persistent_decode.persistent_decode_common import (
     build_inputs,
     get_stream_priorities,
@@ -29,7 +29,7 @@ from labs.persistent_decode.persistent_decode_common import (
     resolve_shapes,
     tokens_per_iteration,
 )
-from common.python.blackwell_requirements import ensure_blackwell_tma_supported
+from benchmark.blackwell_requirements import ensure_blackwell_tma_supported
 
 
 def _enable_blackwell_compiler_defaults() -> None:
@@ -472,7 +472,7 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedTmaPrefillDecodeBenchmark()
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     bench = get_benchmark()
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())

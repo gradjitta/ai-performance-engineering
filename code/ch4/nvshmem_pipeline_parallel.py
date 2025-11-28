@@ -73,7 +73,7 @@ When NOT to Use:
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from common.python.symmetric_memory_patch import (
+from optimization.symmetric_memory_patch import (
     ensure_symmetric_memory_api as _ensure_symmetric_memory_api,
 )
 
@@ -90,7 +90,7 @@ except ImportError:
             os.environ.setdefault("MASTER_PORT", "29500")
             os.environ.setdefault("LOCAL_RANK", "0")  # Graceful fallback if arch_config not available
 
-from common.python.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
+from benchmark.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
 
 
 import argparse

@@ -27,6 +27,7 @@ from tcgen05_loader import (
     matmul_tcgen05_3stage,
     matmul_tcgen05_swizzled,
     matmul_tcgen05_cluster,
+    matmul_tcgen05_warp_spec,
 )
 
 # Cache file location
@@ -88,6 +89,7 @@ KERNELS = {
     "3stage": matmul_tcgen05_3stage,
     "swizzled": matmul_tcgen05_swizzled,
     "cluster": matmul_tcgen05_cluster,
+    "4stage": matmul_tcgen05_warp_spec,  # Deep 4-stage pipeline
 }
 
 

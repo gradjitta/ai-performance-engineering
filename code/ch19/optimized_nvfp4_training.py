@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 try:
     from transformer_engine.pytorch import Linear as TELinear
@@ -172,7 +172,7 @@ class OptimizedNVFP4TrainingBenchmark(BaseBenchmark):
         self.optimizer.step()
 
     def benchmark_fn(self) -> None:
-        from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
@@ -221,7 +221,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     benchmark = get_benchmark()
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=benchmark.get_config())

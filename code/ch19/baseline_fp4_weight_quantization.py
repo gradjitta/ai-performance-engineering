@@ -35,7 +35,7 @@ import torch.nn.functional as F
 from typing import Optional, Tuple
 import math
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -294,7 +294,7 @@ class BaselineFP4WeightQuantizationBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return baseline FP4 metrics using standard helpers."""
-        from common.python.benchmark_metrics import compute_precision_metrics
+        from benchmark.metrics import compute_precision_metrics
         
         # Use standard precision metrics
         metrics = compute_precision_metrics(

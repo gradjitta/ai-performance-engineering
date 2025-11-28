@@ -28,7 +28,7 @@ def recommend(args) -> int:
     print("-" * 70)
     
     try:
-        from tools.core.engine import get_engine
+        from core.engine import get_engine
         
         engine = get_engine()
         result = engine.optimize.recommend(
@@ -76,7 +76,7 @@ def auto_optimize(args) -> int:
     _print_header("Auto-Optimization", "🤖")
     
     try:
-        from tools.core.engine import get_engine
+        from core.engine import get_engine
         
         engine = get_engine()
         print("  Collecting system data...")
@@ -113,7 +113,7 @@ def whatif(args) -> int:
     _print_header("What-If Analysis", "🔮")
     
     try:
-        from tools.core.engine import get_engine
+        from core.engine import get_engine
 
         engine = get_engine()
         result = engine.optimize.whatif({})
@@ -129,7 +129,7 @@ def stacking(args) -> int:
     _print_header("Optimization Stacking", "📚")
     
     try:
-        from tools.core.engine import get_engine
+        from core.engine import get_engine
 
         engine = get_engine()
         result = engine.optimize.stacking()
@@ -146,7 +146,7 @@ def playbook(args) -> int:
     
     action = getattr(args, 'action', 'list')
     try:
-        from tools.core.engine import get_engine
+        from core.engine import get_engine
 
         engine = get_engine()
         playbooks = engine.optimize.playbook()

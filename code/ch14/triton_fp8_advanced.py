@@ -32,7 +32,7 @@ from pathlib import Path
 import os
 
 os.environ.setdefault("TRITON_ALLOW_NON_CONSTEXPR_GLOBALS", "1")  # TODO(cfregly): drop once kernels stop relying on globals
-from common.python import triton_compat  # noqa: F401
+from benchmark import triton_compat  # noqa: F401
 
 import torch
 import triton

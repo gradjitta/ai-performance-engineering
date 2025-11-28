@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 import torch
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.dynamic_router.eval_stack import EvalConfig, run_eval_stack
 
 

@@ -29,7 +29,7 @@ import torch.nn as nn
 import sys
 from pathlib import Path
 
-from common.python.compile_utils import enable_tf32
+from core.utils.compile_utils import enable_tf32
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))

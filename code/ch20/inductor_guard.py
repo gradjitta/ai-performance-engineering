@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from common.python.inductor_guard import (  # noqa: F401,F403
+from optimization.inductor_guard import (  # noqa: F401,F403
     InductorCudagraphState,
     disable_inductor_cudagraph_features,
     inductor_cudagraph_guard,

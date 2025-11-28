@@ -41,7 +41,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.nn.functional as F
 from torch.nn.attention import sdpa_kernel, SDPBackend
-from common.python.compile_utils import compile_callable, maybe_nested_compile_region
+from core.utils.compile_utils import compile_callable, maybe_nested_compile_region
 
 _ARCH_CFG = ArchitectureConfig()
 

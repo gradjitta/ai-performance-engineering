@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from common.python.hardware_capabilities import detect_capabilities
+from core.harness.hardware_capabilities import detect_capabilities
 
 CLUSTER_SKIP_HINTS = (
     "Thread block clusters unstable",

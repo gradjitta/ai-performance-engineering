@@ -19,8 +19,8 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from common.python.benchmark_metrics import compute_memory_transfer_metrics
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from benchmark.metrics import compute_memory_transfer_metrics
 
 
 def symmetric_memory_available() -> bool:
@@ -157,7 +157,7 @@ def get_benchmark() -> BaseBenchmark:
 
 def main() -> None:
     """Standalone execution for testing."""
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     harness = BenchmarkHarness(
         mode=BenchmarkMode.CUSTOM,

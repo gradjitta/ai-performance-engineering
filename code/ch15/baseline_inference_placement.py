@@ -10,7 +10,7 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
 from ch15.placement_sim import (  # noqa: E402
     PlacementConfig,
     PlacementSimulator,
@@ -66,7 +66,7 @@ class _PlacementBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return inference metrics for inference_placement."""
-        from common.python.benchmark_metrics import compute_inference_metrics
+        from benchmark.metrics import compute_inference_metrics
         return compute_inference_metrics(
             ttft_ms=getattr(self, '_ttft_ms', 10.0),
             tpot_ms=getattr(self, '_tpot_ms', 1.0),
@@ -100,7 +100,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     bench = get_benchmark()
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())

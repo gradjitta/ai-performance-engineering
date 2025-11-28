@@ -19,16 +19,8 @@ try:
 except ImportError:
     pass
 
-from common.python.benchmark_harness import (
-    BaseBenchmark,
-    BenchmarkConfig,
-)
-from common.python.chapter_compare_template import (
-    discover_benchmarks,
-    load_benchmark,
-    create_standard_metrics,
-    profile_template,
-)
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.utils.chapter_compare_template import discover_benchmarks, load_benchmark, create_standard_metrics, profile_template
 
 
 def profile() -> Dict[str, Any]:

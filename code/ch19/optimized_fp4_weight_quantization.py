@@ -37,7 +37,7 @@ import torch.nn.functional as F
 from typing import Optional, Tuple
 import math
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -417,7 +417,7 @@ class OptimizedFP4WeightQuantizationBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return optimized FP4 metrics using standard helpers."""
-        from common.python.benchmark_metrics import compute_precision_metrics
+        from benchmark.metrics import compute_precision_metrics
         
         # Use standard precision metrics (FP4 = 8x memory reduction)
         # Note: FP4 main benefit is memory, not always speed

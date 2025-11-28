@@ -25,7 +25,7 @@ import torch.nn.functional as F
 
 from typing import Optional
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -126,7 +126,7 @@ class OptimizedPagedAttentionBenchmark(BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: Flash Attention."""
-        from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False

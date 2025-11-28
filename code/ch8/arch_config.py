@@ -17,8 +17,8 @@ from pathlib import Path
 
 import torch
 
-from common.python.compile_utils import compile_callable
-from common.python.compile_utils import enable_tf32
+from core.utils.compile_utils import compile_callable
+from core.utils.compile_utils import enable_tf32
 
 
 enable_tf32()

@@ -46,12 +46,12 @@ UTILITY_SCRIPTS = {
     "probe-hw": repo_root / "tools" / "utilities" / "probe_hardware_capabilities.py",
 }
 
-from tools.analysis.performance_analyzer import PerformanceAnalyzer, load_benchmark_data as load_benchmark_results
-from tools.plugins.loader import load_plugin_apps
+from core.analysis.performance_analyzer import PerformanceAnalyzer, load_benchmark_data as load_benchmark_results
+from core.plugins.loader import load_plugin_apps
 
 # Optional capability: bench LLM features (provided by extension)
 try:
-    from common.python.capabilities import has_capability
+    from core.capabilities import has_capability
 except Exception:
     def has_capability(name: str) -> bool:
         return False
@@ -94,12 +94,12 @@ def _expand_multi_value_option(option_names: List[str]) -> None:
 
 _expand_multi_value_option(["--targets", "-t"])
 
-from common.python.env_defaults import apply_env_defaults, dump_environment_and_capabilities
-from common.python.logger import setup_logging, get_logger
-from common.python.artifact_manager import ArtifactManager
-from tools.verification.verify_all_benchmarks import resolve_target_chapters, run_verification
-from common.python import profiler_config as profiler_config_mod
-from common.python.discovery import chapter_slug, discover_all_chapters
+from core.env import apply_env_defaults, dump_environment_and_capabilities
+from core.utils.logger import setup_logging, get_logger
+from benchmark.artifact_manager import ArtifactManager
+from core.verification.verify_all_benchmarks import resolve_target_chapters, run_verification
+from profiling import profiler_config as profiler_config_mod
+from core.discovery import chapter_slug, discover_all_chapters
 
 apply_env_defaults()
 
@@ -201,8 +201,8 @@ except ImportError:
 # Import benchmark functionality
 try:
     import torch  # noqa: F401
-    from common.python.chapter_compare_template import discover_benchmarks
-    from tools.testing.run_all_benchmarks import test_chapter, generate_markdown_report
+    from core.utils.chapter_compare_template import discover_benchmarks
+    from core.harness.run_all_benchmarks import test_chapter, generate_markdown_report
 
     BENCHMARK_AVAILABLE = True
 except ImportError:
@@ -264,7 +264,7 @@ def _execute_benchmarks(
     parsed_extra_args = _parse_target_extra_args(target_extra_args)
 
     try:
-        from common.python.cuda_capabilities import set_force_pipeline
+        from core.harness.cuda_capabilities import set_force_pipeline
 
         set_force_pipeline(force_pipeline)
     except ImportError:

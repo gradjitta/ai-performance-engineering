@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.dynamic_router.driver import simulate
 
 

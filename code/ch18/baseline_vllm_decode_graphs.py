@@ -23,8 +23,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
-from common.python.smoke import is_smoke_mode
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
+from benchmark.smoke import is_smoke_mode
 
 if is_smoke_mode():
     raise RuntimeError("SKIPPED: vllm_decode_graphs is disabled in smoke-test sweeps")

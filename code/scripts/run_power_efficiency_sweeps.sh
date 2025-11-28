@@ -58,7 +58,7 @@ for model_config in "${MODEL_CONFIGS[@]}"; do
         echo ""
         
         # Run precision power sweep
-        python tools/benchmarking/precision_power_sweep.py \
+        python benchmark/precision_power_sweep.py \
             --sequence-length ${SEQUENCE_LENGTH} \
             --model-layers ${layers} \
             --model-d-model ${d_model} \
@@ -143,7 +143,7 @@ Calculate cost efficiency:
 ## Related Documentation
 
 - `docs/playbooks/torch_compile_troubleshooting.md` - Note: Using --skip-compile for reliability
-- `tools/benchmarking/precision_power_sweep.py` - Tool used for measurements
+- `benchmark/precision_power_sweep.py` - Tool used for measurements
 EOF
 
 echo "Summary written to: ${SUMMARY_FILE}"
@@ -156,5 +156,4 @@ echo "Results directory: ${OUTPUT_DIR}"
 echo "Summary: ${SUMMARY_FILE}"
 echo ""
 echo "To analyze results:"
-echo "  python tools/analysis/power_efficiency_analyzer.py ${OUTPUT_DIR}/*.json"
-
+echo "  python -m core.analysis.power_efficiency_analyzer ${OUTPUT_DIR}/*.json"

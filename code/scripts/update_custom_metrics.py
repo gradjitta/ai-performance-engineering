@@ -61,7 +61,7 @@ CHAPTER_METRIC_HELPERS = {
 # Helper function signatures for generating code
 HELPER_SIGNATURES = {
     "compute_memory_transfer_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_memory_transfer_metrics",
+        "import": "from benchmark.metrics import compute_memory_transfer_metrics",
         "params": ["bytes_transferred", "elapsed_ms", "transfer_type"],
         "defaults": {
             "bytes_transferred": "self._bytes_transferred if hasattr(self, '_bytes_transferred') else float(getattr(self, 'N', 1024) * 4)",
@@ -70,7 +70,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_kernel_fundamentals_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_kernel_fundamentals_metrics",
+        "import": "from benchmark.metrics import compute_kernel_fundamentals_metrics",
         "params": ["num_elements", "num_iterations"],
         "defaults": {
             "num_elements": "getattr(self, 'N', getattr(self, 'num_elements', 1024))",
@@ -78,7 +78,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_memory_access_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_memory_access_metrics",
+        "import": "from benchmark.metrics import compute_memory_access_metrics",
         "params": ["bytes_requested", "bytes_actually_transferred", "num_transactions", "optimal_transactions"],
         "defaults": {
             "bytes_requested": "float(getattr(self, 'N', 1024) * 4)",
@@ -88,7 +88,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_optimization_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_optimization_metrics",
+        "import": "from benchmark.metrics import compute_optimization_metrics",
         "params": ["baseline_ms", "optimized_ms", "technique"],
         "defaults": {
             "baseline_ms": "getattr(self, '_baseline_ms', 1.0)",
@@ -97,7 +97,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_roofline_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_roofline_metrics",
+        "import": "from benchmark.metrics import compute_roofline_metrics",
         "params": ["total_flops", "total_bytes", "elapsed_ms", "precision"],
         "defaults": {
             "total_flops": "float(getattr(self, 'total_flops', getattr(self, 'N', 1024) * 2))",
@@ -107,7 +107,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_stream_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_stream_metrics",
+        "import": "from benchmark.metrics import compute_stream_metrics",
         "params": ["sequential_time_ms", "overlapped_time_ms", "num_streams", "num_operations"],
         "defaults": {
             "sequential_time_ms": "getattr(self, '_sequential_ms', 10.0)",
@@ -117,7 +117,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_graph_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_graph_metrics",
+        "import": "from benchmark.metrics import compute_graph_metrics",
         "params": ["baseline_launch_overhead_us", "graph_launch_overhead_us", "num_nodes", "num_iterations"],
         "defaults": {
             "baseline_launch_overhead_us": "getattr(self, '_baseline_launch_us', 10.0)",
@@ -127,7 +127,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_precision_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_precision_metrics",
+        "import": "from benchmark.metrics import compute_precision_metrics",
         "params": ["fp32_time_ms", "reduced_precision_time_ms", "precision_type"],
         "defaults": {
             "fp32_time_ms": "getattr(self, '_fp32_ms', 10.0)",
@@ -136,7 +136,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_inference_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_inference_metrics",
+        "import": "from benchmark.metrics import compute_inference_metrics",
         "params": ["ttft_ms", "tpot_ms", "total_tokens", "total_requests", "batch_size", "max_batch_size"],
         "defaults": {
             "ttft_ms": "getattr(self, '_ttft_ms', 50.0)",
@@ -148,7 +148,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_speculative_decoding_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_speculative_decoding_metrics",
+        "import": "from benchmark.metrics import compute_speculative_decoding_metrics",
         "params": ["draft_tokens", "accepted_tokens", "draft_time_ms", "verify_time_ms", "num_rounds"],
         "defaults": {
             "draft_tokens": "getattr(self, '_draft_tokens', 64)",
@@ -160,7 +160,7 @@ HELPER_SIGNATURES = {
     },
     # New helpers for custom chapters
     "compute_environment_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_environment_metrics",
+        "import": "from benchmark.metrics import compute_environment_metrics",
         "params": ["gpu_count", "gpu_memory_gb"],
         "defaults": {
             "gpu_count": "getattr(self, 'gpu_count', 1)",
@@ -168,7 +168,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_system_config_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_system_config_metrics",
+        "import": "from benchmark.metrics import compute_system_config_metrics",
         "params": ["numa_nodes", "cpu_cores"],
         "defaults": {
             "numa_nodes": "getattr(self, 'numa_nodes', 1)",
@@ -176,7 +176,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_distributed_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_distributed_metrics",
+        "import": "from benchmark.metrics import compute_distributed_metrics",
         "params": ["world_size", "bytes_transferred", "elapsed_ms", "collective_type"],
         "defaults": {
             "world_size": "getattr(self, 'world_size', 1)",
@@ -186,7 +186,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_storage_io_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_storage_io_metrics",
+        "import": "from benchmark.metrics import compute_storage_io_metrics",
         "params": ["bytes_read", "bytes_written", "read_time_ms", "write_time_ms"],
         "defaults": {
             "bytes_read": "getattr(self, '_bytes_read', 0.0)",
@@ -196,7 +196,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_pipeline_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_pipeline_metrics",
+        "import": "from benchmark.metrics import compute_pipeline_metrics",
         "params": ["num_stages", "stage_times_ms"],
         "defaults": {
             "num_stages": "getattr(self, 'num_stages', 4)",
@@ -204,7 +204,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_triton_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_triton_metrics",
+        "import": "from benchmark.metrics import compute_triton_metrics",
         "params": ["num_elements", "elapsed_ms", "block_size", "num_warps"],
         "defaults": {
             "num_elements": "getattr(self, 'N', getattr(self, 'num_elements', 1024))",
@@ -214,7 +214,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_ai_optimization_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_ai_optimization_metrics",
+        "import": "from benchmark.metrics import compute_ai_optimization_metrics",
         "params": ["original_time_ms", "ai_optimized_time_ms", "suggestions_applied", "suggestions_total"],
         "defaults": {
             "original_time_ms": "getattr(self, '_original_ms', 10.0)",
@@ -224,7 +224,7 @@ HELPER_SIGNATURES = {
         },
     },
     "compute_moe_metrics": {
-        "import": "from common.python.benchmark_metrics import compute_moe_metrics",
+        "import": "from benchmark.metrics import compute_moe_metrics",
         "params": ["num_experts", "active_experts", "tokens_per_expert", "routing_time_ms", "expert_compute_time_ms"],
         "defaults": {
             "num_experts": "getattr(self, 'num_experts', 8)",

@@ -25,7 +25,7 @@ from typing import Dict, List, Tuple
 import torch
 import torch.nn.functional as F
 
-from common.python.compile_utils import enable_tf32
+from core.utils.compile_utils import enable_tf32
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

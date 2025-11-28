@@ -13,7 +13,7 @@ if str(repo_root) not in sys.path:
 import torch
 import torch.nn as nn
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     WorkloadMetadata,
@@ -113,7 +113,7 @@ class OptimizedSpeculativeDecodingMathBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_speculative_decoding_metrics
+        from benchmark.metrics import compute_speculative_decoding_metrics
         return compute_speculative_decoding_metrics(
             draft_tokens=getattr(self, '_draft_tokens', 64),
             accepted_tokens=getattr(self, '_accepted_tokens', 48),

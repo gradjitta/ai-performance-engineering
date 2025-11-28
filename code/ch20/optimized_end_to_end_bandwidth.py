@@ -14,7 +14,7 @@ except ImportError:
     pass
 
 try:
-    from common.python.logger import get_logger
+    from core.utils.logger import get_logger
     LOGGER = get_logger(__name__)
 except ImportError:  # pragma: no cover
     LOGGER = None
@@ -25,8 +25,8 @@ from ch20.inductor_guard import (
     InductorCudagraphState,
 )
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from common.python.compile_utils import is_torch_compile_supported_on_device
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from core.utils.compile_utils import is_torch_compile_supported_on_device
 
 
 class SimplePipeline(nn.Module):
@@ -149,7 +149,7 @@ class OptimizedEndToEndBandwidthBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_ai_optimization_metrics
+        from benchmark.metrics import compute_ai_optimization_metrics
         return compute_ai_optimization_metrics(
             original_time_ms=getattr(self, '_original_ms', 10.0),
             ai_optimized_time_ms=getattr(self, '_optimized_ms', 5.0),

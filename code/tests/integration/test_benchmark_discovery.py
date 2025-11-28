@@ -13,17 +13,17 @@ repo_root = Path(__file__).parent.parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.env_defaults import apply_env_defaults
+from core.env import apply_env_defaults
 apply_env_defaults()
 
 import torch
-from common.python.discovery import (
+from core.discovery import (
     discover_benchmarks,
     discover_cuda_benchmarks,
     discover_all_chapters,
     discover_benchmark_pairs,
 )
-from common.python.chapter_compare_template import load_benchmark
+from core.utils.chapter_compare_template import load_benchmark
 
 
 # Skip tests if CUDA is not available

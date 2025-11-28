@@ -31,7 +31,7 @@ if __name__ == "__main__":
     if choice:
         _DEFAULT_BACKEND = choice
     bench = get_benchmark()
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())
     result = harness.benchmark(bench)

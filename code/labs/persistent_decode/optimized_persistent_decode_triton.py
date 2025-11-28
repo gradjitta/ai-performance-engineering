@@ -13,7 +13,7 @@ import torch
 import triton
 import triton.language as tl
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.persistent_decode.persistent_decode_common import (
     build_inputs,
     get_decode_options,
@@ -160,7 +160,7 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedPersistentDecodeTritonBenchmark()
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     bench = get_benchmark()
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())

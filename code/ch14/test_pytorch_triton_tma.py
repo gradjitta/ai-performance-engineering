@@ -3,7 +3,7 @@
 Test if PyTorch's torch.compile with Triton backend can use TMA on GB10
 """
 
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
+from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,7 +12,7 @@ import pytest
 import torch
 import torch._dynamo
 import torch._inductor.config as inductor_config
-from common.python.compile_utils import compile_callable
+from core.utils.compile_utils import compile_callable
 
 if not torch.cuda.is_available():
     pytest.skip("CUDA device required for Triton TMA validation", allow_module_level=True)

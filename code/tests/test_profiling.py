@@ -17,7 +17,7 @@ class TestProfileSession:
     
     def test_session_creation(self):
         """Test creating a profile session."""
-        from tools.profiling.profiler import ProfileSession, KernelInfo
+        from core.profiling.profiler import ProfileSession, KernelInfo
         
         session = ProfileSession(
             total_time_ms=100.0,
@@ -34,7 +34,7 @@ class TestProfileSession:
     
     def test_session_to_dict(self):
         """Test converting session to dictionary."""
-        from tools.profiling.profiler import ProfileSession
+        from core.profiling.profiler import ProfileSession
         
         session = ProfileSession(
             total_time_ms=100.0,
@@ -59,7 +59,7 @@ class TestKernelInfo:
     
     def test_kernel_info_creation(self):
         """Test creating kernel info."""
-        from tools.profiling.profiler import KernelInfo
+        from core.profiling.profiler import KernelInfo
         
         kernel = KernelInfo(
             name="volta_h884gemm",
@@ -79,7 +79,7 @@ class TestMemorySnapshot:
     
     def test_snapshot_creation(self):
         """Test creating memory snapshot."""
-        from tools.profiling.memory import MemorySnapshot
+        from core.profiling.memory import MemorySnapshot
         
         snapshot = MemorySnapshot(
             timestamp_ms=100.0,
@@ -94,7 +94,7 @@ class TestMemorySnapshot:
     
     def test_snapshot_to_dict(self):
         """Test converting snapshot to dictionary."""
-        from tools.profiling.memory import MemorySnapshot
+        from core.profiling.memory import MemorySnapshot
         
         snapshot = MemorySnapshot(
             timestamp_ms=100.0,
@@ -115,7 +115,7 @@ class TestMemoryProfiler:
     
     def test_profiler_initialization(self):
         """Test memory profiler initialization."""
-        from tools.profiling.memory import MemoryProfiler
+        from core.profiling.memory import MemoryProfiler
         
         profiler = MemoryProfiler(
             sample_interval_ms=1.0,
@@ -127,7 +127,7 @@ class TestMemoryProfiler:
     
     def test_profiler_reset(self):
         """Test profiler reset."""
-        from tools.profiling.memory import MemoryProfiler
+        from core.profiling.memory import MemoryProfiler
         
         profiler = MemoryProfiler()
         profiler._timeline = [Mock()]  # Add dummy data
@@ -140,7 +140,7 @@ class TestMemoryProfiler:
     
     def test_get_peak_analysis_empty(self):
         """Test peak analysis with no data."""
-        from tools.profiling.memory import MemoryProfiler
+        from core.profiling.memory import MemoryProfiler
         
         profiler = MemoryProfiler()
         peak = profiler.get_peak_analysis()
@@ -153,7 +153,7 @@ class TestFlameGraphGenerator:
     
     def test_generator_initialization(self):
         """Test flame graph generator initialization."""
-        from tools.profiling.flame_graph import FlameGraphGenerator
+        from core.profiling.flame_graph import FlameGraphGenerator
         
         generator = FlameGraphGenerator(
             min_duration_us=10.0,
@@ -166,7 +166,7 @@ class TestFlameGraphGenerator:
     
     def test_clean_kernel_name(self):
         """Test kernel name cleaning."""
-        from tools.profiling.flame_graph import FlameGraphGenerator
+        from core.profiling.flame_graph import FlameGraphGenerator
         
         generator = FlameGraphGenerator()
         
@@ -184,7 +184,7 @@ class TestFlameGraphGenerator:
     
     def test_extract_kernel_type(self):
         """Test kernel type extraction."""
-        from tools.profiling.flame_graph import FlameGraphGenerator
+        from core.profiling.flame_graph import FlameGraphGenerator
         
         generator = FlameGraphGenerator()
         
@@ -197,7 +197,7 @@ class TestFlameGraphGenerator:
     
     def test_from_kernel_list(self):
         """Test flame graph from kernel list."""
-        from tools.profiling.flame_graph import FlameGraphGenerator
+        from core.profiling.flame_graph import FlameGraphGenerator
         
         generator = FlameGraphGenerator()
         
@@ -215,7 +215,7 @@ class TestFlameGraphGenerator:
     
     def test_from_chrome_trace(self, tmp_path):
         """Test flame graph from Chrome trace."""
-        from tools.profiling.flame_graph import FlameGraphGenerator
+        from core.profiling.flame_graph import FlameGraphGenerator
         
         # Create sample trace
         trace = {
@@ -236,7 +236,7 @@ class TestFlameGraphGenerator:
     
     def test_export_json(self, tmp_path):
         """Test JSON export."""
-        from tools.profiling.flame_graph import FlameGraphGenerator
+        from core.profiling.flame_graph import FlameGraphGenerator
         
         generator = FlameGraphGenerator()
         data = {"name": "root", "value": 100, "children": []}
@@ -250,7 +250,7 @@ class TestFlameGraphGenerator:
     
     def test_export_html(self, tmp_path):
         """Test HTML export."""
-        from tools.profiling.flame_graph import FlameGraphGenerator
+        from core.profiling.flame_graph import FlameGraphGenerator
         
         generator = FlameGraphGenerator()
         data = {"name": "root", "value": 100, "children": []}
@@ -269,7 +269,7 @@ class TestTimelineGenerator:
     
     def test_generator_initialization(self):
         """Test timeline generator initialization."""
-        from tools.profiling.timeline import TimelineGenerator
+        from core.profiling.timeline import TimelineGenerator
         
         generator = TimelineGenerator(
             min_duration_us=1.0,
@@ -281,7 +281,7 @@ class TestTimelineGenerator:
     
     def test_classify_category(self):
         """Test event category classification."""
-        from tools.profiling.timeline import TimelineGenerator, EventType
+        from core.profiling.timeline import TimelineGenerator, EventType
         
         generator = TimelineGenerator()
         
@@ -293,7 +293,7 @@ class TestTimelineGenerator:
     
     def test_from_chrome_trace(self, tmp_path):
         """Test timeline from Chrome trace."""
-        from tools.profiling.timeline import TimelineGenerator
+        from core.profiling.timeline import TimelineGenerator
         
         trace = {
             "traceEvents": [
@@ -313,7 +313,7 @@ class TestTimelineGenerator:
     
     def test_calculate_active_time(self):
         """Test active time calculation with overlaps."""
-        from tools.profiling.timeline import TimelineGenerator, TimelineEvent, EventType
+        from core.profiling.timeline import TimelineGenerator, TimelineEvent, EventType
         
         generator = TimelineGenerator()
         
@@ -335,7 +335,7 @@ class TestHTAAnalyzer:
     
     def test_analyzer_initialization(self):
         """Test HTA analyzer initialization."""
-        from tools.profiling.hta_integration import HTAAnalyzer
+        from core.profiling.hta_integration import HTAAnalyzer
         
         analyzer = HTAAnalyzer(output_dir=Path("/tmp/hta"))
         
@@ -343,7 +343,7 @@ class TestHTAAnalyzer:
     
     def test_manual_trace_analysis(self, tmp_path):
         """Test manual trace analysis fallback."""
-        from tools.profiling.hta_integration import HTAAnalyzer
+        from core.profiling.hta_integration import HTAAnalyzer
         
         trace = {
             "traceEvents": [
@@ -363,7 +363,7 @@ class TestHTAAnalyzer:
     
     def test_generate_recommendations(self):
         """Test recommendation generation."""
-        from tools.profiling.hta_integration import HTAAnalyzer, HTAReport
+        from core.profiling.hta_integration import HTAAnalyzer, HTAReport
         
         analyzer = HTAAnalyzer()
         
@@ -383,7 +383,7 @@ class TestTorchCompileAnalyzer:
     
     def test_analyzer_initialization(self):
         """Test compile analyzer initialization."""
-        from tools.profiling.torch_compile import TorchCompileAnalyzer
+        from core.profiling.torch_compile import TorchCompileAnalyzer
         
         analyzer = TorchCompileAnalyzer(
             backend="inductor",
@@ -395,7 +395,7 @@ class TestTorchCompileAnalyzer:
     
     def test_get_break_suggestion(self):
         """Test graph break suggestions."""
-        from tools.profiling.torch_compile import TorchCompileAnalyzer
+        from core.profiling.torch_compile import TorchCompileAnalyzer
         
         analyzer = TorchCompileAnalyzer()
         
@@ -406,7 +406,7 @@ class TestTorchCompileAnalyzer:
     
     def test_generate_recommendations(self):
         """Test recommendation generation."""
-        from tools.profiling.torch_compile import TorchCompileAnalyzer, CompileReport
+        from core.profiling.torch_compile import TorchCompileAnalyzer, CompileReport
         
         analyzer = TorchCompileAnalyzer()
         
@@ -431,7 +431,7 @@ class TestCompileReport:
     
     def test_report_creation(self):
         """Test creating compile report."""
-        from tools.profiling.torch_compile import CompileReport
+        from core.profiling.torch_compile import CompileReport
         
         report = CompileReport(
             speedup=1.5,
@@ -447,7 +447,7 @@ class TestCompileReport:
     
     def test_report_to_dict(self):
         """Test converting report to dictionary."""
-        from tools.profiling.torch_compile import CompileReport
+        from core.profiling.torch_compile import CompileReport
         
         report = CompileReport(
             speedup=1.5,

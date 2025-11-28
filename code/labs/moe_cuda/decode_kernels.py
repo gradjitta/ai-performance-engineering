@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from common.python.extension_loader_template import load_cuda_extension
+from core.utils.extension_loader_template import load_cuda_extension
 
 SUITE_DIR = Path(__file__).parent
 KERNEL_DIR = SUITE_DIR / "kernels"

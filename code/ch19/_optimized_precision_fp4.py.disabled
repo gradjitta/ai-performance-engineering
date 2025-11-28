@@ -35,7 +35,7 @@ except ImportError:
     FP4_AVAILABLE = False
     TELinear = nn.Linear  # Fallback
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,

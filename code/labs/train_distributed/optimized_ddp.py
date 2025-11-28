@@ -16,7 +16,7 @@ from pathlib import Path
 
 try:
     from arch_config import prefer_sdpa_backends  # type: ignore
-    from common.python.compile_utils import enable_tf32  # type: ignore
+    from core.utils.compile_utils import enable_tf32  # type: ignore
 except Exception:  # pragma: no cover - defensive
     prefer_sdpa_backends = None  # type: ignore
     enable_tf32 = None  # type: ignore

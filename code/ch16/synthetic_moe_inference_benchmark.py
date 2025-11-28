@@ -60,7 +60,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from common.python.compile_utils import enable_tf32, compile_model
+from core.utils.compile_utils import enable_tf32, compile_model
 
 CURRENT_DEVICE_FLAVOR = "unknown"
 

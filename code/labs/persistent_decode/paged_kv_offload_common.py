@@ -28,7 +28,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 try:  # Prefer the Blackwell-aware SDPA selector when available.
     from arch_config import prefer_sdpa_backends  # type: ignore

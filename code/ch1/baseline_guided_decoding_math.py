@@ -19,8 +19,8 @@ except ImportError:
 
 from typing import Optional
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from common.python.compile_utils import enable_tf32
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from core.utils.compile_utils import enable_tf32
 
 
 class BaselineGuidedDecodingMathBenchmark(BaseBenchmark):
@@ -96,7 +96,7 @@ class BaselineGuidedDecodingMathBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_environment_metrics
+        from benchmark.metrics import compute_environment_metrics
         return compute_environment_metrics(
             gpu_count=getattr(self, 'gpu_count', 1),
             gpu_memory_gb=getattr(self, 'gpu_memory_gb', 80.0),
@@ -111,7 +111,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     benchmark = get_benchmark()
     harness = BenchmarkHarness(

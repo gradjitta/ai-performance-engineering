@@ -31,7 +31,7 @@ from torch.nn.attention.flex_attention import flex_attention, create_block_mask
 import time
 from typing import Optional, Tuple
 
-from common.python.compile_utils import enable_tf32, compile_model
+from core.utils.compile_utils import enable_tf32, compile_model
 
 QUICK_MODE = any(
     os.getenv(flag, "0") == "1"

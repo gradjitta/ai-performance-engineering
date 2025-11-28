@@ -12,11 +12,11 @@ from typing import Dict, Any
 repo_root = Path(__file__).parent.parent
 sys.path.insert(0, str(repo_root))
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
 )
-from common.python.chapter_compare_template import (
+from core.utils.chapter_compare_template import (
     profile_template,
 )
 

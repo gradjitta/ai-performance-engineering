@@ -10,7 +10,7 @@ import torch.nn as nn
 
 try:
     from arch_config import prefer_sdpa_backends  # type: ignore
-    from common.python.compile_utils import enable_tf32  # type: ignore
+    from core.utils.compile_utils import enable_tf32  # type: ignore
 except Exception:  # pragma: no cover - defensive import
     prefer_sdpa_backends = None  # type: ignore
     enable_tf32 = None  # type: ignore
@@ -20,8 +20,8 @@ try:
 except ImportError:
     pass
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from common.python.compile_utils import compile_model
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from core.utils.compile_utils import compile_model
 
 
 class AutotuneModel(nn.Module):
@@ -108,7 +108,7 @@ class OptimizedAutotuningBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_ai_optimization_metrics
+        from benchmark.metrics import compute_ai_optimization_metrics
         return compute_ai_optimization_metrics(
             original_time_ms=getattr(self, '_original_ms', 10.0),
             ai_optimized_time_ms=getattr(self, '_optimized_ms', 5.0),

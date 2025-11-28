@@ -17,7 +17,7 @@ from typing import Optional, List
 
 import torch
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 
 class BaselineStreamsBenchmark(BaseBenchmark):
@@ -107,7 +107,7 @@ class BaselineStreamsBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics."""
-        from common.python.benchmark_metrics import compute_stream_metrics
+        from benchmark.metrics import compute_stream_metrics
         return compute_stream_metrics(
             sequential_time_ms=getattr(self, '_sequential_ms', 10.0),
             overlapped_time_ms=getattr(self, '_overlapped_ms', 5.0),
@@ -122,7 +122,7 @@ def get_benchmark() -> BaselineStreamsBenchmark:
 
 
 if __name__ == '__main__':
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
     benchmark = get_benchmark()
     harness = BenchmarkHarness(
         mode=BenchmarkMode.CUSTOM,

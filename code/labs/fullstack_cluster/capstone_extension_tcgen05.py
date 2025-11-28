@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from common.python.extension_loader_template import load_cuda_extension_v2
+from core.utils.extension_loader_template import load_cuda_extension_v2
 
 try:  # Ensure arch_config clamps TORCH_CUDA_ARCH_LIST before building.
     import arch_config  # noqa: F401

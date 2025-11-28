@@ -22,7 +22,7 @@ def get_benchmark() -> OptimizedContinuousBatchingBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
+    from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
 
     parser = argparse.ArgumentParser(description="Run optimized continuous batching on multiple GPUs.")
     parser.add_argument("--iterations", type=int, default=None, help="Measurement iterations (overrides harness default).")

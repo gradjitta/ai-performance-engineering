@@ -14,14 +14,14 @@ repo_root = Path(__file__).parent.parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.env_defaults import apply_env_defaults
+from core.env import apply_env_defaults
 apply_env_defaults()
 
 import torch
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
-from common.python.chapter_compare_template import discover_benchmarks, load_benchmark
-from common.python.discovery import discover_all_chapters
-from common.python.benchmark_models import BenchmarkResult, TimingStats, MemoryStats
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
+from core.utils.chapter_compare_template import discover_benchmarks, load_benchmark
+from core.discovery import discover_all_chapters
+from benchmark.models import BenchmarkResult, TimingStats, MemoryStats
 
 
 # Skip tests if CUDA is not available
@@ -155,7 +155,7 @@ class TestMetricsCollectionIntegration:
     
     def test_metrics_comparison(self):
         """Test that metrics can be compared."""
-        from common.python.benchmark_comparison import compare_results
+        from benchmark.comparison import compare_results
         
         # Create two mock results for comparison
         timing1 = TimingStats(

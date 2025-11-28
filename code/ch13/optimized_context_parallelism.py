@@ -21,8 +21,8 @@ import torch.nn as nn
 # Add common to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.python.benchmark_harness import BenchmarkHarness, BenchmarkConfig, BenchmarkMode
-from common.python.logger import get_logger
+from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkConfig, BenchmarkMode
+from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -368,7 +368,7 @@ if __name__ == "__main__":
 # Benchmark Harness Integration
 #============================================================================
 
-from common.python.benchmark_harness import BaseBenchmark, WorkloadMetadata
+from core.harness.benchmark_harness import BaseBenchmark, WorkloadMetadata
 
 
 class ContextParallelismBenchmark(BaseBenchmark):
@@ -421,7 +421,7 @@ class ContextParallelismBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_precision_metrics
+        from benchmark.metrics import compute_precision_metrics
         return compute_precision_metrics(
             fp32_time_ms=getattr(self, '_fp32_ms', 10.0),
             reduced_precision_time_ms=getattr(self, '_reduced_ms', 5.0),

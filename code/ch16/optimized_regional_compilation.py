@@ -21,13 +21,13 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
-from common.python.compile_utils import enable_tf32, maybe_nested_compile_region
-from common.python.benchmark_harness import (
+from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
+from core.utils.compile_utils import enable_tf32, maybe_nested_compile_region
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
 )
-from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
+from profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
 MODEL_CANDIDATES: List[Dict[str, int]] = [
     {"n_layers": 4, "d_model": 1024, "d_ff": 4096},
@@ -179,7 +179,7 @@ class OptimizedRegionalCompilationBenchmark(BaseBenchmark):
         self.compiled_layers = len(self.graph_cache)
 
     def benchmark_fn(self) -> None:
-        from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
@@ -264,7 +264,7 @@ class OptimizedRegionalCompilationBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_inference_metrics
+        from benchmark.metrics import compute_inference_metrics
         return compute_inference_metrics(
             ttft_ms=getattr(self, '_ttft_ms', 50.0),
             tpot_ms=getattr(self, '_tpot_ms', 10.0),

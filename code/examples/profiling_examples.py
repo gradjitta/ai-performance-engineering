@@ -21,7 +21,7 @@ import torch.nn as nn
 
 def example_unified_profiler():
     """Basic profiling of GPU code."""
-    from tools.profiling import UnifiedProfiler
+    from core.profiling import UnifiedProfiler
     
     print("=" * 60)
     print("Example 1: UnifiedProfiler")
@@ -89,7 +89,7 @@ def example_unified_profiler():
 
 def example_profile_function():
     """Profile a specific function with warmup."""
-    from tools.profiling import UnifiedProfiler
+    from core.profiling import UnifiedProfiler
     
     print("\n" + "=" * 60)
     print("Example 2: Profile Function")
@@ -128,7 +128,7 @@ def example_profile_function():
 
 def example_memory_profiling():
     """Track memory usage over time."""
-    from tools.profiling import MemoryProfiler
+    from core.profiling import MemoryProfiler
     
     print("\n" + "=" * 60)
     print("Example 3: Memory Profiling")
@@ -187,7 +187,7 @@ def example_memory_profiling():
 
 def example_flame_graph():
     """Generate a flame graph from profiling data."""
-    from tools.profiling import FlameGraphGenerator
+    from core.profiling import FlameGraphGenerator
     
     print("\n" + "=" * 60)
     print("Example 4: Flame Graph Generation")
@@ -238,7 +238,7 @@ def example_flame_graph():
 
 def example_timeline():
     """Generate CPU/GPU timeline visualization."""
-    from tools.profiling import TimelineGenerator
+    from core.profiling import TimelineGenerator
     
     print("\n" + "=" * 60)
     print("Example 5: CPU/GPU Timeline")
@@ -291,7 +291,7 @@ def example_timeline():
 
 def example_torch_compile():
     """Analyze torch.compile behavior."""
-    from tools.profiling.torch_compile import TorchCompileAnalyzer
+    from core.profiling.torch_compile import TorchCompileAnalyzer
     
     print("\n" + "=" * 60)
     print("Example 6: torch.compile Analysis")
@@ -362,7 +362,7 @@ def example_torch_compile():
 
 def example_compare_sessions():
     """Compare baseline vs optimized performance."""
-    from tools.profiling import UnifiedProfiler
+    from core.profiling import UnifiedProfiler
     
     print("\n" + "=" * 60)
     print("Example 7: Compare Profiling Sessions")

@@ -12,7 +12,7 @@ from typing import Sequence
 import torch
 from torch.utils.cpp_extension import load
 
-from common.python.tcgen05_requirements import ensure_tcgen05_supported
+from benchmark.tcgen05_requirements import ensure_tcgen05_supported
 
 try:  # Ensure TORCH_CUDA_ARCH_LIST stays clamped for GB-series hosts.
     import arch_config  # noqa: F401
@@ -298,7 +298,7 @@ def _load_extension(name: str, sources: Sequence[Path]):
 def load_matmul_tcgen05_module():
     """Compile (if needed) and return the Chapter 10 tcgen05 matmul extension."""
     import os
-    from common.python.smoke import is_smoke_mode
+    from benchmark.smoke import is_smoke_mode
     if is_smoke_mode():
         raise RuntimeError("SKIPPED: tcgen05 extension disabled in low-memory mode")
     return _load_extension("ch10_matmul_tcgen05_ext", [_REPO_ROOT / "ch10" / "matmul_tcgen05.cu"])
@@ -308,7 +308,7 @@ def load_matmul_tcgen05_module():
 def load_tiling_tcgen05_module():
     """Compile (if needed) and return the Chapter 8 tcgen05 tiling extension."""
     import os
-    from common.python.smoke import is_smoke_mode
+    from benchmark.smoke import is_smoke_mode
     if is_smoke_mode():
         raise RuntimeError("SKIPPED: tcgen05 extension disabled in low-memory mode")
     return _load_extension("ch8_tiling_tcgen05_ext", [_REPO_ROOT / "ch8" / "tiling_kernels_tcgen05.cu"])

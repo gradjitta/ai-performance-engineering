@@ -14,18 +14,18 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.benchmark_harness import (  # noqa: E402
+from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from common.python.gpu_memory_logger import (  # noqa: E402
+from profiling.gpu_memory_logger import (  # noqa: E402
     GpuMemoryLogger,
     resolve_gpu_log_interval,
     resolve_gpu_log_path,
 )
-from common.python.gpu_telemetry import query_gpu_telemetry  # noqa: E402
-from common.python.moe_inference import (  # noqa: E402
+from profiling.gpu_telemetry import query_gpu_telemetry  # noqa: E402
+from optimization.moe_inference import (  # noqa: E402
     MoeInferenceConfig,
     SimpleMoEGPT,
     allocate_kv_cache,
@@ -216,7 +216,7 @@ class BaselineMoeInferenceBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return inference metrics for moe_inference."""
-        from common.python.benchmark_metrics import compute_inference_metrics
+        from benchmark.metrics import compute_inference_metrics
         return compute_inference_metrics(
             ttft_ms=getattr(self, '_ttft_ms', 10.0),
             tpot_ms=getattr(self, '_tpot_ms', 1.0),
@@ -239,7 +239,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     benchmark = get_benchmark()
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=benchmark.get_config())

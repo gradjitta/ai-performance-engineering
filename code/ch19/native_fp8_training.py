@@ -10,8 +10,8 @@ CUDA 13 + PyTorch 2.10:
 
 from __future__ import annotations
 
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
-from common.python.compile_utils import compile_model
+from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
+from core.utils.compile_utils import compile_model
 import contextlib
 import os
 import sys

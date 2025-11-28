@@ -11,12 +11,12 @@ from typing import Dict, Any, Optional
 import sys
 from pathlib import Path
 import os
-from common.python.smoke import is_smoke_mode
+from benchmark.smoke import is_smoke_mode
 
 # Add common to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkHarness,
     BenchmarkConfig,
@@ -24,7 +24,7 @@ from common.python.benchmark_harness import (
     ExecutionMode,
     WorkloadMetadata,
 )
-from common.python.logger import get_logger
+from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -149,7 +149,7 @@ class GraceCoherentMemoryBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return memory transfer metrics for grace_coherent_memory."""
-        from common.python.benchmark_metrics import compute_memory_transfer_metrics
+        from benchmark.metrics import compute_memory_transfer_metrics
         return compute_memory_transfer_metrics(
             bytes_transferred=self.size,
             elapsed_ms=getattr(self, '_last_elapsed_ms', 1.0),

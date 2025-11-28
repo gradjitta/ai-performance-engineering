@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
 
-from tools.core.perf_core import get_core
+from core.perf_core import get_core
 
 
 def _print_header(title: str, emoji: str = "📊"):
@@ -311,4 +311,3 @@ def preflight(args) -> int:
     print()
     
     return 0 if all_ok else 1
-

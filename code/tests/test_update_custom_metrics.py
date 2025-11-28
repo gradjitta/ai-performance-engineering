@@ -39,7 +39,7 @@ class TestGetChapterFromPath:
     
     def test_no_chapter(self):
         """Should return None for paths without chapter."""
-        assert get_chapter_from_path(Path("common/python/utils.py")) is None
+        assert get_chapter_from_path(Path("benchmark/utils.py")) is None
         assert get_chapter_from_path(Path("labs/test.py")) is None
 
 
@@ -90,7 +90,7 @@ class TestAnalyzeGetCustomMetrics:
         """Should detect use of helper functions."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
             f.write('''
-from common.python.benchmark_metrics import compute_memory_transfer_metrics
+from benchmark.metrics import compute_memory_transfer_metrics
 
 class MyBenchmark:
     def get_custom_metrics(self):
@@ -202,7 +202,7 @@ class TestHelperSignatures:
         """All signatures should have import statement."""
         for name, sig in HELPER_SIGNATURES.items():
             assert "import" in sig, f"Missing import for {name}"
-            assert "from common.python.benchmark_metrics" in sig["import"]
+            assert "from benchmark.metrics" in sig["import"]
     
     def test_all_have_params(self):
         """All signatures should have params list."""
@@ -232,7 +232,7 @@ class TestIntegration:
 #!/usr/bin/env python3
 """Baseline benchmark."""
 
-from common.python.benchmark_harness import BaseBenchmark
+from core.harness.benchmark_harness import BaseBenchmark
 
 class BaselineBenchmark(BaseBenchmark):
     def setup(self):
@@ -263,8 +263,8 @@ class BaselineBenchmark(BaseBenchmark):
 #!/usr/bin/env python3
 """Optimized benchmark."""
 
-from common.python.benchmark_harness import BaseBenchmark
-from common.python.benchmark_metrics import compute_memory_transfer_metrics
+from core.harness.benchmark_harness import BaseBenchmark
+from benchmark.metrics import compute_memory_transfer_metrics
 
 class OptimizedBenchmark(BaseBenchmark):
     def setup(self):
@@ -290,4 +290,3 @@ class OptimizedBenchmark(BaseBenchmark):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

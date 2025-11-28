@@ -13,7 +13,7 @@ import torch
 
 from typing import Optional
 
-from common.python.benchmark_harness import (  # noqa: E402
+from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -56,7 +56,7 @@ class BaselineCudaGraphsBenchmark(BaseBenchmark):
         """Benchmark: Separate kernel launches."""
         # Use conditional NVTX ranges - only enabled when profiling
 
-        from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
         config = self.get_config()
 
@@ -89,7 +89,7 @@ class BaselineCudaGraphsBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_graph_metrics
+        from benchmark.metrics import compute_graph_metrics
         return compute_graph_metrics(
             baseline_launch_overhead_us=getattr(self, '_baseline_launch_us', 10.0),
             graph_launch_overhead_us=getattr(self, '_graph_launch_us', 1.0),

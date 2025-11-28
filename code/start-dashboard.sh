@@ -13,7 +13,7 @@ set -euo pipefail
 #   CLEAN_CACHE (default 1), RUN_BUILD (default 0), TAIL_LOG (default 1)
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_DIR="$ROOT_DIR/tools/dashboard-next"
+APP_DIR="$ROOT_DIR/dashboard/web"
 LOG_FILE="${LOG_FILE:-/tmp/nextjs-dashboard.log}"
 BACKEND_LOG_FILE="${BACKEND_LOG_FILE:-/tmp/dashboard-backend.log}"
 CLEAN_CACHE="${CLEAN_CACHE:-1}"   # default: wipe .next/.turbo caches before start
@@ -80,7 +80,7 @@ PY
   else
     echo "[backend] Starting Python server on :${BACKEND_PORT} ..."
     echo "[backend] Log: $BACKEND_LOG_FILE"
-    (cd "$ROOT_DIR" && python -m tools.dashboard.server --port "${BACKEND_PORT}") >"$BACKEND_LOG_FILE" 2>&1 &
+    (cd "$ROOT_DIR" && python -m dashboard.api.server --port "${BACKEND_PORT}") >"$BACKEND_LOG_FILE" 2>&1 &
     BACKEND_PID=$!
     echo "[backend] PID: $BACKEND_PID"
     sleep 2

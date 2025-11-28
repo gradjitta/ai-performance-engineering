@@ -7,7 +7,7 @@ from typing import Optional, Sequence
 import torch
 import triton
 import triton.language as tl
-from common.python.compile_utils import enable_tf32
+from core.utils.compile_utils import enable_tf32
 
 # Importing arch_config applies Triton SM-architecture patches (sm_121a -> sm_120)
 # so kernels keep compiling on GB10 systems until CUDA adds official support.

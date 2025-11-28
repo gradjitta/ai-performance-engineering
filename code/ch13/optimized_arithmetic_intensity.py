@@ -21,8 +21,8 @@ import torch
 
 from typing import Optional
 
-from common.python.compile_utils import enable_tf32
-from common.python.benchmark_harness import (
+from core.utils.compile_utils import enable_tf32
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -101,7 +101,7 @@ class OptimizedArithmeticIntensityBenchmark(BaseBenchmark):
         )
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_precision_metrics
+        from benchmark.metrics import compute_precision_metrics
         return compute_precision_metrics(
             fp32_time_ms=getattr(self, '_fp32_ms', 10.0),
             reduced_precision_time_ms=getattr(self, '_reduced_ms', 5.0),

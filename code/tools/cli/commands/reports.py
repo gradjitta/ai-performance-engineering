@@ -8,8 +8,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from tools.analysis.performance_analyzer import load_benchmark_data, PerformanceAnalyzer
-from tools.core.perf_core import get_core
+from core.analysis.performance_analyzer import load_benchmark_data, PerformanceAnalyzer
+from core.perf_core import get_core
 
 
 def _print_header(title: str, emoji: str = "📄"):

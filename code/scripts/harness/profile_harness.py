@@ -510,7 +510,7 @@ def extract_nsys_metrics(nsys_rep_path: Path, output_csv: Path) -> bool:
         import sys
         if str(REPO_ROOT) not in sys.path:
             sys.path.insert(0, str(REPO_ROOT))
-        from tools.profiling.extract_nsys_summary import harvest
+        from core.profiling.extract_nsys_summary import harvest
         
         # Extract metrics from this file
         metrics = harvest(nsys_rep_path)
@@ -815,7 +815,7 @@ def _run_differential_analysis(
     Returns markdown string with differential analysis, or None if analysis fails.
     """
     try:
-        from tools.analysis.differential_profile_analyzer import (
+        from core.analysis.differential_profile_analyzer import (
             analyze_differential,
             generate_markdown_report,
         )
@@ -1101,7 +1101,7 @@ def summarize(results: List[RunResult], session_dir: Path) -> None:
         code_root = REPO_ROOT.parent if REPO_ROOT.name == "scripts" else REPO_ROOT
         if str(code_root) not in sys.path:
             sys.path.insert(0, str(code_root))
-        from tools.analysis.metric_extractor import discover_and_extract_all, flatten_metrics
+        from core.analysis.metric_extractor import discover_and_extract_all, flatten_metrics
         
         all_metrics = discover_and_extract_all(session_dir)
         flattened = flatten_metrics(all_metrics)

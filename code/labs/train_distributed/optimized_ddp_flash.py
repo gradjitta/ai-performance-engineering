@@ -12,7 +12,7 @@ import torch.distributed as dist
 from accelerate import PartialState
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed.algorithms.ddp_comm_hooks.default_hooks import fp16_compress_hook
-from common.python.compile_utils import enable_tf32
+from core.utils.compile_utils import enable_tf32
 
 from labs.train_distributed.training_utils.utils import (
     build_dataloader,

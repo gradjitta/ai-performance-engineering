@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.dynamic_router.topology import detect_topology, write_topology
 
 

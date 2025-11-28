@@ -28,7 +28,7 @@ def get_benchmark() -> AsyncInputPipelineBenchmark:
 
 if __name__ == "__main__":
     benchmark = get_benchmark()
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=benchmark.get_config())
     result = harness.benchmark(benchmark)

@@ -14,7 +14,7 @@ import torch.nn as nn
 
 from typing import Optional
 
-from common.python.benchmark_harness import (  # noqa: E402
+from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -95,7 +95,7 @@ class BaselineWarpSpecializationPipelineBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_pipeline_metrics
+        from benchmark.metrics import compute_pipeline_metrics
         return compute_pipeline_metrics(
             num_stages=getattr(self, 'num_stages', 4),
             stage_times_ms=getattr(self, '_stage_times_ms', [1.0]),

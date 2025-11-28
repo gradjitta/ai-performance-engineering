@@ -43,7 +43,7 @@ from ch18.cudagraph_bucketing_common import (  # noqa: E402
 from ch18.cudagraph_bucketing_metrics import (  # noqa: E402
     export_stats_to_prometheus,
 )
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata  # noqa: E402
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata  # noqa: E402
 
 
 # ============================================================
@@ -460,7 +460,7 @@ class OptimizedCUDAGraphBucketingBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return speculative decoding metrics for cudagraph_bucketing."""
-        from common.python.benchmark_metrics import compute_speculative_decoding_metrics
+        from benchmark.metrics import compute_speculative_decoding_metrics
         return compute_speculative_decoding_metrics(
             draft_tokens=getattr(self, '_draft_tokens', 10),
             accepted_tokens=getattr(self, '_accepted_tokens', 8),

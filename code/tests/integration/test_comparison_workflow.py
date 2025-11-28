@@ -13,14 +13,14 @@ repo_root = Path(__file__).parent.parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.env_defaults import apply_env_defaults
+from core.env import apply_env_defaults
 apply_env_defaults()
 
 import torch
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
-from common.python.chapter_compare_template import discover_benchmarks, load_benchmark
-from common.python.discovery import discover_all_chapters
-from common.python.benchmark_comparison import compare_results, ComparisonResult
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
+from core.utils.chapter_compare_template import discover_benchmarks, load_benchmark
+from core.discovery import discover_all_chapters
+from benchmark.comparison import compare_results, ComparisonResult
 
 
 # Skip tests if CUDA is not available
@@ -85,7 +85,7 @@ class TestComparisonWorkflowIntegration:
     
     def test_comparison_with_same_performance(self):
         """Test comparison when both benchmarks have same performance."""
-        from common.python.benchmark_models import BenchmarkResult, TimingStats
+        from benchmark.models import BenchmarkResult, TimingStats
         
         # Create two results with identical timing
         timing = TimingStats(
@@ -109,7 +109,7 @@ class TestComparisonWorkflowIntegration:
     
     def test_comparison_with_regression(self):
         """Test comparison when optimized is slower (regression)."""
-        from common.python.benchmark_models import BenchmarkResult, TimingStats
+        from benchmark.models import BenchmarkResult, TimingStats
         
         # Baseline is faster
         baseline_timing = TimingStats(
@@ -144,7 +144,7 @@ class TestComparisonWorkflowIntegration:
     
     def test_comparison_with_missing_timing(self):
         """Test comparison handles missing timing gracefully."""
-        from common.python.benchmark_models import BenchmarkResult
+        from benchmark.models import BenchmarkResult
         
         # Create results without timing
         result1 = BenchmarkResult(timing=None)

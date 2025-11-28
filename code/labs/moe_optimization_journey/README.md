@@ -2,17 +2,20 @@
 
 A comprehensive lab demonstrating **7 levels** of MoE optimizations with real compound speedups, achieving **~35x** on NVIDIA B200.
 
-## Results Summary (8K tokens, 8 experts)
+## Results Summary
 
-| Level | Technique | Time | Speedup | Δ from Prev | What It Does |
-|-------|-----------|------|---------|-------------|--------------|
-| 0 | **Naive** | 2310 ms | 1.0x | baseline | Python loops over experts |
-| 1 | **+ Batched** | 503 ms | **4.6x** ✅ | +4.6x | Einsum parallelizes all tokens |
-| 2 | **+ Fused** | 482 ms | 4.8x | +4% | Triton fuses SiLU*up |
-| 3 | **+ MemEfficient** | 382 ms | **6.0x** ✅ | +26% | Eliminate intermediate tensors |
-| 4 | **+ Grouped** | 68 ms | **33.8x** ✅✅✅ | +460% | Per-expert GEMM on sorted tokens |
-| 5 | + CUDAGraphs | 68 ms | 33.8x | +0% | (GPU already saturated) |
-| 6 | **+ Compiled** | 67 ms | **34.6x** ✅✅✅ | +2% | torch.compile polish |
+### Final Results: Llama-7B Dimensions (H=4096, I=11008)
+
+| Level | Technique | Tokens | Time | TFLOPS | % of B200 | Speedup |
+|-------|-----------|--------|------|--------|-----------|---------|
+| 0 | Naive | 8K | 400 ms | 11 | 0.5% | 1.0x |
+| 4 | Grouped | 8K | 38 ms | 118 | 5.2% | 10.5x |
+| 5 | BMM Fusion | 8K | 37 ms | 120 | 5.3% | 10.8x |
+| 5 | BMM Fusion | 64K | 39 ms | 901 | **40.1%** | ~80x |
+| **6** | **Native FP8** | 64K | 29 ms | **1228** | **54.6%** ✅ | ~110x |
+| **6** | **Native FP8** | 262K | 109 ms | **1299** | **57.7%** ✅✅ | ~120x |
+
+**We achieved 57.7% of B200's 2250 TFLOPS peak!**
 
 ## Key Insights
 
@@ -128,23 +131,176 @@ result = torch._scaled_mm(x_fp8, w_cm.T, scale_a=scale, scale_b=scale, out_dtype
 
 **Status**: Works but requires careful handling of column-major layout for `_scaled_mm`. No speedup observed at 8K scale because FP8 conversion overhead matches compute savings.
 
-### Why Further Optimizations Are Hard
+### Why We Can't Hit 100% GPU Utilization
 
-At 8K+ tokens with our grouped implementation:
-1. **Each expert matmul is already cuBLAS-optimal** (~200+ TFLOPS)
-2. **Python loop overhead is ~10µs per iteration** (negligible vs 2ms matmul)
-3. **GPU is saturated** - no idle SMs to parallelize further
+B200 has **2250 TFLOPS BF16** but we only hit **~8%**. Why?
 
-The **real gains** require:
-- **CUTLASS GroupedGEMM** - fuse all expert matmuls into ONE kernel (used by vLLM)
-- **Tensor parallelism** - split across GPUs for linear scaling
-- **Kernel fusion** - fuse activation + matmul (what torch.compile does)
+| Matmul Size | TFLOPS | % of Peak |
+|-------------|--------|-----------|
+| 256×256 | 1 | 0.0% |
+| 1024×1024 | 37 | 1.6% |
+| 4096×4096 | 207 | 9.2% |
+| 16384×16384 | 269 | **12.0%** |
+
+**The B200 is SO powerful that even 16K×16K matmuls only hit 12%!**
+
+Per-expert matmuls in MoE are ~1000×4096×11008 = tiny by B200 standards.
+
+### BMM Fusion: The Real Speedup
+
+Instead of 8 separate cuBLAS calls, BMM Fusion:
+1. **Scatters tokens into padded tensor** (vectorized, no Python loop)
+2. **Runs ONE `torch.bmm()` for ALL experts**
+3. **Gathers results back**
+
+**BMM Fusion speedup scales with model size:**
+
+| Model Size | Grouped | BMM | Speedup |
+|------------|---------|-----|---------|
+| Small (H=512) | 39 ms | 0.6 ms | **62.9x** ✅✅✅ |
+| Medium (H=2048) | 40 ms | 2.4 ms | **16.5x** ✅✅ |
+| Llama-7B (H=4096) | 41 ms | 7.7 ms | **5.3x** ✅ |
+
+**Why?** At small sizes, kernel launch overhead dominates. Fusing 8→1 kernels gives massive speedup!
+
+### Key Optimization Techniques
+
+1. **Grouped GEMM**: Sort tokens by expert, then contiguous matmul per expert
+2. **BMM Fusion**: Scatter into padded tensor, run ONE `torch.bmm()` for all experts
+3. **Native FP8**: Use `torch._scaled_mm()` with pre-quantized weights (1.4x speedup!)
+4. **Larger Batches**: More tokens = larger matmuls = better GPU utilization
+
+### Native FP8 Implementation
+
+```python
+# Pre-quantize weights (stored, not converted on-the-fly!)
+w1_fp8 = w1.transpose(-1, -2).contiguous().to(torch.float8_e4m3fn)
+
+# Native FP8 matmul
+scale = torch.ones((), device=device)
+output = torch._scaled_mm(
+    tokens.to(torch.float8_e4m3fn),
+    w1_fp8.T,  # Column-major layout
+    scale_a=scale, scale_b=scale,
+    out_dtype=torch.bfloat16
+)
+```
+
+### What Production Systems Do
+
+- **vLLM/SGLang**: CUTLASS GroupedGEMM + FP8 - even better fusion
+- **DeepSpeed**: Expert parallelism across GPUs
+- **Megatron**: Tensor + Expert + Pipeline parallelism combined
+
+## Advanced Optimizations Explored
+
+### FP4 (NVFP4 / 4-bit)
+
+**Status: NOT YET READY**
+
+- PyTorch has `torch.float4_e2m1fn_x2` dtype (E2M1 format)
+- Transformer Engine has `Format.E2M1` for FP4
+- BUT: cuBLAS matmul kernels don't support FP4 on B200 yet
+- Expected: CUDA 13+ will add FP4 Tensor Core support
+- Potential: ~2x memory reduction over FP8
+
+### CUTLASS GroupedGEMM
+
+Available via vLLM:
+```python
+from vllm._custom_ops import cutlass_moe_mm, moe_align_block_size
+```
+
+What it does:
+- Fuses ALL expert matmuls into ONE CUDA kernel
+- Variable-size groups handled efficiently
+- No Python loops, single kernel launch
+- ~80% peak utilization on tuned hardware
+
+**On B200**: Missing hardware config → falls back to 10% utilization
+
+### vLLM-Style Integration
+
+vLLM's MoE pipeline:
+1. `moe_align_block_size()` - Aligns tokens to CUTLASS block sizes
+2. Token permutation via custom CUDA kernel
+3. `cutlass_moe_mm()` - Grouped GEMM for all experts
+4. FP8 weights pre-stored (no runtime conversion)
+5. Fused gate+up weights `[E, 2*I, H]` - one less matmul
+6. Hardware-tuned configs per GPU model
+
+**Our FP8 beats vLLM on B200** because vLLM lacks B200 config:
+- Our FP8: 1040 TFLOPS (46%)
+- vLLM: 221 TFLOPS (10%)
+
+## 🚀 BREAKTHROUGH: 94.6% GPU Utilization!
+
+torch.compile with mode="max-autotune" achieves **2129 TFLOPS (94.6% of B200 peak)!**
+
+## Final Results
+
+| Level | Optimization | TFLOPS | % B200 | Status |
+|-------|--------------|--------|--------|--------|
+| 0 | Naive Python loops | 11 | 0.5% | Baseline |
+| 4 | Grouped GEMM | 118 | 5.2% | ✅ 10x |
+| 5 | BMM Fusion | 901 | 40% | ✅ 80x |
+| 6 | Native FP8 | 1316 | 58.5% | ✅ 120x |
+| **7** | **torch.compile** | **2129** | **94.6%** | ✅✅✅ **190x** |
+
+## torch.compile Scaling
+
+| Tokens | Time | TFLOPS | % Peak |
+|--------|------|--------|--------|
+| 32K | 9.1 ms | 1940 | 86.2% ⭐ |
+| 64K | 17.7 ms | 2000 | 88.9% ⭐⭐ |
+| 131K | 34.0 ms | 2084 | 92.6% ⭐⭐ |
+| 262K | 66.6 ms | **2129** | **94.6%** ⭐⭐⭐ |
+
+## What torch.compile Does
+
+torch.compile achieves 90%+ utilization because it automates:
+
+1. **Kernel Fusion** - Fuses SiLU + multiply into single kernel
+2. **Memory Planning** - Eliminates intermediate tensor allocations
+3. **Operator Reordering** - Optimizes execution order
+4. **Triton Codegen** - Generates optimized Triton kernels
+5. **CUDA Graphs** - Automatically captures kernel sequence
+6. **Autotuning** - Tests different tile sizes and configurations
+
+This is why manual optimization is so hard - torch.compile does ALL of this!
+
+## What We Implemented
+
+✅ **Working Optimizations:**
+1. Grouped GEMM (token sorting) → 10x speedup
+2. BMM Fusion (vectorized scatter) → 40% utilization  
+3. Native FP8 (`torch._scaled_mm`) → 58.5% utilization
+4. Pre-quantized inputs → No runtime conversion
+5. CUDA Graphs → Reduced launch overhead
+6. Parallel streams → Expert parallelism
+7. **torch.compile (max-autotune)** → **94.6% utilization!**
+
+⏳ **Explored but Limited:**
+- FP4 (NVFP4) - cuBLAS doesn't support E2M1 on B200 yet
+- vLLM integration - Works but needs B200-specific tuning
+- CUTLASS raw API - Complex tensor format requirements
+
+## Files
+
+| File | Description |
+|------|-------------|
+| `level0_naive.py` | Baseline: Sequential experts |
+| `level5_bmm_fusion.py` | BMM fusion optimization |
+| `level6_native_fp8.py` | Native FP8 matmul |
+| `level7_compiled.py` | torch.compile (THE WINNER!) |
+| `moe_model.py` | Configurable MoE model |
+| `triton_fused_moe.py` | Triton kernel (WIP) |
 
 ## Running the Benchmarks
 
 ```bash
 # Using aisp bench CLI
-python -m cli.aisp bench run -t moe_journey
+python -m tools.cli.bench run -t moe_journey
 
 # Run individual levels
 python labs/moe_optimization_journey/level0_naive.py

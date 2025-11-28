@@ -13,7 +13,7 @@ try:
 except ImportError:
     pass  # Continue if arch_config not available
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
 class OptimizedAutotuningBenchmark(BaseBenchmark):
@@ -99,7 +99,7 @@ class OptimizedAutotuningBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_kernel_fundamentals_metrics
+        from benchmark.metrics import compute_kernel_fundamentals_metrics
         return compute_kernel_fundamentals_metrics(
             num_elements=getattr(self, 'N', getattr(self, 'num_elements', 1024)),
             num_iterations=1,

@@ -13,7 +13,7 @@ if str(repo_root) not in sys.path:
 import torch
 import torch.nn as nn
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -70,7 +70,7 @@ class BaselineKubernetesBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_system_config_metrics
+        from benchmark.metrics import compute_system_config_metrics
         return compute_system_config_metrics(
             numa_nodes=getattr(self, 'numa_nodes', 1),
             cpu_cores=getattr(self, 'cpu_cores', 64),
@@ -85,7 +85,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     harness = BenchmarkHarness(
         mode=BenchmarkMode.CUSTOM,

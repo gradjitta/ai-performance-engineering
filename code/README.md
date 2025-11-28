@@ -33,7 +33,7 @@ python -m cli.aisp bench run --targets ch7 --profile minimal
 |------|-------------|
 | `ch1` - `ch20` | One directory per chapter with baseline/optimized benchmarks |
 | `labs/` | Deep-dive labs for matmul, MoE, FlexAttention, distributed training, etc. |
-| `common/python/` | Shared benchmark harness, metrics, and profiling utilities |
+| `benchmark/`, `profiling/`, `core/`, `optimization/`, `analysis/` | Shared harness, metrics, profiling, and optimization utilities |
 | `tools/` | CLI, dashboard, and analysis utilities |
 | `tests/` | pytest tests (28 files) |
 | `scripts/` | Development utilities |
@@ -76,7 +76,7 @@ python -m cli.aisp bench verify --targets ch7
 
 ### Using the Harness Directly
 ```python
-from common.python.benchmark_harness import BenchmarkHarness
+from core.harness.benchmark_harness import BenchmarkHarness
 from ch7.optimized_memory_access import get_benchmark
 
 harness = BenchmarkHarness()
@@ -104,7 +104,7 @@ ncu-ui kernel_analysis.ncu-rep
 
 ## MCP Integration (aisp MCP server)
 
-- Start the server with `python -m tools.mcp.server --serve` (or via `mcp.json`); clients should consume the `application/json` content entry from MCP responses.
+- Start the server with `python -m mcp.server --serve` (or via `mcp.json`); clients should consume the `application/json` content entry from MCP responses.
 - `isError` mirrors the payload `status` field returned in the JSON envelope.
 - Response trimming is generous by default; tune via env vars without code changes: `AISP_MCP_PREVIEW_LIMIT` (max chars) and `AISP_MCP_PREVIEW_ITEMS` (max list/dict items).
 
@@ -117,8 +117,8 @@ ncu-ui kernel_analysis.ncu-rep
 """Optimized: Description of optimization."""
 
 import torch
-from common.python.benchmark_harness import BaseBenchmark
-from common.python.benchmark_metrics import compute_memory_transfer_metrics
+from core.harness.benchmark_harness import BaseBenchmark
+from benchmark.metrics import compute_memory_transfer_metrics
 
 class OptimizedMyTechnique(BaseBenchmark):
     def setup(self):
@@ -143,7 +143,7 @@ def get_benchmark():
     return OptimizedMyTechnique()
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness
+    from core.harness.benchmark_harness import BenchmarkHarness
     BenchmarkHarness().run(get_benchmark())
 ```
 
@@ -194,7 +194,7 @@ python -m cli.aisp bench analyze
 
 ### Dashboard UI
 ```bash
-python tools/dashboard/server.py --port 8100
+python dashboard/api/server.py --port 8100
 # Open http://localhost:8100
 ```
 
@@ -276,15 +276,15 @@ curl http://localhost:8100/api/analysis/tradeoffs | jq .
 
 ```bash
 # KV cache sizing
-python tools/cli/aisp bench utils --tool kv-cache -- \
+python cli/aisp.py bench utils --tool kv-cache -- \
     --layers 80 --hidden 8192 --tokens 4096 --batch 8 --dtype fp8
 
 # Cost per token
-python tools/cli/aisp bench utils --tool cost-per-token -- \
+python cli/aisp.py bench utils --tool cost-per-token -- \
     --avg-power 800 --throughput 1500 --electricity-cost 0.16
 
 # Hardware probe
-python tools/cli/aisp bench utils --tool probe-hw
+python cli/aisp.py bench utils --tool probe-hw
 ```
 
 ---

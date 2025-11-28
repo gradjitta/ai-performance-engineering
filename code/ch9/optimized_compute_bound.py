@@ -8,7 +8,7 @@ Implements BaseBenchmark for harness integration.
 from __future__ import annotations
 
 import os
-from common.python.smoke import is_smoke_mode
+from benchmark.smoke import is_smoke_mode
 import sys
 from pathlib import Path
 
@@ -20,8 +20,8 @@ import torch
 import triton
 import triton.language as tl
 from typing import Optional
-from common.python import triton_compat  # noqa: F401
-from common.python.benchmark_harness import (
+from benchmark import triton_compat  # noqa: F401
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -163,7 +163,7 @@ class OptimizedComputeBoundBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_roofline_metrics
+        from benchmark.metrics import compute_roofline_metrics
         return compute_roofline_metrics(
             total_flops=float(getattr(self, 'total_flops', getattr(self, 'N', 1024) * 2)),
             total_bytes=float(getattr(self, 'N', 1024) * 4 * 2),

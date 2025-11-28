@@ -22,8 +22,8 @@ from typing import Optional
 import torch
 
 from ch10.optimized_matmul import resolve_device
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from common.python.tcgen05_requirements import check_tcgen05_support
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from benchmark.tcgen05_requirements import check_tcgen05_support
 
 
 class BaselineMatmulTCGen05PipelinedBenchmark(BaseBenchmark):
@@ -84,7 +84,7 @@ def get_benchmark() -> BaselineMatmulTCGen05PipelinedBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
     
     print("cuBLAS Baseline (8192x8192)")
     print("=" * 50)

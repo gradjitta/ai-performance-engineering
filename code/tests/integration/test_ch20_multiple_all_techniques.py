@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
 import sys
 from pathlib import Path
 
@@ -12,13 +11,13 @@ repo_root = Path(__file__).parent.parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.env_defaults import apply_env_defaults
+from core.env import apply_env_defaults
 
 apply_env_defaults()
 
 import torch
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkConfig, BenchmarkMode
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkConfig, BenchmarkMode
 from ch20.optimized_autotuning import OptimizedAutotuningBenchmark
 from ch20.optimized_end_to_end_bandwidth import OptimizedEndToEndBandwidthBenchmark
 from ch20.optimized_moe import OptimizedMoeBenchmark

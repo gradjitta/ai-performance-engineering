@@ -19,13 +19,13 @@ from typing import Callable, Optional, Tuple
 
 import torch
 
-from common.python.compile_utils import compile_callable
-from common.python.inductor_guard import (
+from core.utils.compile_utils import compile_callable
+from optimization.inductor_guard import (
     InductorCudagraphState,
     disable_inductor_cudagraph_features,
     restore_inductor_cudagraph_features,
 )
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from ch6.workload_config import WORKLOAD
 
 _MARK_CUDAGRAPH_STEP = getattr(torch.compiler, "cudagraph_mark_step_begin", None)
@@ -148,7 +148,7 @@ class OptimizedWarpDivergenceILPBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_kernel_fundamentals_metrics
+        from benchmark.metrics import compute_kernel_fundamentals_metrics
         return compute_kernel_fundamentals_metrics(
             num_elements=getattr(self, 'N', getattr(self, 'num_elements', 1024)),
             num_iterations=1,

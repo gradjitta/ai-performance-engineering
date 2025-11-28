@@ -35,7 +35,7 @@ class OptimizedInferencePlacementBenchmark(_PlacementBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return inference metrics for inference_placement."""
-        from common.python.benchmark_metrics import compute_inference_metrics
+        from benchmark.metrics import compute_inference_metrics
         return compute_inference_metrics(
             ttft_ms=getattr(self, '_ttft_ms', 10.0),
             tpot_ms=getattr(self, '_tpot_ms', 1.0),
@@ -50,7 +50,7 @@ def get_benchmark():
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     bench = get_benchmark()
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())

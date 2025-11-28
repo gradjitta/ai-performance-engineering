@@ -7,9 +7,9 @@ from pathlib import Path
 
 import torch
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
-from common.python.extension_loader_template import load_cuda_extension_v2
-from common.python.hardware_capabilities import ensure_dsmem_supported  # noqa: E402
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
+from core.utils.extension_loader_template import load_cuda_extension_v2
+from core.harness.hardware_capabilities import ensure_dsmem_supported  # noqa: E402
 
 _EXT_NAME = "baseline_warp_specialized_two_pipelines_ext"
 
@@ -85,7 +85,7 @@ class BaselineDualPipelineBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_stream_metrics
+        from benchmark.metrics import compute_stream_metrics
         return compute_stream_metrics(
             sequential_time_ms=getattr(self, '_sequential_ms', 10.0),
             overlapped_time_ms=getattr(self, '_overlapped_ms', 5.0),

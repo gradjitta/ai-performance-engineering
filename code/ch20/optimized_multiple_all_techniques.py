@@ -8,7 +8,7 @@ except ImportError:
     pass
 
 from ch20.optimized_multiple_unoptimized import OptimizedAllTechniquesBenchmark as _OptimizedAllTechniquesBenchmark
-from common.python.benchmark_harness import BaseBenchmark
+from core.harness.benchmark_harness import BaseBenchmark
 
 
 class OptimizedAllTechniquesBenchmark(_OptimizedAllTechniquesBenchmark):

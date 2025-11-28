@@ -19,14 +19,14 @@ if str(repo_root) not in sys.path:
 import torch
 import torch.nn as nn
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
     BenchmarkMode,
     WorkloadMetadata,
 )
-from common.python.compile_utils import configure_tf32, restore_tf32
+from core.utils.compile_utils import configure_tf32, restore_tf32
 
 
 def _preload_torch_cuda_symbols() -> None:
@@ -149,7 +149,7 @@ class BaselineTEFP8Benchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_precision_metrics
+        from benchmark.metrics import compute_precision_metrics
         return compute_precision_metrics(
             fp32_time_ms=getattr(self, '_fp32_ms', 10.0),
             reduced_precision_time_ms=getattr(self, '_reduced_ms', 5.0),
@@ -167,7 +167,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     benchmark = get_benchmark()
     harness = BenchmarkHarness(

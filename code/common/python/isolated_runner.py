@@ -22,19 +22,19 @@ from io import StringIO
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from common.python.benchmark_models import BenchmarkResult, MemoryStats
+    from benchmark.models import BenchmarkResult, MemoryStats
 
 
 def _setup_repo_path() -> str:
     """Ensure repo root is importable even when this file is executed via an absolute path."""
     repo_root: Optional[Path] = None
     for parent in Path(__file__).resolve().parents:
-        candidate = parent / "common" / "__init__.py"
+        candidate = parent / "benchmark" / "__init__.py"
         if candidate.exists():
             repo_root = parent
             break
     if repo_root is None:
-        # Fallback to the directory two levels up (common/python -> repo root)
+        # Fallback to the directory two levels up (benchmark package -> repo root)
         try:
             repo_root = Path(__file__).resolve().parents[2]
         except IndexError:
@@ -83,8 +83,8 @@ def run_benchmark_isolated(
         return result
     
     try:
-        from common.python.benchmark_models import BenchmarkResult, MemoryStats
-        from common.python.benchmark_harness import (
+        from benchmark.models import BenchmarkResult, MemoryStats
+        from core.harness.benchmark_harness import (
             BaseBenchmark, BenchmarkHarness, BenchmarkConfig, 
             BenchmarkMode, ExecutionMode
         )
@@ -94,7 +94,7 @@ def run_benchmark_isolated(
         return result
     
     try:
-        # Add repo root to path so we can import common.python modules
+        # Add repo root to path so we can import benchmark modules
         module_path = Path(benchmark_module_path).resolve()
         repo_root = module_path
         while repo_root.parent != repo_root:  # Not at filesystem root
@@ -102,7 +102,7 @@ def run_benchmark_isolated(
                 break
             repo_root = repo_root.parent
         else:
-            # Fallback: assume common/python is sibling to benchmark module
+            # Fallback: assume benchmark package is sibling to benchmark module
             repo_root = module_path.parent.parent.parent
         
         sys.path.insert(0, str(repo_root))

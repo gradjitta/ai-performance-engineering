@@ -7,7 +7,7 @@ to what fits in a single GPU's memory.
 """
 
 import os
-from common.python.smoke import is_smoke_mode
+from benchmark.smoke import is_smoke_mode
 import sys
 from pathlib import Path
 import math
@@ -19,13 +19,13 @@ import torch.nn as nn
 # Add common to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
     BenchmarkMode,
 )
-from common.python.logger import get_logger
+from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -277,7 +277,7 @@ def get_benchmark() -> BaseBenchmark:
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_precision_metrics
+        from benchmark.metrics import compute_precision_metrics
         return compute_precision_metrics(
             fp32_time_ms=getattr(self, '_fp32_ms', 10.0),
             reduced_precision_time_ms=getattr(self, '_reduced_ms', 5.0),

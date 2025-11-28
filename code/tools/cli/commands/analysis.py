@@ -72,7 +72,7 @@ def diff_analysis(args) -> int:
         return 1
 
     try:
-        from tools.analysis.differential_profile_analyzer import analyze_differential
+        from core.analysis.differential_profile_analyzer import analyze_differential
 
         report = analyze_differential(Path(baseline), Path(optimized))
         data = report.to_dict()
@@ -91,7 +91,7 @@ def roofline(args) -> int:
     _print_header("Roofline Analysis", "📐")
 
     try:
-        from tools.analysis.roofline_automation import generate_roofline
+        from core.analysis.roofline_automation import generate_roofline
 
         generate_roofline()
         print("  Roofline generation completed.")
@@ -108,7 +108,7 @@ def bottleneck(args) -> int:
     _print_header("Bottleneck Analysis", "🔍")
 
     try:
-        from tools.core.engine import get_engine
+        from core.engine import get_engine
 
         engine = get_engine()
         mode = getattr(args, "mode", "both")

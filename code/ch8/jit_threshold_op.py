@@ -10,7 +10,7 @@ FORWARD REFERENCE: torch.compile is covered in depth in Chapter 14
 simple threshold operations. See ch14/*compile*.py for detailed analysis.
 """
 
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
+from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 import pathlib
 import sys
 

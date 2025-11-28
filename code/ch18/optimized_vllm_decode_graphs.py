@@ -41,8 +41,8 @@ except ImportError:
     export_prom_metrics = _baseline_module.export_prom_metrics
     format_metrics = _baseline_module.format_metrics
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
-from common.python.smoke import is_smoke_mode  # noqa: E402
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
+from benchmark.smoke import is_smoke_mode  # noqa: E402
 from ch18.decode_kernels import DEVICE, build_decode_kernel  # noqa: E402
 
 BUCKETS = (8, 16, 24, 32)

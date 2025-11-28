@@ -4,8 +4,8 @@ from __future__ import annotations
 from typing import Optional
 from pathlib import Path
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode
-from common.python.cuda_binary_benchmark import CudaBinaryBenchmark
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode
+from benchmark.cuda_binary_benchmark import CudaBinaryBenchmark
 
 
 class OptimizedDSMEMReductionV3Benchmark(CudaBinaryBenchmark):
@@ -31,7 +31,7 @@ class OptimizedDSMEMReductionV3Benchmark(CudaBinaryBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics."""
-        from common.python.benchmark_metrics import compute_reduction_metrics
+        from benchmark.metrics import compute_reduction_metrics
         return compute_reduction_metrics(
             num_elements=getattr(self, 'num_elements', 16 * 1024 * 1024),
             elapsed_ms=getattr(self, '_last_elapsed_ms', 0.03),

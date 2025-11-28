@@ -17,7 +17,7 @@ import os
 import time
 
 import torch
-from common.python.compile_utils import enable_tf32
+from core.utils.compile_utils import enable_tf32
 try:
     from torch._dynamo import config as dynamo_config
 except ImportError:  # pragma: no cover - older torch versions

@@ -13,7 +13,7 @@ import math
 import torch
 from typing import Optional
 
-from common.python.benchmark_harness import (  # noqa: E402
+from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -54,7 +54,7 @@ class BaselineFlexAttentionBenchmark(BaseBenchmark):
         """Benchmark: per-head attention computed serially."""
         # Use conditional NVTX ranges - only enabled when profiling
 
-        from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
         config = self.get_config()
 
@@ -98,7 +98,7 @@ class BaselineFlexAttentionBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_triton_metrics
+        from benchmark.metrics import compute_triton_metrics
         return compute_triton_metrics(
             num_elements=getattr(self, 'N', getattr(self, 'num_elements', 1024)),
             elapsed_ms=getattr(self, '_last_elapsed_ms', 1.0),
@@ -119,7 +119,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == '__main__':
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     benchmark = get_benchmark()
     harness = BenchmarkHarness(

@@ -23,7 +23,7 @@ import torch
 import torch.nn as nn
 from typing import Optional
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -129,7 +129,7 @@ class OptimizedSpeculativeDecodingBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_speculative_decoding_metrics
+        from benchmark.metrics import compute_speculative_decoding_metrics
         return compute_speculative_decoding_metrics(
             draft_tokens=getattr(self, '_draft_tokens', 64),
             accepted_tokens=getattr(self, '_accepted_tokens', 48),
@@ -144,7 +144,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=BenchmarkConfig(iterations=50, warmup=5))
     result = harness.benchmark(OptimizedSpeculativeDecodingBenchmark())
     print(f"Mean time: {result.timing.mean_ms:.3f} ms")

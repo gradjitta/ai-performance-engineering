@@ -21,7 +21,7 @@ import torch.nn as nn
 
 def example_optimize_model():
     """Optimize a PyTorch model file."""
-    from tools.optimize import AutoOptimizer
+    from core.optimization.auto import AutoOptimizer
     
     print("=" * 60)
     print("Example 1: Optimize a Model File")
@@ -39,7 +39,7 @@ def example_optimize_model():
     sample_code = '''
 import torch
 import torch.nn as nn
-from tools.testing.benchmark_harness import BaseBenchmark
+from core.harness.benchmark_harness import BaseBenchmark
 
 class SimpleModel(nn.Module):
     def __init__(self, hidden_size=1024):
@@ -93,7 +93,7 @@ def get_benchmark():
 
 def example_scan_benchmarks():
     """Scan a directory and optimize underperforming benchmarks."""
-    from tools.optimize import AutoOptimizer
+    from core.optimization.auto import AutoOptimizer
     
     print("\n" + "=" * 60)
     print("Example 2: Scan and Optimize Benchmarks")
@@ -129,7 +129,7 @@ Example output:
 
 def example_optimize_repo():
     """Optimize code from a GitHub repository."""
-    from tools.optimize import AutoOptimizer
+    from core.optimization.auto import AutoOptimizer
     
     print("\n" + "=" * 60)
     print("Example 3: Optimize from GitHub Repository")
@@ -169,7 +169,7 @@ Example output:
 
 def example_input_adapters():
     """Demonstrate different input adapter types."""
-    from tools.optimize.input_adapters import FileAdapter, BenchmarkAdapter, detect_input_type
+    from core.optimization.auto.input_adapters import FileAdapter, BenchmarkAdapter, detect_input_type
     
     print("\n" + "=" * 60)
     print("Example 4: Input Adapters")
@@ -311,6 +311,5 @@ if __name__ == "__main__":
         print("To run actual optimization examples, use: --run-optimization")
         print("(Requires ANTHROPIC_API_KEY or OPENAI_API_KEY)")
         print("=" * 60)
-
 
 

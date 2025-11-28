@@ -18,8 +18,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from common.python.nvtx_helper import get_nvtx_enabled, nvtx_range
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 _CLI_BACKEND: Optional[str] = None
 _BACKEND_CHOICES = ("auto", "cudnn", "flash", "math")
@@ -205,7 +205,7 @@ if __name__ == "__main__":
         _CLI_BACKEND = choice
     bench = get_benchmark()
     harness_cfg = bench.get_config()
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=harness_cfg)
     result = harness.benchmark(bench)

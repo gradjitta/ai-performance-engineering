@@ -36,7 +36,7 @@ from typing import Iterable, List, Optional
 import torch
 import torch.nn.functional as F
 
-from common.python.compile_utils import enable_tf32, compile_callable
+from core.utils.compile_utils import enable_tf32, compile_callable
 
 try:
     from torch.nn.attention import flex_attention

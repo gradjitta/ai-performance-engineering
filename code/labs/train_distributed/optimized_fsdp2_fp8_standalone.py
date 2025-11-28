@@ -22,13 +22,13 @@ import os
 # Add common to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
     BenchmarkMode,
 )
-from common.python.logger import get_logger
+from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 

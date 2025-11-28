@@ -20,14 +20,11 @@ try:
 except ImportError:
     pass
 
-from common.python.compile_utils import compile_model  # Local helper applies TF32 + torch.compile defaults.
+from core.utils.compile_utils import compile_model  # Local helper applies TF32 + torch.compile defaults.
 
 from typing import Optional
 
-from common.python.benchmark_harness import (
-    BaseBenchmark,
-    BenchmarkConfig,
-)
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from ch1.workload_config import WORKLOAD
 
 
@@ -115,7 +112,7 @@ class BaselinePerformanceBenchmark(BaseBenchmark):
         """Function to benchmark."""
         # Use conditional NVTX ranges - only enabled when profiling
 
-        from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
         config = self.get_config()
 
@@ -148,7 +145,7 @@ class BaselinePerformanceBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_environment_metrics
+        from benchmark.metrics import compute_environment_metrics
         return compute_environment_metrics(
             gpu_count=getattr(self, 'gpu_count', 1),
             gpu_memory_gb=getattr(self, 'gpu_memory_gb', 80.0),
@@ -182,7 +179,7 @@ def get_benchmark() -> BaseBenchmark:
 
 def main() -> None:
     """Standalone execution (for testing)."""
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
     
     harness = BenchmarkHarness(
         mode=BenchmarkMode.CUSTOM,

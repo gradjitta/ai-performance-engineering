@@ -10,8 +10,8 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.benchmark_defaults import BenchmarkDefaults, get_defaults, set_defaults
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, ExecutionMode, LaunchVia
+from benchmark.defaults import BenchmarkDefaults, get_defaults, set_defaults
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, ExecutionMode, LaunchVia
 
 
 class TestBenchmarkDefaults:
@@ -113,7 +113,7 @@ class TestWarmupEnforcement:
     def test_minimum_warmup_enforced(self):
         """Test that warmup below minimum is auto-corrected to minimum."""
         import warnings
-        from common.python.benchmark_defaults import MINIMUM_WARMUP_ITERATIONS
+        from benchmark.defaults import MINIMUM_WARMUP_ITERATIONS
         
         # Setting warmup below minimum should trigger warning and auto-correct
         with warnings.catch_warnings(record=True) as w:
@@ -132,7 +132,7 @@ class TestWarmupEnforcement:
     def test_warmup_at_minimum_is_accepted(self):
         """Test that warmup exactly at minimum doesn't trigger warning."""
         import warnings
-        from common.python.benchmark_defaults import MINIMUM_WARMUP_ITERATIONS
+        from benchmark.defaults import MINIMUM_WARMUP_ITERATIONS
         
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
@@ -146,7 +146,7 @@ class TestWarmupEnforcement:
     def test_warmup_above_minimum_is_accepted(self):
         """Test that warmup above minimum is accepted unchanged."""
         import warnings
-        from common.python.benchmark_defaults import MINIMUM_WARMUP_ITERATIONS
+        from benchmark.defaults import MINIMUM_WARMUP_ITERATIONS
         
         high_warmup = MINIMUM_WARMUP_ITERATIONS + 10
         with warnings.catch_warnings(record=True) as w:
@@ -160,7 +160,7 @@ class TestWarmupEnforcement:
     
     def test_smoke_mode_respects_minimum_warmup(self):
         """Test that smoke mode doesn't set warmup below minimum."""
-        from common.python.benchmark_defaults import BenchmarkDefaults, MINIMUM_WARMUP_ITERATIONS
+        from benchmark.defaults import BenchmarkDefaults, MINIMUM_WARMUP_ITERATIONS
         
         smoke_defaults = BenchmarkDefaults.for_smoke(smoke=True)
         assert smoke_defaults.warmup >= MINIMUM_WARMUP_ITERATIONS, \
@@ -169,7 +169,7 @@ class TestWarmupEnforcement:
     def test_validate_warmup_function(self):
         """Test the validate_warmup helper function directly."""
         import warnings
-        from common.python.benchmark_defaults import validate_warmup, MINIMUM_WARMUP_ITERATIONS
+        from benchmark.defaults import validate_warmup, MINIMUM_WARMUP_ITERATIONS
         
         # Test low warmup is corrected
         with warnings.catch_warnings(record=True) as w:

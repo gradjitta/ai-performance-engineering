@@ -46,7 +46,7 @@ from torch.nn.attention.flex_attention import flex_attention, create_block_mask
 import time
 from typing import Dict, Tuple
 
-from common.python.compile_utils import enable_tf32
+from core.utils.compile_utils import enable_tf32
 
 assert torch.cuda.is_available(), "CUDA required for FlexAttention scaling demo"
 _major, _minor = torch.cuda.get_device_capability()

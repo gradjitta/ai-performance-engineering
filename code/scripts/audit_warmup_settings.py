@@ -33,7 +33,7 @@ from typing import Dict, List, NamedTuple, Optional, Set
 
 # Import from benchmark_defaults if available, otherwise use hardcoded values
 try:
-    from common.python.benchmark_defaults import (
+    from benchmark.defaults import (
         MINIMUM_WARMUP_ITERATIONS,
         RECOMMENDED_WARMUP_TORCH_COMPILE,
         RECOMMENDED_WARMUP_TRITON,
@@ -263,7 +263,7 @@ def main():
     script_dir = Path(__file__).parent
     repo_root = script_dir.parent
     
-    if not (repo_root / 'common' / 'python').exists():
+    if not repo_root.exists():
         print("Error: Could not find repo root. Run from scripts/ directory.", file=sys.stderr)
         sys.exit(2)
     
@@ -275,8 +275,8 @@ def main():
         scan_paths = []
         for pattern in ['ch*', 'labs/*']:
             scan_paths.extend(repo_root.glob(pattern))
-        # Also scan common/python for any benchmark definitions there
-        scan_paths.append(repo_root / 'common' / 'python')
+        # Also scan shared benchmark modules
+        scan_paths.append(repo_root / 'benchmark')
     
     print("=" * 70)
     print("BENCHMARK WARMUP AUDIT")
@@ -375,4 +375,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

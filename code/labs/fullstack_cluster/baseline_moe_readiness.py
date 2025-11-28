@@ -13,7 +13,7 @@ if str(REPO_ROOT) not in sys.path:
 
 import torch
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     LaunchVia,

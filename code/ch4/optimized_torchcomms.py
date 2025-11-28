@@ -37,7 +37,7 @@ if GPU_COUNT < 2:
         "This benchmark demonstrates distributed communication patterns."
     )
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -251,7 +251,7 @@ class OptimizedTorchcommsBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics for distributed communication."""
-        from common.python.benchmark_metrics import compute_memory_transfer_metrics
+        from benchmark.metrics import compute_memory_transfer_metrics
         
         base_metrics = compute_memory_transfer_metrics(
             bytes_transferred=self._bytes_transferred,
@@ -288,7 +288,7 @@ def get_benchmark() -> BaseBenchmark:
 
 def main() -> None:
     """Standalone execution with comparison info."""
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
     
     harness = BenchmarkHarness(
         mode=BenchmarkMode.CUSTOM,

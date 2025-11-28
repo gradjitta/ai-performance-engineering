@@ -216,3 +216,8 @@ eval_datasets/*.json
 *.swo
 *~
 .DS_Store
+
+# Node / frontend
+node_modules/
+dashboard/web/.next/
+dashboard/web/.turbo/

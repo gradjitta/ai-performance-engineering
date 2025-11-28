@@ -14,14 +14,14 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.benchmark_harness import (  # noqa: E402
+from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
     BenchmarkMode,
     WorkloadMetadata,
 )
-from common.python.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
+from profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
 
 
 class _BF16Trainer(nn.Module):

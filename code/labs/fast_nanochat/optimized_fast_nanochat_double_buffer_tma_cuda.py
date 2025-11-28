@@ -29,7 +29,7 @@ def get_benchmark() -> NanoChatWarpSpecializedCudaBenchmark:
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode  # noqa: E402
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode  # noqa: E402
 
     bench = get_benchmark()
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())

@@ -4,7 +4,7 @@ Optimized torch.compile for Blackwell B200
 Demonstrates torch.compile configuration for optimal performance on Blackwell.
 Includes proper warmup, TF32 settings, and Inductor configuration.
 """
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
+from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 import pathlib
 import sys
 
@@ -27,7 +27,7 @@ import torch.nn as nn
 import triton.testing
 import time
 from contextlib import nullcontext
-from common.python.compile_utils import compile_model, enable_tf32
+from core.utils.compile_utils import compile_model, enable_tf32
 from arch_config import prefer_sdpa_backends
 
 from extras.ch14.torch_compile_large_model import create_model

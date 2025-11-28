@@ -7,8 +7,8 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from common.python.compile_utils import enable_tf32
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from core.utils.compile_utils import enable_tf32
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 BATCH_SIZE = 512
 INPUT_DIM = 2048
@@ -111,7 +111,7 @@ class OptimizedMemoryBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_inference_metrics
+        from benchmark.metrics import compute_inference_metrics
         return compute_inference_metrics(
             ttft_ms=getattr(self, '_ttft_ms', 50.0),
             tpot_ms=getattr(self, '_tpot_ms', 10.0),

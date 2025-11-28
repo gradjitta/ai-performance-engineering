@@ -16,7 +16,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from labs.blackwell_matmul import is_cluster_launch_supported
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode
 
 _VARIANT_MODULES = {
     "baseline": "labs.blackwell_matmul.baseline_blackwell_matmul",

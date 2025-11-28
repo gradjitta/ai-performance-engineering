@@ -34,8 +34,8 @@ from typing import Optional, Tuple
 from contextlib import contextmanager
 import math
 
-from common.python.compile_utils import enable_tf32
-from common.python.benchmark_harness import (
+from core.utils.compile_utils import enable_tf32
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -367,7 +367,7 @@ class OptimizedFlashAttention3Benchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return FA3-specific metrics using standard roofline helpers."""
-        from common.python.benchmark_metrics import compute_roofline_metrics
+        from benchmark.metrics import compute_roofline_metrics
         
         # FLOPs: Q@K^T + softmax + attn@V + projections
         attn_flops = 4.0 * self.batch_size * self.num_heads * (self.seq_len ** 2) * self.head_dim

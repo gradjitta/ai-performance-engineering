@@ -20,14 +20,14 @@ Usage:
     model_compiled = safe_compile(model, skip_if_large=True)
 """
 
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
+from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 import os
 import threading
 from typing import Any, Callable, Optional, TypeVar, Union, cast
 
 import torch
 import torch.nn as nn
-from common.python.compile_utils import error_on_graph_break
+from core.utils.compile_utils import error_on_graph_break
 
 LayerSequence = Union[nn.ModuleList, nn.Sequential]
 

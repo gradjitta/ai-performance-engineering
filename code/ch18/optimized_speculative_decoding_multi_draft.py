@@ -18,8 +18,8 @@ import time
 # Add common to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.python.benchmark_harness import BenchmarkHarness, BenchmarkConfig, BenchmarkMode
-from common.python.logger import get_logger
+from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkConfig, BenchmarkMode
+from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -304,7 +304,7 @@ if __name__ == "__main__":
     print(f"         Best draft selection based on confidence")
 
 # Harness integration shim: light placeholder so the runner can measure.
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
 from typing import Optional  # noqa: E402
 
 
@@ -323,7 +323,7 @@ class _PlaceholderBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_speculative_decoding_metrics
+        from benchmark.metrics import compute_speculative_decoding_metrics
         return compute_speculative_decoding_metrics(
             draft_tokens=getattr(self, '_draft_tokens', 64),
             accepted_tokens=getattr(self, '_accepted_tokens', 48),

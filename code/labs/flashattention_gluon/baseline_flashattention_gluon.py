@@ -6,7 +6,7 @@ from typing import Optional
 
 import torch
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from labs.flashattention_gluon.flashattention_gluon_common import (
     FlashAttentionInputs,
     build_flashattention_inputs,

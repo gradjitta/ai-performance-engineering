@@ -50,7 +50,7 @@
 # After running this script, you can:
 #   - Run examples: python3 ch1/performance_basics.py
 #   - Drive the benchmark suite: python tools/cli/aisp bench run
-#   - Capture peak performance: python tools/benchmarking/benchmark_peak.py
+#   - Capture peak performance: python benchmark/benchmark_peak.py
 #   - Verify examples: python tools/cli/aisp bench verify
 #
 
@@ -3043,7 +3043,7 @@ if [ -d "${SYSTEM_CUDNN_LIB}" ]; then
 else
     export LD_LIBRARY_PATH="${CUDA_HOME_DIR}/lib64:${CUDA_HOME_DIR}/lib64/stubs${filtered_ld:+:${filtered_ld}}"
 fi
-if python3 tools/verification/verify_pytorch.py; then
+if python3 core/verification/verify_pytorch.py; then
     echo "PyTorch verification passed"
 else
     echo "PyTorch verification failed"
@@ -3060,7 +3060,7 @@ if [ "$GPU_COUNT" -gt 1 ]; then
     if command -v nvidia-smi >/dev/null 2>&1; then
         nvidia-smi nvlink -gt d >/dev/null 2>&1 || true
     fi
-    if python3 tools/verification/verify_nvlink.py; then
+    if python3 core/verification/verify_nvlink.py; then
         echo "NVLink verification passed"
     else
         echo "NVLink verification had warnings (review output above)"
@@ -3073,7 +3073,7 @@ echo ""
 
 # Verify CUTLASS backend
 echo "Verifying CUTLASS backend..."
-if python3 tools/verification/verify_cutlass.py 2>/dev/null; then
+if python3 core/verification/verify_cutlass.py 2>/dev/null; then
     echo "CUTLASS verification passed"
 else
     echo "ERROR: CUTLASS verification failed"
@@ -3085,7 +3085,7 @@ echo ""
 # Verify GPUDirect Storage (GDS)
 echo "Verifying GPUDirect Storage (GDS)..."
 if lsblk -d -o NAME,TRAN 2>/dev/null | grep -qi nvme; then
-    if python3 tools/verification/verify_gds.py; then
+    if python3 core/verification/verify_gds.py; then
         echo "GDS verification passed"
     else
         echo "GDS verification had issues (may need to load nvidia-fs module)"
@@ -3109,7 +3109,7 @@ fi
 echo ""
 echo "Running Peak Performance Benchmark..."
 echo "======================================"
-if python3 "$PROJECT_ROOT/tools/benchmarking/benchmark_peak.py" --output-dir "$PROJECT_ROOT" 2>&1; then
+if python3 "$PROJECT_ROOT/benchmark/benchmark_peak.py" --output-dir "$PROJECT_ROOT" 2>&1; then
     echo "Peak performance benchmark completed successfully"
 else
     echo "ERROR: Peak performance benchmark failed"
@@ -3223,7 +3223,7 @@ echo ""
 if [[ -n "${GPU_COMPUTE_SM_NUM:-}" && "${GPU_COMPUTE_SM_NUM}" -ge 100 ]]; then
     echo "Running comprehensive Blackwell feature verification..."
     echo "(TMEM, TMA, CTA Clusters, DSMEM, FP8, FP4, Warp Features)"
-    if python3 "${PROJECT_ROOT}/tools/verification/verify_all_blackwell_features.py" --json; then
+    if python3 "${PROJECT_ROOT}/core/verification/verify_all_blackwell_features.py" --json; then
         echo "✓ All Blackwell features verified successfully!"
         echo "  Results saved to: artifacts/blackwell_verification/verification_results.json"
     else

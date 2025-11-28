@@ -51,7 +51,7 @@ echo ""
 # Step 2: Verify NVLink configuration
 echo "Step 2: Verifying NVLink configuration..."
 if command -v python &> /dev/null; then
-    python tools/verification/verify_nvlink.py > "${OUTPUT_DIR}/nvlink_verification.txt" 2>&1 || true
+    python core/verification/verify_nvlink.py > "${OUTPUT_DIR}/nvlink_verification.txt" 2>&1 || true
     echo "NVLink verification saved to: ${OUTPUT_DIR}/nvlink_verification.txt"
 fi
 echo ""
@@ -209,7 +209,7 @@ fi)
 ## Related Documentation
 
 - \`docs/playbooks/nvlink_pcie_playbook.md\` - NCCL configuration guide
-- \`tools/benchmarking/orchestrate_8xb200_load_test.sh\` - Load test orchestration
+- \`scripts/orchestrate_8xb200_load_test.sh\` - Load test orchestration
 - \`ch16/inference_server_load_test.py\` - Inference server implementation
 EOF
 
@@ -231,4 +231,3 @@ echo ""
 echo "To view results:"
 echo "  cat ${OUTPUT_DIR}/metrics_summary.txt"
 echo "  cat ${OUTPUT_DIR}/BENCHMARK_SUMMARY.md"
-

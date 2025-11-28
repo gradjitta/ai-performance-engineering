@@ -53,7 +53,7 @@ except Exception:
 import torch
 import torch.nn as nn
 
-from common.python.compile_utils import enable_tf32, compile_model
+from core.utils.compile_utils import enable_tf32, compile_model
 
 try:
     from torch.nn.attention.flex_attention import flex_attention, create_block_mask

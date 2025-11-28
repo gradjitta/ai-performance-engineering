@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
+from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 import pathlib
 import sys
 
@@ -48,7 +48,7 @@ except ImportError:
             os.environ.setdefault("MASTER_PORT", "29500")
             os.environ.setdefault("LOCAL_RANK", "0")  # Graceful fallback if arch_config not available
 
-from common.python.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
+from benchmark.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
 
 
 import argparse

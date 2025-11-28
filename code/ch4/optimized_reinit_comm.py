@@ -13,7 +13,7 @@ if str(repo_root) not in sys.path:
 import torch
 import torch.distributed as dist
 
-from common.python.gpu_requirements import skip_if_insufficient_gpus
+from benchmark.gpu_requirements import skip_if_insufficient_gpus
 
 try:
     from distributed_helper import setup_single_gpu_env
@@ -28,7 +28,7 @@ except ImportError:
 
 from typing import Optional
 
-from common.python.benchmark_harness import (  # noqa: E402
+from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -68,7 +68,7 @@ class OptimizedReinitCommBenchmark(BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: Reuse existing NCCL communicator."""
-        from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
         config = self.get_config()
 
@@ -101,7 +101,7 @@ class OptimizedReinitCommBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_memory_transfer_metrics
+        from benchmark.metrics import compute_memory_transfer_metrics
         return compute_memory_transfer_metrics(
             bytes_transferred=self._bytes_transferred if hasattr(self, '_bytes_transferred') else float(getattr(self, 'N', 1024) * 4),
             elapsed_ms=getattr(self, '_last_elapsed_ms', 1.0),

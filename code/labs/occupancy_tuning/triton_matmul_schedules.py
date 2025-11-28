@@ -8,7 +8,7 @@ from typing import Callable, Optional
 
 import torch
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.occupancy_tuning import triton_matmul
 
 

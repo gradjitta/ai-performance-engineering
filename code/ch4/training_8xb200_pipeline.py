@@ -18,7 +18,7 @@ FORWARD REFERENCES:
 - FP8 training: See Chapter 13 for detailed FP8 quantization (ch13/*fp8*.py)
 - torch.compile: See Chapter 14 for TorchInductor deep dive (ch14/*compile*.py)
 """
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
+from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 import pathlib
 import sys
 
@@ -65,7 +65,7 @@ except ImportError:
             os.environ.setdefault("MASTER_PORT", "29500")
             os.environ.setdefault("LOCAL_RANK", "0")
 
-from common.python.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
+from benchmark.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
 
 
 import os

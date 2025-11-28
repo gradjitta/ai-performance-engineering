@@ -2,7 +2,7 @@ import json
 import sys
 from pathlib import Path
 
-from tools.core import (
+from core import (
     profile_artifacts,
     compile_analysis,
     costs,
@@ -104,7 +104,7 @@ def test_profile_insights_ncu_comparison_and_recommendations(tmp_path: Path):
 
 
 def test_profile_insights_nsys_comparison_monkeypatch(tmp_path: Path, monkeypatch):
-    dummy_module_name = "tools.profiling.extract_nsys_summary"
+    dummy_module_name = "core.profiling.extract_nsys_summary"
     import types
     dummy_mod = types.ModuleType(dummy_module_name)
 

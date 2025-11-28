@@ -16,7 +16,7 @@ class TestInputAdapters:
     
     def test_file_adapter_single_file(self, tmp_path):
         """Test FileAdapter with a single file."""
-        from tools.optimize.input_adapters import FileAdapter
+        from core.optimization.auto.input_adapters import FileAdapter
         
         # Create test file
         test_file = tmp_path / "test.py"
@@ -31,7 +31,7 @@ class TestInputAdapters:
     
     def test_file_adapter_multiple_files(self, tmp_path):
         """Test FileAdapter with multiple files."""
-        from tools.optimize.input_adapters import FileAdapter
+        from core.optimization.auto.input_adapters import FileAdapter
         
         # Create test files
         for i in range(3):
@@ -44,7 +44,7 @@ class TestInputAdapters:
     
     def test_file_adapter_output(self, tmp_path):
         """Test FileAdapter output writing."""
-        from tools.optimize.input_adapters import FileAdapter, CodeSource
+        from core.optimization.auto.input_adapters import FileAdapter, CodeSource
         
         adapter = FileAdapter(
             paths=[tmp_path / "test.py"],
@@ -66,7 +66,7 @@ class TestInputAdapters:
     
     def test_benchmark_adapter(self, tmp_path):
         """Test BenchmarkAdapter for benchmark directories."""
-        from tools.optimize.input_adapters import BenchmarkAdapter
+        from core.optimization.auto.input_adapters import BenchmarkAdapter
         
         # Create benchmark structure
         (tmp_path / "baseline_test.py").write_text("# baseline")
@@ -84,7 +84,7 @@ class TestInputAdapters:
     
     def test_detect_input_type_file(self, tmp_path):
         """Test input type detection for files."""
-        from tools.optimize.input_adapters import detect_input_type, FileAdapter
+        from core.optimization.auto.input_adapters import detect_input_type, FileAdapter
         
         test_file = tmp_path / "test.py"
         test_file.write_text("# test")
@@ -96,7 +96,7 @@ class TestInputAdapters:
     
     def test_detect_input_type_repo(self):
         """Test input type detection for repo URLs."""
-        from tools.optimize.input_adapters import detect_input_type, RepoAdapter
+        from core.optimization.auto.input_adapters import detect_input_type, RepoAdapter
         
         input_type, adapter = detect_input_type("https://github.com/user/repo")
         
@@ -105,7 +105,7 @@ class TestInputAdapters:
     
     def test_detect_input_type_benchmark_dir(self, tmp_path):
         """Test input type detection for benchmark directories."""
-        from tools.optimize.input_adapters import detect_input_type, BenchmarkAdapter
+        from core.optimization.auto.input_adapters import detect_input_type, BenchmarkAdapter
         
         # Create benchmark structure
         (tmp_path / "baseline_test.py").write_text("# baseline")
@@ -122,7 +122,7 @@ class TestAutoOptimizer:
     
     def test_optimizer_initialization(self):
         """Test optimizer can be initialized."""
-        from tools.optimize import AutoOptimizer
+        from core.optimization.auto import AutoOptimizer
         
         optimizer = AutoOptimizer(
             llm_provider="anthropic",
@@ -137,7 +137,7 @@ class TestAutoOptimizer:
     
     def test_bottleneck_analysis(self):
         """Test static bottleneck analysis."""
-        from tools.optimize.optimizer import AutoOptimizer
+        from core.optimization.auto.optimizer import AutoOptimizer
         
         optimizer = AutoOptimizer(verbose=False)
         
@@ -156,7 +156,7 @@ for i in range(100):
     
     def test_bottleneck_analysis_missing_optimizations(self):
         """Test detection of missing optimizations."""
-        from tools.optimize.optimizer import AutoOptimizer
+        from core.optimization.auto.optimizer import AutoOptimizer
         
         optimizer = AutoOptimizer(verbose=False)
         
@@ -173,7 +173,7 @@ def forward(x):
     
     def test_detect_benchmark_fn(self):
         """Test benchmark function detection."""
-        from tools.optimize.optimizer import AutoOptimizer
+        from core.optimization.auto.optimizer import AutoOptimizer
         
         optimizer = AutoOptimizer(verbose=False)
         
@@ -195,7 +195,7 @@ class TestOptimizationResult:
     
     def test_result_creation(self):
         """Test creating an optimization result."""
-        from tools.optimize.optimizer import OptimizationResult
+        from core.optimization.auto.optimizer import OptimizationResult
         
         result = OptimizationResult(
             success=True,
@@ -219,7 +219,7 @@ class TestProfileResult:
     
     def test_profile_result_creation(self):
         """Test creating a profile result."""
-        from tools.optimize.optimizer import ProfileResult
+        from core.optimization.auto.optimizer import ProfileResult
         
         result = ProfileResult(
             total_time_ms=100.0,

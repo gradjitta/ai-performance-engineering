@@ -13,7 +13,7 @@ See ch9/baseline_sdpa_attention.py and ch9/optimized_sdpa_attention.py for
 detailed SDPA analysis and optimization techniques.
 """
 
-from common.python import compile_utils as _compile_utils_patch  # noqa: F401
+from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 import pathlib
 import sys
 _EXTRAS_REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]

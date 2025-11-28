@@ -18,11 +18,8 @@ except ImportError:
 
 from typing import Optional
 
-from common.python.benchmark_harness import (
-    BaseBenchmark,
-    BenchmarkConfig,
-)
-from common.python.benchmark_utils import warn_benchmark_scaling
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from benchmark.utils import warn_benchmark_scaling
 
 
 def resolve_device() -> torch.device:
@@ -86,7 +83,7 @@ class BaselineIlpBasicBenchmark(BaseBenchmark):
         """Benchmark: Sequential operations with low ILP."""
         # Use conditional NVTX ranges - only enabled when profiling
 
-        from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
         config = self.get_config()
 
@@ -125,7 +122,7 @@ class BaselineIlpBasicBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_environment_metrics
+        from benchmark.metrics import compute_environment_metrics
         return compute_environment_metrics(
             gpu_count=getattr(self, 'gpu_count', 1),
             gpu_memory_gb=getattr(self, 'gpu_memory_gb', 80.0),
@@ -144,7 +141,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == '__main__':
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
     
     benchmark = get_benchmark()
     harness = BenchmarkHarness(

@@ -12,8 +12,8 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from common.python.extension_loader_template import load_cuda_extension
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.utils.extension_loader_template import load_cuda_extension
 
 def resolve_device() -> torch.device:
     """Return the CUDA device used for Chapter 8 examples."""
@@ -81,7 +81,7 @@ class TilingBenchmarkBase(BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         """Run the core kernel with NVTX labeling."""
-        from common.python.nvtx_helper import get_nvtx_enabled, nvtx_range
+        from profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False

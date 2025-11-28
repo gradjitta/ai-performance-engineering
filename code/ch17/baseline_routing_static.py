@@ -7,7 +7,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
 class LargeModel(nn.Module):
@@ -77,7 +77,7 @@ class BaselineRoutingStaticBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_inference_metrics
+        from benchmark.metrics import compute_inference_metrics
         return compute_inference_metrics(
             ttft_ms=getattr(self, '_ttft_ms', 50.0),
             tpot_ms=getattr(self, '_tpot_ms', 10.0),

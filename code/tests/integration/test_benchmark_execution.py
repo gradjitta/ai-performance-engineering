@@ -15,14 +15,14 @@ repo_root = Path(__file__).parent.parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.env_defaults import apply_env_defaults
+from core.env import apply_env_defaults
 apply_env_defaults()
 
 import torch
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
-from common.python.chapter_compare_template import discover_benchmarks, load_benchmark
-from common.python.discovery import discover_all_chapters
-from common.python.artifact_manager import ArtifactManager
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
+from core.utils.chapter_compare_template import discover_benchmarks, load_benchmark
+from core.discovery import discover_all_chapters
+from benchmark.artifact_manager import ArtifactManager
 
 
 # Skip tests if CUDA is not available
@@ -125,7 +125,7 @@ class TestBenchmarkExecutionPipeline:
     def test_benchmark_execution_handles_errors_gracefully(self):
         """Test that benchmark execution handles errors gracefully."""
         # Create a benchmark that will fail
-        from common.python.benchmark_harness import BaseBenchmark
+        from core.harness.benchmark_harness import BaseBenchmark
         
         class FailingBenchmark(BaseBenchmark):
             def setup(self):

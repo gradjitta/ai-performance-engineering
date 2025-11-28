@@ -18,7 +18,7 @@ if str(repo_root) not in sys.path:
 
 import torch
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     WorkloadMetadata,
@@ -37,8 +37,9 @@ LEVEL_DESCRIPTIONS = {
     2: ("+ Fused", "Triton kernel fuses SiLU*up"),
     3: ("+ MemEfficient", "Reuse buffers, reduce allocations"),
     4: ("+ Grouped", "Sort tokens + per-expert GEMM"),
-    5: ("+ CUDAGraphs", "Capture kernel sequence"),
-    6: ("+ Compiled", "torch.compile does ALL of the above!"),
+    5: ("+ BMM Fusion", "Vectorized scatter + single BMM (5-6x!)"),  # NEW!
+    6: ("+ CUDAGraphs", "Capture kernel sequence"),
+    7: ("+ Compiled", "torch.compile does ALL of the above!"),
 }
 
 
@@ -50,15 +51,15 @@ class MoEJourneyBenchmark(BaseBenchmark):
     
     LEVEL: int = 0  # Override in subclasses
     
-    # Model configuration - LARGER workload to show scaling!
+    # Model configuration - Llama-7B like dimensions for realistic GPU utilization!
     VOCAB_SIZE = 32000
-    HIDDEN_SIZE = 512
-    INTERMEDIATE_SIZE = 1024
-    NUM_LAYERS = 4
-    NUM_HEADS = 8
+    HIDDEN_SIZE = 4096       # Llama-7B: 4096
+    INTERMEDIATE_SIZE = 11008  # Llama-7B: 11008
+    NUM_LAYERS = 1           # Just 1 layer for benchmarking MoE
+    NUM_HEADS = 32
     NUM_EXPERTS = 8
     NUM_EXPERTS_PER_TOK = 2
-    BATCH_SIZE = 16   # 16x512 = 8K tokens (was 4x512 = 2K)
+    BATCH_SIZE = 16   # 16x512 = 8K tokens
     SEQ_LEN = 512
     
     WARMUP = 3

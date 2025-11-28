@@ -24,7 +24,7 @@ def rl_config(args) -> int:
     print("-" * 70)
     
     try:
-        from tools.core.engine import get_engine
+        from core.engine import get_engine
         
         engine = get_engine()
         result = engine.optimize.rlhf(

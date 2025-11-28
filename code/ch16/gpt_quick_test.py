@@ -24,7 +24,7 @@ import time
 import warnings
 from tqdm import tqdm
 
-from common.python.compile_utils import enable_tf32
+from core.utils.compile_utils import enable_tf32
 
 # Suppress deprecated warnings
 warnings.filterwarnings('ignore', category=FutureWarning)

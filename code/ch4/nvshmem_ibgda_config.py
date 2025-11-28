@@ -16,7 +16,7 @@ import sys
 # Add common to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.python.logger import get_logger
+from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -38,7 +38,7 @@ import torch.nn as nn
 from torch.nn.attention.flex_attention import flex_attention, create_block_mask
 import time
 
-from common.python.compile_utils import enable_tf32, compile_model
+from core.utils.compile_utils import enable_tf32, compile_model
 
 assert torch.cuda.is_available(), "CUDA required for FlexAttention examples"
 _major, _minor = torch.cuda.get_device_capability()

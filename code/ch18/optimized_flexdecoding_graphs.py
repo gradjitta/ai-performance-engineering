@@ -32,7 +32,7 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
 
     def _patch_compile_to_eager(self) -> None:
         """Fallback: disable torch.compile to keep capture safe."""
-        from common.python import compile_utils
+        from core.utils import compile_utils
         from ch18 import flexdecoding as flexdemo
 
         if self._orig_compile_callable is None:
@@ -46,7 +46,7 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
 
     def _restore_compile_hooks(self) -> None:
         if self._orig_compile_callable is not None:
-            from common.python import compile_utils
+            from core.utils import compile_utils
 
             compile_utils.compile_callable = self._orig_compile_callable  # type: ignore[assignment]
             self._orig_compile_callable = None
@@ -68,7 +68,7 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
 
     def _restore_compile_hooks(self) -> None:
         if self._orig_compile_callable is not None:
-            from common.python import compile_utils
+            from core.utils import compile_utils
 
             compile_utils.compile_callable = self._orig_compile_callable  # type: ignore[assignment]
             self._orig_compile_callable = None
@@ -160,7 +160,7 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return speculative decoding metrics for flexdecoding_graphs."""
-        from common.python.benchmark_metrics import compute_speculative_decoding_metrics
+        from benchmark.metrics import compute_speculative_decoding_metrics
         return compute_speculative_decoding_metrics(
             draft_tokens=getattr(self, '_draft_tokens', 10),
             accepted_tokens=getattr(self, '_accepted_tokens', 8),
@@ -174,7 +174,7 @@ def get_benchmark():
 
 
 if __name__ == "__main__":
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
 
     benchmark = get_benchmark()
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=benchmark.get_config())

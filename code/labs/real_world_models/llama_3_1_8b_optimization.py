@@ -19,8 +19,8 @@ import time
 # Add common to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from common.python.benchmark_harness import BenchmarkHarness, BenchmarkConfig, BenchmarkMode
-from common.python.logger import get_logger
+from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkConfig, BenchmarkMode
+from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 

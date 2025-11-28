@@ -7,7 +7,7 @@ from typing import Tuple
 
 import torch
 
-from common.python.benchmark_utils import warn_benchmark_scaling
+from benchmark.utils import warn_benchmark_scaling
 
 MOE_HIDDEN_DIM = 1024
 MOE_NUM_EXPERTS = 8

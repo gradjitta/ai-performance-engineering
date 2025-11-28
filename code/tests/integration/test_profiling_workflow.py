@@ -14,14 +14,14 @@ repo_root = Path(__file__).parent.parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.env_defaults import apply_env_defaults
+from core.env import apply_env_defaults
 apply_env_defaults()
 
 import torch
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
-from common.python.chapter_compare_template import discover_benchmarks, load_benchmark
-from common.python.discovery import discover_all_chapters
-from common.python.profiling_runner import (
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
+from core.utils.chapter_compare_template import discover_benchmarks, load_benchmark
+from core.discovery import discover_all_chapters
+from profiling.profiling_runner import (
     check_nsys_available,
     check_ncu_available,
     run_nsys_profiling,

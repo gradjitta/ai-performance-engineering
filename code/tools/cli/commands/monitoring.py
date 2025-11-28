@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import time
 
-from tools.core.perf_core import get_core
+from core.perf_core import get_core
 
 
 def _print_header(title: str, emoji: str = "📊"):
@@ -67,7 +67,7 @@ def regression(args) -> int:
     print("  Checking for performance regressions using latest benchmark artifacts...")
 
     from pathlib import Path
-    from tools.analysis.detect_regressions import RegressionDetector
+    from core.analysis.detect_regressions import RegressionDetector
     detector = RegressionDetector()
 
     artifacts = sorted(Path("artifacts").rglob("benchmark_test_results.json"), key=lambda p: p.stat().st_mtime)

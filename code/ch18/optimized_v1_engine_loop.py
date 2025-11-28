@@ -10,7 +10,7 @@ repo_root = Path(__file__).resolve().parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 try:  # Optional, only for real vLLM runs.
     from vllm.v1.outputs import RequestOutput  # type: ignore
@@ -69,7 +69,7 @@ class _SkipBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_speculative_decoding_metrics
+        from benchmark.metrics import compute_speculative_decoding_metrics
         return compute_speculative_decoding_metrics(
             draft_tokens=getattr(self, '_draft_tokens', 64),
             accepted_tokens=getattr(self, '_accepted_tokens', 48),

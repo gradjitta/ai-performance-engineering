@@ -6,7 +6,7 @@ import functools
 from pathlib import Path
 from typing import Optional
 
-from common.python.extension_loader_template import load_cuda_extension_v2
+from core.utils.extension_loader_template import load_cuda_extension_v2
 
 _BUILD_ERROR: Optional[Exception] = None
 _EXT_NAME = "kv_cache_tmem_ext"

@@ -185,7 +185,7 @@ def test_profiling_tools():
 
     try:
         # Use conditional NVTX ranges - only enabled when profiling
-        from common.python.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
         config = SimpleNamespace(enable_nvtx=True)
         enable_nvtx = get_nvtx_enabled(config)
 

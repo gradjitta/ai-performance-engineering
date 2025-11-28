@@ -7,7 +7,7 @@ from typing import Callable, Optional
 
 import torch
 
-from common.python.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 TensorRunner = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 

@@ -16,16 +16,16 @@ if str(repo_root) not in sys.path:
 
 import torch
 import torch.nn as nn
-from common.python.smoke import is_smoke_mode
+from benchmark.smoke import is_smoke_mode
 
-from common.python.benchmark_harness import (
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
     BenchmarkMode,
     WorkloadMetadata,
 )
-from common.python.nvtx_helper import get_nvtx_enabled, nvtx_range
+from profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 from ch3.grace_blackwell_topology import (
     NICInfo,
@@ -153,7 +153,7 @@ class OptimizedRackPrepBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_system_config_metrics
+        from benchmark.metrics import compute_system_config_metrics
         return compute_system_config_metrics(
             numa_nodes=getattr(self, 'numa_nodes', 1),
             cpu_cores=getattr(self, 'cpu_cores', 64),

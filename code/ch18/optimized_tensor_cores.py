@@ -18,8 +18,8 @@ import torch
 
 from typing import Optional
 
-from common.python.compile_utils import enable_tf32
-from common.python.benchmark_harness import (
+from core.utils.compile_utils import enable_tf32
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
@@ -85,7 +85,7 @@ class OptimizedTensorCoresBenchmark(BaseBenchmark):
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
-        from common.python.benchmark_metrics import compute_speculative_decoding_metrics
+        from benchmark.metrics import compute_speculative_decoding_metrics
         return compute_speculative_decoding_metrics(
             draft_tokens=getattr(self, '_draft_tokens', 64),
             accepted_tokens=getattr(self, '_accepted_tokens', 48),
@@ -107,7 +107,7 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == '__main__':
-    from common.python.benchmark_harness import BenchmarkHarness, BenchmarkMode
+    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
     
     benchmark = get_benchmark()
     harness = BenchmarkHarness(
