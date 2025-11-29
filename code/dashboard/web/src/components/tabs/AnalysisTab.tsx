@@ -20,6 +20,7 @@ import {
 import { PieChart as PieChartIcon, BarChart3, Target, TrendingUp, Loader2, AlertTriangle, Award } from 'lucide-react';
 import { Benchmark } from '@/types';
 import { OptimizationStackingCard } from '@/components/OptimizationStackingCard';
+import { AnalysisDeepDiveCard } from '@/components/AnalysisDeepDiveCard';
 import { getAnalysisLeaderboards, getAnalysisPareto, getAnalysisBottlenecks } from '@/lib/api';
 import { EmptyState, ErrorState, LoadingState } from '@/components/DataState';
 import { getErrorMessage, useApiQuery } from '@/lib/useApi';
@@ -370,6 +371,7 @@ export function AnalysisTab({ benchmarks }: AnalysisTabProps) {
       </div>
 
       <OptimizationStackingCard />
+      <AnalysisDeepDiveCard />
     </div>
   );
 }

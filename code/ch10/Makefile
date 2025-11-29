@@ -7,7 +7,7 @@ SUFFIX = $(TARGET_SUFFIX)
 
 # Include path for common headers
 INCLUDES = -I..
-COMMON_HEADERS = ../core/core/common/headers/arch_detection.cuh ../core/core/common/headers/tma_helpers.cuh
+COMMON_HEADERS = ../core/common/headers/arch_detection.cuh ../core/common/headers/tma_helpers.cuh
 
 # Explicit list of CUDA examples
 BASE_TARGETS = baseline_cluster_group optimized_cluster_group \
@@ -45,6 +45,7 @@ endif
 TARGETS = $(addsuffix $(SUFFIX), $(BASE_TARGETS))
 
 .PHONY: all clean test compare b200 gb10 b300 gb300 profile-nsys profile-ncu profile-hta profile-perf profile-all $(TARGETS) run test-gds demo help $(BASE_TARGETS)
+.PHONY: baseline_tmem_triple_overlap$(SUFFIX) optimized_tma_2d_pipeline$(SUFFIX) optimized_tmem_triple_overlap$(SUFFIX)
 
 # Convenience targets without architecture suffix (delegate to active ARCH)
 $(BASE_TARGETS):
@@ -109,6 +110,15 @@ optimized_flash_attn_tma_micro_pipeline$(SUFFIX): optimized_flash_attn_tma_micro
 
 tma_2d_pipeline_blackwell$(SUFFIX): tma_2d_pipeline_blackwell.cu $(COMMON_HEADERS)
 	$(NVCC) $(NVCC_FLAGS) -std=c++17 $(INCLUDES) -lcuda -o $@ $<
+
+optimized_tma_2d_pipeline$(SUFFIX): tma_2d_pipeline_blackwell$(SUFFIX)
+	@ln -sf $< $@
+
+baseline_tmem_triple_overlap$(SUFFIX): tma_2d_pipeline_blackwell$(SUFFIX)
+	@ln -sf $< $@
+
+optimized_tmem_triple_overlap$(SUFFIX): tma_2d_pipeline_blackwell$(SUFFIX)
+	@ln -sf $< $@
 
 baseline_tma_multicast$(SUFFIX): baseline_tma_multicast.cu $(COMMON_HEADERS)
 	$(NVCC) $(NVCC_FLAGS) $(INCLUDES) -o $@ $<

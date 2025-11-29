@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { Benchmark } from '@/types';
+import { getLLMStatus } from '@/lib/api';
+import { useTheme } from '@/lib/ThemeContext';
+import { SavingsHeaderWidget } from '@/components/SavingsHeaderWidget';
 import {
   BarChart3,
   GitCompare,
@@ -41,6 +44,10 @@ import {
   Layers,
   Wrench,
   LucideIcon,
+  Wifi,
+  WifiOff,
+  Moon,
+  Sun,
 } from 'lucide-react';
 
 // Individual tab definitions
@@ -62,10 +69,11 @@ export const tabs = [
   { id: 'rlhf', label: 'RL/RLHF', icon: Gamepad2 },
   { id: 'inference', label: 'Inference', icon: Gauge },
   { id: 'history', label: 'History', icon: History },
-  { id: 'batchopt', label: 'Batch Opt', icon: Package },
+  { id: 'batchopt', label: 'Batch Size', icon: Package },
   { id: 'webhooks', label: 'Webhooks', icon: Bell },
   { id: 'microbench', label: 'Microbench', icon: Timer },
   { id: 'themes', label: 'Themes', icon: Palette },
+  { id: 'aiassistant', label: 'AI Assistant', icon: Brain },
 ];
 
 // Grouped navigation structure
@@ -111,7 +119,7 @@ const tabGroups: TabGroup[] = [
     label: 'AI / LLM',
     icon: Brain,
     color: 'text-accent-secondary',
-    tabs: ['insights', 'rlhf', 'inference'],
+    tabs: ['insights', 'aiassistant', 'rlhf', 'inference'],
   },
   {
     id: 'infrastructure',
@@ -169,7 +177,51 @@ export function Navigation({
   const [elapsedTime, setElapsedTime] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  const [dropdownPosition, setDropdownPosition] = useState<{left: number; top: number; width: number} | null>(null);
+  const [llmStatus, setLlmStatus] = useState<{available: boolean; provider?: string; model?: string} | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const groupButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  
+  // Theme context for dark/light mode toggle
+  const { availableThemes, selectedThemeId, setSelectedThemeId } = useTheme();
+  const isDarkMode = !selectedThemeId?.includes('light');
+  
+  const toggleDarkMode = useCallback(() => {
+    if (!availableThemes) return;
+    if (isDarkMode) {
+      // Find a light theme
+      const lightTheme = availableThemes.find(t => t.id.includes('light'));
+      if (lightTheme) {
+        setSelectedThemeId(lightTheme.id);
+      }
+    } else {
+      // Find a dark theme
+      const darkTheme = availableThemes.find(t => t.id === 'dark-purple') || availableThemes.find(t => !t.id.includes('light'));
+      if (darkTheme) {
+        setSelectedThemeId(darkTheme.id);
+      }
+    }
+  }, [isDarkMode, availableThemes, setSelectedThemeId]);
+
+  // Fetch LLM status on mount
+  useEffect(() => {
+    const fetchLLMStatus = async () => {
+      try {
+        const status = await getLLMStatus() as any;
+        setLlmStatus({
+          available: status?.available || status?.llm_available || false,
+          provider: status?.provider,
+          model: status?.model,
+        });
+      } catch {
+        setLlmStatus({ available: false });
+      }
+    };
+    fetchLLMStatus();
+    // Refresh every 60 seconds
+    const interval = setInterval(fetchLLMStatus, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Find which group the active tab belongs to
   const activeGroup = useMemo(() => {
@@ -181,6 +233,7 @@ export function Navigation({
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setExpandedGroup(null);
+        setDropdownPosition(null);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -270,16 +323,53 @@ export function Navigation({
     if (group.tabs.length === 1) {
       onTabChange(group.tabs[0]);
       setExpandedGroup(null);
+      setDropdownPosition(null);
     } else {
       // Toggle dropdown
-      setExpandedGroup(expandedGroup === groupId ? null : groupId);
+      if (expandedGroup === groupId) {
+        setExpandedGroup(null);
+        setDropdownPosition(null);
+      } else {
+        setExpandedGroup(groupId);
+      }
     }
   };
 
   const handleTabSelect = (tabId: string) => {
     onTabChange(tabId);
     setExpandedGroup(null);
+    setDropdownPosition(null);
   };
+
+  const updateDropdownPosition = useCallback((groupId: string) => {
+    const btn = groupButtonRefs.current[groupId];
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const minWidth = Math.max(rect.width, 180);
+    const viewportWidth = window.innerWidth;
+    const padding = 12;
+    const clampedLeft = Math.min(
+      Math.max(rect.left, padding),
+      Math.max(viewportWidth - minWidth - padding, padding)
+    );
+    setDropdownPosition({
+      left: clampedLeft,
+      top: rect.bottom + 6,
+      width: minWidth,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!expandedGroup) return;
+    updateDropdownPosition(expandedGroup);
+    const handleWindowChange = () => updateDropdownPosition(expandedGroup);
+    window.addEventListener('resize', handleWindowChange);
+    window.addEventListener('scroll', handleWindowChange, true);
+    return () => {
+      window.removeEventListener('resize', handleWindowChange);
+      window.removeEventListener('scroll', handleWindowChange, true);
+    };
+  }, [expandedGroup, updateDropdownPosition]);
 
   return (
     <>
@@ -309,9 +399,49 @@ export function Navigation({
 
             {/* Right side actions */}
             <div className="flex items-center gap-2">
+              {/* $ SAVINGS - FRONT AND CENTER */}
+              <SavingsHeaderWidget />
+
+              {/* Dark/Light Mode Toggle */}
+              <button
+                onClick={toggleDarkMode}
+                className={cn(
+                  'p-2 rounded-lg transition-all',
+                  isDarkMode
+                    ? 'text-accent-warning hover:bg-accent-warning/10'
+                    : 'text-accent-info hover:bg-accent-info/10'
+                )}
+                title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              >
+                {isDarkMode ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+              </button>
+
+              {/* LLM Status Indicator */}
+              <div
+                className={cn(
+                  'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all',
+                  llmStatus?.available
+                    ? 'bg-accent-success/20 text-accent-success border border-accent-success/30'
+                    : 'bg-white/5 text-white/40 border border-white/10'
+                )}
+                title={llmStatus?.available 
+                  ? `LLM: ${llmStatus.provider || 'Connected'} (${llmStatus.model || 'default'})` 
+                  : 'LLM: Not configured - Set ANTHROPIC_API_KEY or OPENAI_API_KEY'}
+              >
+                {llmStatus?.available ? (
+                  <Wifi className="w-4 h-4" />
+                ) : (
+                  <WifiOff className="w-4 h-4" />
+                )}
+                <span className="hidden lg:inline text-xs">
+                  {llmStatus?.available ? (llmStatus.provider || 'LLM') : 'No LLM'}
+                </span>
+              </div>
+
               {/* Timer */}
               <button
                 onClick={() => setTimerRunning(!timerRunning)}
+                title="Session Timer - Click to start/stop"
                 className={cn(
                   'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-mono transition-all',
                   timerRunning
@@ -326,6 +456,7 @@ export function Navigation({
               {/* Audio toggle */}
               <button
                 onClick={() => setAudioEnabled(!audioEnabled)}
+                title={audioEnabled ? 'Disable audio notifications' : 'Enable audio notifications'}
                 className={cn(
                   'p-2 rounded-lg transition-all',
                   audioEnabled
@@ -339,16 +470,18 @@ export function Navigation({
               {/* Command palette */}
               <button
                 onClick={() => setShowCommandPalette(true)}
-                className="p-2 rounded-lg text-white/40 hover:text-white hover:bg-white/5 transition-all"
-                title="Command Palette (⌘K)"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/5 transition-all border border-white/10"
+                title="Command Palette (⌘K / Ctrl+K)"
               >
-                <Command className="w-5 h-5" />
+                <Command className="w-4 h-4" />
+                <kbd className="hidden md:inline text-[10px] px-1.5 py-0.5 rounded bg-white/10 font-mono">⌘K</kbd>
               </button>
 
               {/* Refresh */}
               <button
                 onClick={onRefresh}
                 disabled={isRefreshing}
+                title="Refresh data (R)"
                 className={cn(
                   'flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all',
                   'bg-gradient-to-r from-accent-primary to-accent-secondary text-black',
@@ -362,7 +495,10 @@ export function Navigation({
           </div>
 
           {/* Grouped tabs row */}
-          <div className="flex items-center gap-1 py-2 overflow-x-auto hide-scrollbar" ref={dropdownRef}>
+          <div
+            className="relative flex items-center gap-1 py-2 overflow-x-auto overflow-y-visible hide-scrollbar select-none"
+            ref={dropdownRef}
+          >
             {tabGroups.map((group) => {
               const GroupIcon = group.icon;
               const isActive = activeGroup === group.id;
@@ -378,9 +514,10 @@ export function Navigation({
               return (
                 <div key={group.id} className="relative">
                   <button
+                    ref={(el) => { groupButtonRefs.current[group.id] = el; }}
                     onClick={() => handleGroupClick(group.id)}
                     className={cn(
-                      'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap',
+                      'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap select-none',
                       isActive
                         ? 'bg-accent-primary/20 text-accent-primary border border-accent-primary/30'
                         : 'text-white/60 hover:text-white hover:bg-white/5'
@@ -399,8 +536,15 @@ export function Navigation({
                   </button>
 
                   {/* Dropdown menu */}
-                  {isExpanded && !isSingleTab && (
-                    <div className="absolute top-full left-0 mt-1 py-1 min-w-[180px] bg-brand-card border border-white/10 rounded-xl shadow-xl z-50 animate-slide-in">
+                  {isExpanded && !isSingleTab && expandedGroup === group.id && dropdownPosition && (
+                    <div
+                      className="fixed py-1 bg-brand-card border border-white/10 rounded-xl shadow-xl z-[90] animate-slide-in"
+                      style={{
+                        top: dropdownPosition.top,
+                        left: dropdownPosition.left,
+                        minWidth: dropdownPosition.width,
+                      }}
+                    >
                       {group.tabs.map((tabId) => {
                         const tab = getTabById(tabId);
                         if (!tab) return null;
@@ -412,7 +556,7 @@ export function Navigation({
                             key={tabId}
                             onClick={() => handleTabSelect(tabId)}
                             className={cn(
-                              'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
+                              'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors select-none',
                               isTabActive
                                 ? 'bg-accent-primary/20 text-accent-primary'
                                 : 'text-white/70 hover:text-white hover:bg-white/5'

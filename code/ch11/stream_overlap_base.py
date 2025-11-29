@@ -107,7 +107,7 @@ class ConcurrentStreamOptimized(BaseBenchmark):
 
     def __init__(
         self,
-        nvtx_label: str,
+        nvtx_label: str = "concurrent_streams",
         num_elements: int = 24_000_000,
         num_streams: int = 8,
         chunk_dtype: torch.dtype = torch.float32,

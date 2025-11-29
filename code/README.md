@@ -98,9 +98,73 @@ ncu-ui kernel_analysis.ncu-rep
 
 ## MCP Integration (aisp MCP server)
 
-- Start the server with `python -m mcp.server --serve` (or via `mcp.json`); clients should consume the `application/json` content entry from MCP responses.
-- `isError` mirrors the payload `status` field returned in the JSON envelope.
-- Response trimming is generous by default; tune via env vars without code changes: `AISP_MCP_PREVIEW_LIMIT` (max chars) and `AISP_MCP_PREVIEW_ITEMS` (max list/dict items).
+Start the server with `python -m mcp.server --serve` (or via `mcp.json`). Clients should consume the `application/json` content entry from MCP responses.
+
+**76 MCP tools available** organized by category. See [docs/mcp_tools.md](docs/mcp_tools.md) for complete reference with parameters and examples.
+
+### Benchmarking (17 tools)
+| Tool | Description |
+|------|-------------|
+| `run_benchmarks` | Run benchmarks with optional profiling |
+| `verify_benchmarks` | Quick verification smoke tests |
+| `available_benchmarks` | List available benchmark targets |
+| `benchmark_targets` | List benchmark targets by chapter |
+| `list_chapters` | Scan and list all chapters |
+| `benchmark_report` | Generate benchmark report |
+| `benchmark_export` | Export benchmarks to file |
+| `benchmark_compare_runs` | Compare benchmark runs |
+| `test_speed` | Run speed tests |
+| `test_disk` | Disk I/O benchmark |
+| `test_pcie` | PCIe H2D/D2H bandwidth test |
+| `test_mem_hierarchy` | Memory hierarchy stride test |
+| `test_tensor_core` | Tensor Core throughput test |
+| `test_sfu` | Special function unit benchmark |
+| `test_network` | Network throughput tests |
+| `test_network_loopback` | Loopback TCP throughput test |
+| `test_roofline` | Roofline model benchmark |
+
+### GPU (5 tools)
+`gpu_info`, `gpu_bandwidth`, `gpu_topology`, `gpu_topology_matrix`, `gpu_power`
+
+### System (13 tools)
+`system_software`, `system_dependencies`, `system_context`, `system_capabilities`, `system_parameters`, `container_limits`, `cpu_memory_analysis`, `full_system_analysis`, `status`, `triage`, `context_summary`, `context_full`, `ai_status`
+
+### Profiling (10 tools)
+`profile_nsys`, `profile_ncu`, `nsys_summary`, `compare_nsys`, `compare_ncu`, `nsys_ncu_available`, `profile_flame`, `profile_memory`, `profile_kernels`, `profile_roofline`
+
+### Analysis (5 tools)
+`analyze_bottlenecks`, `analyze_pareto`, `analyze_scaling`, `analyze_stacking`, `analyze_whatif`
+
+### Optimization (3 tools)
+`recommend`, `optimize_roi`, `optimize_techniques`
+
+### Distributed (2 tools)
+`distributed_plan`, `distributed_nccl`
+
+### Inference (2 tools)
+`inference_vllm`, `inference_quantization`
+
+### AI/LLM (2 tools)
+`ask`, `explain`
+
+### HuggingFace (2 tools)
+`hf_search`, `hf_trending`
+
+### Cluster & Cost (2 tools)
+`cluster_slurm`, `cost_estimate`
+
+### Code Analysis (7 tools)
+`warp_divergence`, `bank_conflicts`, `memory_access`, `comm_overlap`, `data_loading`, `energy_analysis`, `predict_scaling`
+
+### Export (3 tools)
+`export_csv`, `export_pdf`, `export_html`
+
+### Utility (3 tools)
+`help`, `suggest_tools`, `launch_plan`
+
+**Configuration:**
+- `isError` mirrors the payload `status` field returned in the JSON envelope
+- Response trimming via env vars: `AISP_MCP_PREVIEW_LIMIT` (max chars), `AISP_MCP_PREVIEW_ITEMS` (max list/dict items)
 
 ---
 

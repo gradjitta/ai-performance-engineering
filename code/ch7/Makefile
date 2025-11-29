@@ -11,6 +11,7 @@ BASE_TARGETS = $(CUDA_SOURCES:.cu=)
 TARGETS = $(addsuffix $(SUFFIX), $(BASE_TARGETS))
 
 .PHONY: baseline_hbmcopy$(SUFFIX) optimized_hbmcopy$(SUFFIX) baseline_hbmpeak$(SUFFIX) optimized_hbmpeak$(SUFFIX)
+.PHONY: optimized_scalar_copy$(SUFFIX) optimized_uncoalesced_copy$(SUFFIX) optimized_transpose$(SUFFIX) optimized_matmul_cuda$(SUFFIX)
 
 baseline_hbmcopy$(SUFFIX): baseline_hbm_copy$(SUFFIX)
 	@ln -sf $< $@
@@ -22,6 +23,19 @@ baseline_hbmpeak$(SUFFIX): baseline_hbm_peak$(SUFFIX)
 	@ln -sf $< $@
 
 optimized_hbmpeak$(SUFFIX): optimized_hbm_peak$(SUFFIX)
+	@ln -sf $< $@
+
+# Aliases requested by the benchmark harness
+optimized_scalar_copy$(SUFFIX): optimized_copy_vectorized$(SUFFIX)
+	@ln -sf $< $@
+
+optimized_uncoalesced_copy$(SUFFIX): optimized_copy_coalesced$(SUFFIX)
+	@ln -sf $< $@
+
+optimized_transpose$(SUFFIX): optimized_transpose_padded$(SUFFIX)
+	@ln -sf $< $@
+
+optimized_matmul_cuda$(SUFFIX): optimized_matmul_tiled$(SUFFIX)
 	@ln -sf $< $@
 
 .PHONY: all clean compare b200 gb10 b300 gb300 profile-nsys profile-ncu profile-hta profile-perf profile-all $(TARGETS)
@@ -99,5 +113,8 @@ profile-all: all
 	done
 
 clean:
-	rm -f $(addsuffix _sm100,$(BASE_TARGETS)) $(addsuffix _sm121,$(BASE_TARGETS)) baseline_hbmcopy$(SUFFIX) optimized_hbmcopy$(SUFFIX) baseline_hbmpeak$(SUFFIX) optimized_hbmpeak$(SUFFIX) *.o *.so *.a
+	rm -f $(addsuffix _sm100,$(BASE_TARGETS)) $(addsuffix _sm121,$(BASE_TARGETS)) \
+		baseline_hbmcopy$(SUFFIX) optimized_hbmcopy$(SUFFIX) baseline_hbmpeak$(SUFFIX) optimized_hbmpeak$(SUFFIX) \
+		optimized_scalar_copy$(SUFFIX) optimized_uncoalesced_copy$(SUFFIX) optimized_transpose$(SUFFIX) optimized_matmul_cuda$(SUFFIX) \
+		*.o *.so *.a
 	rm -f nsys_profile_* ncu_profile_* hta_profile_* perf.data_* comprehensive_*

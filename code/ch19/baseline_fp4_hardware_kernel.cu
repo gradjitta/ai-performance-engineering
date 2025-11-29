@@ -49,7 +49,7 @@
     } while(0)
 
 // FP4 GEMM kernel (packed format: 2 FP4 values per byte)
-// NOTE: Uses manual quantization - see TODO above for potential native intrinsics
+// NOTE: Uses manual quantization - see header comment for native intrinsics info
 template<int M, int N, int K>
 __global__ void fp4_gemm_kernel(
     const uint8_t* A_packed,  // Packed FP4: 2 values per byte

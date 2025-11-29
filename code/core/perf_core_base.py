@@ -1658,6 +1658,131 @@ class PerformanceCoreBase:
 
         return suggestions
 
+    def get_cost_savings_header(self, ops_per_day: int = 1_000_000) -> dict:
+        """
+        Calculate aggregate $ savings for the header display.
+        
+        This is the FRONT AND CENTER metric that translates performance
+        gains into business value using public cloud GPU pricing.
+        
+        Args:
+            ops_per_day: Assumed operations per day (default: 1M for enterprise scale)
+        
+        Returns:
+            Dictionary with total savings and breakdown
+        """
+        from core.costs import GPU_PRICING, detect_gpu_pricing
+        
+        data = self.load_benchmark_data()
+        benchmarks = self._flatten_benchmarks(data)
+        gpu_info = self.get_gpu_info()
+        
+        # Detect GPU and get hourly rate
+        gpu_name = gpu_info.get("name", "B200")
+        hourly_rate = detect_gpu_pricing(gpu_name)
+        
+        # Find which GPU type we matched
+        detected_gpu = "B200"  # default
+        for gpu_type in GPU_PRICING:
+            if gpu_type.lower() in gpu_name.lower():
+                detected_gpu = gpu_type
+                break
+        
+        total_baseline_time_ms = 0.0
+        total_optimized_time_ms = 0.0
+        total_time_saved_ms = 0.0
+        successful_optimizations = 0
+        savings_breakdown = []
+        
+        for b in benchmarks:
+            if b.get("status") != "succeeded":
+                continue
+            
+            speedup = b.get("speedup", 1.0)
+            baseline_ms = b.get("baseline_time_ms", 0)
+            optimized_ms = b.get("optimized_time_ms", baseline_ms)
+            
+            if baseline_ms <= 0 or optimized_ms <= 0 or speedup <= 1.0:
+                continue
+            
+            time_saved_ms = baseline_ms - optimized_ms
+            if time_saved_ms <= 0:
+                continue
+            
+            successful_optimizations += 1
+            total_baseline_time_ms += baseline_ms
+            total_optimized_time_ms += optimized_ms
+            total_time_saved_ms += time_saved_ms
+            
+            # Calculate savings for this benchmark
+            # Time saved percentage = (baseline - optimized) / baseline
+            time_saved_pct = (time_saved_ms / baseline_ms) * 100
+            
+            # Ops per hour at baseline rate
+            baseline_ops_per_hour = 3_600_000 / baseline_ms if baseline_ms > 0 else 0
+            optimized_ops_per_hour = 3_600_000 / optimized_ms if optimized_ms > 0 else 0
+            
+            # Cost per million ops
+            baseline_cost_per_m = (hourly_rate / baseline_ops_per_hour) * 1_000_000 if baseline_ops_per_hour > 0 else 0
+            optimized_cost_per_m = (hourly_rate / optimized_ops_per_hour) * 1_000_000 if optimized_ops_per_hour > 0 else 0
+            savings_per_m = baseline_cost_per_m - optimized_cost_per_m
+            
+            # Daily savings based on ops_per_day
+            daily_savings = (savings_per_m / 1_000_000) * ops_per_day
+            monthly_savings = daily_savings * 30
+            yearly_savings = daily_savings * 365
+            
+            savings_breakdown.append({
+                "name": f"{b.get('chapter', 'unknown')}:{b.get('name', 'unknown')}",
+                "speedup": round(speedup, 2),
+                "time_saved_pct": round(time_saved_pct, 1),
+                "monthly_savings_usd": round(monthly_savings, 2),
+                "yearly_savings_usd": round(yearly_savings, 2),
+            })
+        
+        # Sort by monthly savings (highest first)
+        savings_breakdown.sort(key=lambda x: x["monthly_savings_usd"], reverse=True)
+        
+        # Calculate aggregate savings
+        total_monthly_savings = sum(s["monthly_savings_usd"] for s in savings_breakdown)
+        total_yearly_savings = sum(s["yearly_savings_usd"] for s in savings_breakdown)
+        
+        # Average time saved percentage across all optimizations
+        avg_time_saved_pct = 0.0
+        if total_baseline_time_ms > 0:
+            avg_time_saved_pct = (total_time_saved_ms / total_baseline_time_ms) * 100
+        
+        # Average speedup
+        avg_speedup = 0.0
+        if successful_optimizations > 0:
+            avg_speedup = sum(s["speedup"] for s in savings_breakdown) / successful_optimizations
+        
+        return {
+            "total_monthly_savings_usd": round(total_monthly_savings, 2),
+            "total_yearly_savings_usd": round(total_yearly_savings, 2),
+            "avg_speedup": round(avg_speedup, 2),
+            "avg_time_saved_pct": round(avg_time_saved_pct, 1),
+            "successful_optimizations": successful_optimizations,
+            "gpu": {
+                "name": gpu_name,
+                "type": detected_gpu,
+                "hourly_rate_usd": hourly_rate,
+            },
+            "assumptions": {
+                "ops_per_day": ops_per_day,
+                "ops_per_month": ops_per_day * 30,
+                "cloud_provider": "Public Cloud (avg)",
+                "pricing_source": "2024 cloud GPU pricing",
+            },
+            "top_savers": savings_breakdown[:5],  # Top 5 for header tooltip
+            "all_savers": savings_breakdown,
+            "pricing_table": GPU_PRICING,
+        }
+
+    def get_cost_calculator(self) -> dict:
+        """Get cost calculator data - wrapper for compatibility."""
+        return self.analyzer.get_cost_analysis()
+
     def _flatten_benchmarks(self, raw_data: dict) -> List[Dict[str, Any]]:
         """Normalize benchmark structures between flat and chapter-grouped formats."""
         if "benchmarks" in raw_data:

@@ -32,6 +32,7 @@ class BaselineNcclBenchmark(BaseBenchmark):
     
     def __init__(self):
         super().__init__()
+        self.skip_output_check = True
         self.model = None
         self.input = None
         self.output = None

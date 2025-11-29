@@ -614,6 +614,9 @@ class BaseBenchmark:
         Returns:
             False by default (verification enabled)
         """
+        # Allow opt-in skips via attribute without overriding the method
+        if getattr(self, "skip_input_check", False):
+            return True
         return False
 
     def skip_output_verification(self) -> bool:
@@ -626,6 +629,9 @@ class BaseBenchmark:
         Returns:
             False by default (verification enabled)
         """
+        # Allow opt-in skips via attribute without overriding the method
+        if getattr(self, "skip_output_check", False):
+            return True
         return False
 
     def get_input_signature(self) -> Optional[Dict[str, Any]]:

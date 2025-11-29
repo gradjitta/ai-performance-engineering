@@ -1,56 +1,46 @@
 'use client';
 
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle, Inbox, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LoadingStateProps {
   message?: string;
   className?: string;
-  inline?: boolean;
 }
 
-export function LoadingState({ message = 'Loading...', className, inline }: LoadingStateProps) {
+export function LoadingState({ message = 'Loading...', className }: LoadingStateProps) {
   return (
-    <div
-      className={cn(
-        inline ? 'inline-flex items-center gap-2 text-sm text-white/70' : 'flex items-center justify-center gap-3 py-8 text-white/70',
-        className
-      )}
-      role="status"
-      aria-live="polite"
-    >
-      <Loader2 className={cn('animate-spin text-accent-primary', inline ? 'w-4 h-4' : 'w-6 h-6')} />
-      <span>{message}</span>
+    <div className={cn('flex flex-col items-center justify-center py-16', className)}>
+      <Loader2 className="w-8 h-8 animate-spin text-accent-primary mb-4" />
+      <p className="text-white/50 text-sm">{message}</p>
     </div>
   );
 }
 
 interface ErrorStateProps {
-  message: string;
+  message?: string;
   onRetry?: () => void;
   className?: string;
 }
 
-export function ErrorState({ message, onRetry, className }: ErrorStateProps) {
+export function ErrorState({ 
+  message = 'Something went wrong', 
+  onRetry, 
+  className 
+}: ErrorStateProps) {
   return (
-    <div
-      className={cn(
-        'flex flex-col items-center justify-center gap-3 rounded-lg border border-accent-warning/30 bg-accent-warning/10 px-4 py-6 text-center text-white/80',
-        className
-      )}
-      role="alert"
-    >
-      <div className="flex items-center gap-2 text-accent-warning">
-        <AlertTriangle className="w-5 h-5" />
-        <span className="font-medium">Something went wrong</span>
+    <div className={cn('flex flex-col items-center justify-center py-16', className)}>
+      <div className="w-14 h-14 bg-accent-danger/20 rounded-full flex items-center justify-center mb-4">
+        <AlertTriangle className="w-7 h-7 text-accent-danger" />
       </div>
-      <div className="text-sm text-white/70">{message}</div>
+      <p className="text-white/70 text-sm mb-4 text-center max-w-md">{message}</p>
       {onRetry && (
         <button
-          className="px-3 py-1.5 rounded-lg bg-white/10 text-sm text-white hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-warning"
           onClick={onRetry}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-accent-primary/20 text-accent-primary rounded-lg hover:bg-accent-primary/30 transition-colors text-sm"
         >
-          Try again
+          <RefreshCw className="w-4 h-4" />
+          Retry
         </button>
       )}
     </div>
@@ -58,29 +48,33 @@ export function ErrorState({ message, onRetry, className }: ErrorStateProps) {
 }
 
 interface EmptyStateProps {
-  title: string;
+  title?: string;
   description?: string;
+  icon?: React.ReactNode;
   actionLabel?: string;
   onAction?: () => void;
   className?: string;
 }
 
-export function EmptyState({ title, description, actionLabel, onAction, className }: EmptyStateProps) {
+export function EmptyState({
+  title = 'No data',
+  description = 'There is no data to display.',
+  icon,
+  actionLabel,
+  onAction,
+  className,
+}: EmptyStateProps) {
   return (
-    <div
-      className={cn(
-        'flex flex-col items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-6 text-center text-white/70',
-        className
-      )}
-      role="status"
-      aria-live="polite"
-    >
-      <div className="text-white font-semibold">{title}</div>
-      {description && <div className="text-sm text-white/60 max-w-md">{description}</div>}
-      {actionLabel && onAction && (
+    <div className={cn('flex flex-col items-center justify-center py-16', className)}>
+      <div className="w-14 h-14 bg-white/5 rounded-full flex items-center justify-center mb-4">
+        {icon || <Inbox className="w-7 h-7 text-white/30" />}
+      </div>
+      <h3 className="text-white font-medium mb-1">{title}</h3>
+      <p className="text-white/50 text-sm text-center max-w-md mb-4">{description}</p>
+      {onAction && actionLabel && (
         <button
-          className="mt-2 rounded-lg bg-accent-primary/20 px-3 py-1.5 text-sm text-accent-primary hover:bg-accent-primary/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary"
           onClick={onAction}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-accent-primary/20 text-accent-primary rounded-lg hover:bg-accent-primary/30 transition-colors text-sm"
         >
           {actionLabel}
         </button>
@@ -89,57 +83,97 @@ export function EmptyState({ title, description, actionLabel, onAction, classNam
   );
 }
 
-export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse rounded-md bg-white/5', className)} aria-hidden="true" />;
+// Wrapper for conditional rendering based on data state
+interface DataStateProps<T> {
+  data: T | null | undefined;
+  loading: boolean;
+  error: string | null;
+  onRetry?: () => void;
+  loadingMessage?: string;
+  emptyTitle?: string;
+  emptyDescription?: string;
+  isEmpty?: (data: T) => boolean;
+  children: (data: T) => React.ReactNode;
 }
 
-// Skeleton loader for cards
-export function SkeletonCard() {
+export function DataState<T>({
+  data,
+  loading,
+  error,
+  onRetry,
+  loadingMessage,
+  emptyTitle,
+  emptyDescription,
+  isEmpty,
+  children,
+}: DataStateProps<T>) {
+  if (loading && !data) {
+    return <LoadingState message={loadingMessage} />;
+  }
+
+  if (error) {
+    return <ErrorState message={error} onRetry={onRetry} />;
+  }
+
+  if (!data || (isEmpty && isEmpty(data))) {
+    return <EmptyState title={emptyTitle} description={emptyDescription} onAction={onRetry} actionLabel={onRetry ? 'Refresh' : undefined} />;
+  }
+
+  return <>{children(data)}</>;
+}
+
+// Skeleton components for loading states
+interface SkeletonProps {
+  className?: string;
+}
+
+export function Skeleton({ className }: SkeletonProps) {
   return (
-    <div className="card p-5 animate-pulse">
-      <div className="h-4 w-1/3 bg-white/10 rounded mb-4" />
-      <div className="space-y-3">
-        <div className="h-3 w-full bg-white/5 rounded" />
-        <div className="h-3 w-2/3 bg-white/5 rounded" />
-        <div className="h-3 w-4/5 bg-white/5 rounded" />
-      </div>
+    <div className={cn('animate-pulse bg-white/10 rounded', className)} />
+  );
+}
+
+export function SkeletonCard({ className }: SkeletonProps) {
+  return (
+    <div className={cn('p-4 rounded-xl bg-white/5 border border-white/10', className)}>
+      <Skeleton className="h-4 w-24 mb-3" />
+      <Skeleton className="h-8 w-32 mb-2" />
+      <Skeleton className="h-3 w-20" />
     </div>
   );
 }
 
-// Skeleton loader for tables
-export function SkeletonTable({ rows = 5 }: { rows?: number }) {
+export function SkeletonTable({ rows = 5, className }: SkeletonProps & { rows?: number }) {
   return (
-    <div className="card animate-pulse">
-      <div className="card-header">
-        <div className="h-5 w-32 bg-white/10 rounded" />
-        <div className="h-5 w-24 bg-white/5 rounded" />
+    <div className={cn('space-y-2', className)}>
+      <div className="flex gap-4 pb-2 border-b border-white/10">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-4 w-20" />
+        <Skeleton className="h-4 w-16" />
       </div>
-      <div className="p-5 space-y-3">
-        {Array.from({ length: rows }).map((_, i) => (
-          <div key={i} className="flex items-center gap-4">
-            <div className="h-4 w-1/4 bg-white/5 rounded" />
-            <div className="h-4 w-1/3 bg-white/5 rounded" />
-            <div className="h-4 w-1/5 bg-white/5 rounded" />
-            <div className="h-4 w-16 bg-white/5 rounded ml-auto" />
-          </div>
-        ))}
-      </div>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex gap-4 py-2">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-4 w-16" />
+        </div>
+      ))}
     </div>
   );
 }
 
-// Skeleton loader for charts
-export function SkeletonChart() {
+export function SkeletonChart({ className }: SkeletonProps) {
   return (
-    <div className="card p-5 animate-pulse">
-      <div className="h-5 w-40 bg-white/10 rounded mb-6" />
-      <div className="h-64 bg-white/5 rounded-lg flex items-end justify-around p-4">
-        {[0.6, 0.8, 0.4, 0.9, 0.5, 0.7, 0.3].map((h, i) => (
-          <div
-            key={i}
-            className="w-8 bg-white/10 rounded-t"
-            style={{ height: `${h * 100}%` }}
+    <div className={cn('p-4 rounded-xl bg-white/5 border border-white/10', className)}>
+      <Skeleton className="h-4 w-32 mb-4" />
+      <div className="flex items-end gap-2 h-40">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Skeleton 
+            key={i} 
+            className="flex-1" 
+            style={{ height: `${30 + Math.random() * 70}%` }} 
           />
         ))}
       </div>
@@ -147,16 +181,11 @@ export function SkeletonChart() {
   );
 }
 
-// Skeleton loader for stats cards
-export function SkeletonStats() {
+export function SkeletonStats({ count = 4, className }: SkeletonProps & { count?: number }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="card p-5 animate-pulse">
-          <div className="h-4 w-20 bg-white/10 rounded mb-2" />
-          <div className="h-8 w-16 bg-white/5 rounded mb-1" />
-          <div className="h-3 w-24 bg-white/5 rounded" />
-        </div>
+    <div className={cn('grid gap-4', className)} style={{ gridTemplateColumns: `repeat(${count}, 1fr)` }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonCard key={i} />
       ))}
     </div>
   );

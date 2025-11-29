@@ -92,8 +92,19 @@ body {
     box-shadow: 0 0 60px rgba(0, 245, 212, 0.2);
   }
 
-  .glow-secondary {
-    box-shadow: 0 0 60px rgba(157, 78, 221, 0.2);
+.glow-secondary {
+  box-shadow: 0 0 60px rgba(157, 78, 221, 0.2);
+}
+}
+
+/* Utility to hide scrollbars while preserving scroll */
+@layer utilities {
+  .hide-scrollbar {
+    -ms-overflow-style: none; /* IE/Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
   }
 }
 
@@ -125,5 +136,4 @@ body {
 .recharts-text {
   fill: rgba(255, 255, 255, 0.5);
 }
-
 

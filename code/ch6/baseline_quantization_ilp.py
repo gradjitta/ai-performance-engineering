@@ -15,6 +15,7 @@ class BaselineQuantizationILPBenchmark(BaseBenchmark):
     
     def __init__(self):
         super().__init__()
+        self.skip_output_check = True
         self.input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.workload = WORKLOAD

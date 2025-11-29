@@ -75,7 +75,7 @@ LAB_METRICS_MAP = {
     "distributed_training": ("training", "speedup"),
     "moe": ("moe", "roofline"),
     "nanochat": ("inference", "inference"),
-    "nanochat_microbench": ("inference", "inference"),
+    "decode_optimization": ("inference", "inference"),
     "cudnn_sdpa": ("attention", "roofline"),
     "dynamic_router": ("inference", "inference"),
     "async_input_pipeline": ("io", "transfer"),

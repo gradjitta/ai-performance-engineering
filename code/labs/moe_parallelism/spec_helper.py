@@ -5,7 +5,14 @@ from __future__ import annotations
 import sys
 from typing import List
 
-from .plan import AVAILABLE_SPEC_PRESETS, DEFAULT_SPEC_PRESET, set_active_spec_preset
+try:
+    from .plan import AVAILABLE_SPEC_PRESETS, DEFAULT_SPEC_PRESET, set_active_spec_preset
+except ModuleNotFoundError as exc:  # Optional plan presets may be stripped in some builds
+    if exc.name == "labs.moe_parallelism.plan":
+        raise RuntimeError(
+            "SKIPPED: moe_parallelism plan presets are unavailable in this build."
+        ) from exc
+    raise
 
 
 def _pop_arg(argv: List[str], idx: int) -> str:

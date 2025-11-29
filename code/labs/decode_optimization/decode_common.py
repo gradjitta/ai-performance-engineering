@@ -1,6 +1,8 @@
-"""NanoChat-inspired decode microbenchmark with baseline and optimized paths.
+"""Decode loop microbenchmark with baseline and optimized paths.
 
-Shared helpers and configs for the nanochat_microbench lab variants.
+Shared helpers and configs for the decode_optimization lab variants.
+Tests serving optimizations (pinned memory, streams, CUDA graphs, FP8/FP4, torch.compile)
+on a simplified MLP-based decode loop.
 """
 
 from __future__ import annotations
@@ -69,7 +71,7 @@ def _is_blackwell_family() -> bool:
 
 
 @dataclass
-class NanoChatConfig:
+class DecodeConfig:
     batch_size: int = 4
     prompt_tokens: int = 256
     decode_tokens: int = 64
@@ -85,13 +87,13 @@ class NanoChatConfig:
     use_torch_compile: bool = False
     iterations: int = 8
     warmup: int = 10
-    label: str = "nanochat_microbench"
+    label: str = "decode_optimization"
 
 
-class NanoChatBenchmark(BaseBenchmark):
-    """Lightweight decode loop benchmark."""
+class DecodeBenchmark(BaseBenchmark):
+    """Lightweight decode loop benchmark for testing serving optimizations."""
 
-    def __init__(self, cfg: NanoChatConfig):
+    def __init__(self, cfg: DecodeConfig):
         super().__init__()
         self.cfg = cfg
         self.dtype = torch.bfloat16
@@ -191,7 +193,7 @@ class NanoChatBenchmark(BaseBenchmark):
         if (
             not TE_AVAILABLE
             or not (self._fp8_enabled or self._fp4_enabled)
-            or os.getenv("NANOCHAT_SKIP_TE_CACHE") == "1"
+            or os.getenv("DECODE_SKIP_TE_CACHE") == "1"
         ):
             return
         modules = []
@@ -203,8 +205,13 @@ class NanoChatBenchmark(BaseBenchmark):
             modules.append(self.lm_head)
 
         for mod in modules:
+            try:
                 with torch.no_grad(), te.fp8_autocast(enabled=True, fp8_recipe=self.fp8_recipe):
                     _ = mod.get_weight_workspace(mod.weight)  # type: ignore[attr-defined]
+            except TypeError as exc:
+                raise RuntimeError(
+                    "SKIPPED: TransformerEngine weight workspace API is incompatible on this install."
+                ) from exc
 
     def _init_buffers(self) -> None:
         bsz, prompt = self.cfg.batch_size, self.cfg.prompt_tokens
@@ -451,3 +458,4 @@ class NanoChatBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Dict[str, float]:
         return self._custom_metrics
+

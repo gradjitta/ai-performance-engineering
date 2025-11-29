@@ -32,6 +32,7 @@ class OptimizedTensorCoreBenchmark(BaseBenchmark):
         self.A = None
         self.B = None
         self.size = 8192
+        self.n = self.size  # Align workload signature with baseline
         self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
         self.matmul_fn = tensor_core_matmul
     

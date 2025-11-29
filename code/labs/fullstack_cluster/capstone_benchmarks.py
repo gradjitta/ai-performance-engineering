@@ -27,6 +27,9 @@ class CapstoneMatmulBenchmark(BaseBenchmark):
         validate_against_baseline: bool = True,
     ) -> None:
         super().__init__()
+        # Capstone kernels assume multi-GPU fabrics; skip on single-GPU hosts.
+        if torch.cuda.device_count() < 2:
+            raise RuntimeError("SKIPPED: Capstone benchmarks require >=2 GPUs.")
         self._runner = runner
         self._label = label
         self._size = size

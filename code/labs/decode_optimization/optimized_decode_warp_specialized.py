@@ -1,4 +1,4 @@
-"""Fastest NanoChat variant: Triton fused decode MLP (warp-specialized + TMA) + persistent state."""
+"""Optimized: Triton fused decode MLP (warp-specialized + TMA) + persistent state."""
 
 from __future__ import annotations
 
@@ -12,11 +12,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from labs.nanochat_microbench.nanochat_common import NanoChatBenchmark, NanoChatConfig  # noqa: E402
-from labs.nanochat_microbench.triton_fused_decode import fused_decode_mlp  # noqa: E402
+from labs.decode_optimization.decode_common import DecodeBenchmark, DecodeConfig  # noqa: E402
+from labs.decode_optimization.triton_fused_decode import fused_decode_mlp  # noqa: E402
 
 
-class TritonFusedNanoChatBenchmark(NanoChatBenchmark):
+class TritonFusedDecodeBenchmark(DecodeBenchmark):
     """Override decode step with Triton fused MLP and persistent prefill state."""
 
     def _init_model(self) -> None:
@@ -115,8 +115,8 @@ class TritonFusedNanoChatBenchmark(NanoChatBenchmark):
         }
 
 
-def get_benchmark() -> TritonFusedNanoChatBenchmark:
-    cfg = NanoChatConfig(
+def get_benchmark() -> TritonFusedDecodeBenchmark:
+    cfg = DecodeConfig(
         batch_size=8,
         prompt_tokens=1024,
         decode_tokens=256,
@@ -128,9 +128,9 @@ def get_benchmark() -> TritonFusedNanoChatBenchmark:
         use_cuda_graphs=False,  # graphs and Triton WS don't mix well; keep eager
         graph_full_iteration=False,
         use_torch_compile=False,
-        label="optimized_fast_nanochat_warp_specialized",
+        label="optimized_decode_warp_specialized",
     )
-    return TritonFusedNanoChatBenchmark(cfg)
+    return TritonFusedDecodeBenchmark(cfg)
 
 
 if __name__ == "__main__":
@@ -140,4 +140,5 @@ if __name__ == "__main__":
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())
     result = harness.benchmark(bench)
     mean = result.timing.mean_ms if result.timing else 0.0
-    print(f"\noptimized_fast_nanochat_warp_specialized: {mean:.3f} ms/iter")
+    print(f"\noptimized_decode_warp_specialized: {mean:.3f} ms/iter")
+

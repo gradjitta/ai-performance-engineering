@@ -137,7 +137,7 @@ class PagedKVOffloadBenchmark(BaseBenchmark):
     def _select_runtime_dtype(self) -> torch.dtype:
         if self.cfg.prefer_fp8 and _supports_fp8_kv():
             if not _supports_fused_fp8_attention():
-                raise RuntimeError("FP8 requested but fused attention backend is unavailable.")
+                raise RuntimeError("SKIPPED: FP8 requested but fused attention backend is unavailable.")
             self._fp8_reason = "Using FP8 KV: fused FlashAttention path detected."
             return torch.float8_e4m3fn  # type: ignore[attr-defined]
         return self.cfg.fallback_dtype

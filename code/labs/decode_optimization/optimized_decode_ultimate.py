@@ -1,4 +1,4 @@
-"""Pinned host + copy/compute streams."""
+"""Optimized: All optimizations combined (pinned + streams + compile + graphs)."""
 
 from __future__ import annotations
 
@@ -9,23 +9,26 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from labs.nanochat_microbench.nanochat_common import NanoChatBenchmark, NanoChatConfig, attach_benchmark_metadata  # noqa: E402
+from labs.decode_optimization.decode_common import DecodeBenchmark, DecodeConfig, attach_benchmark_metadata  # noqa: E402
 
 
-def get_benchmark() -> NanoChatBenchmark:
-    cfg = NanoChatConfig(
+def get_benchmark() -> DecodeBenchmark:
+    cfg = DecodeConfig(
         batch_size=8,
-        prompt_tokens=256,   # Match baseline for fair comparison
-        decode_tokens=64,    # Match baseline for fair comparison
-        hidden_size=1024,    # Match baseline for fair comparison
+        prompt_tokens=256,
+        decode_tokens=64,
+        hidden_size=1024,
         use_pinned_host=True,
         use_copy_stream=True,
         use_compute_stream=True,
-        label="optimized_fast_nanochat_streams",
+        use_torch_compile=True,
+        use_cuda_graphs=True,
+        graph_full_iteration=True,
+        label="optimized_decode_ultimate",
         iterations=12,
         warmup=15,
     )
-    return attach_benchmark_metadata(NanoChatBenchmark(cfg), __file__)
+    return attach_benchmark_metadata(DecodeBenchmark(cfg), __file__)
 
 
 if __name__ == "__main__":
@@ -35,4 +38,5 @@ if __name__ == "__main__":
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())
     result = harness.benchmark(bench)
     mean = result.timing.mean_ms if result.timing else 0.0
-    print(f"\noptimized_fast_nanochat_streams: {mean:.3f} ms/iter")
+    print(f"\noptimized_decode_ultimate: {mean:.3f} ms/iter")
+

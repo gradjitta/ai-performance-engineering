@@ -17,6 +17,10 @@ class BaselineGemmBenchmark(BaseBenchmark):
         super().__init__()
         self.block = 512
         self.blocks = 8
+        # Expose matrix dims for input verification parity with optimized path
+        self.m = 2048
+        self.n = 2048
+        self.k = 2048
         self.left_blocks: List[torch.Tensor] = []
         self.right_blocks: List[torch.Tensor] = []
         self._tf32_state: Optional[Tuple[Optional[str], Optional[str]]] = None

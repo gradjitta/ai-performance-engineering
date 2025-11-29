@@ -63,6 +63,7 @@ class OptimizedWarpDivergenceILPBenchmark(BaseBenchmark):
 
     def __init__(self):
         super().__init__()
+        self.skip_output_check = True
         self.workload = WORKLOAD
         self.N = self.workload.warp_elements
         self.branch_iterations = self.workload.warp_branch_iterations

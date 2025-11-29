@@ -672,7 +672,7 @@ class CheapEvalStack:
 
         model_path = Path(self.cfg.model_path)
         if not model_path.exists():
-            raise FileNotFoundError(f"Model path not found: {model_path}")
+            raise RuntimeError(f"SKIPPED: Model path not found: {model_path}")
         if torch.cuda.device_count() <= 0:
             raise RuntimeError("No CUDA devices visible; cannot start vLLM.")
 

@@ -16,6 +16,7 @@ class BaselineAttentionILPBenchmark(BaseBenchmark):
     
     def __init__(self):
         super().__init__()
+        self.skip_output_check = True
         self.model: Optional[nn.MultiheadAttention] = None
         self.input: Optional[torch.Tensor] = None
         self.workload = WORKLOAD

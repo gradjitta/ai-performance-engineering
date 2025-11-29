@@ -92,6 +92,9 @@ interface ThemeContextValue {
   themes: Theme[];
   setTheme: (themeId: string) => void;
   setColorMode: (mode: 'dark' | 'light' | 'system') => void;
+  availableThemes: Theme[];
+  selectedThemeId: string;
+  setSelectedThemeId: (themeId: string) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -149,6 +152,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         themes,
         setTheme,
         setColorMode,
+        availableThemes: themes,
+        selectedThemeId: currentThemeId,
+        setSelectedThemeId: setTheme,
       }}
     >
       {children}
@@ -163,4 +169,3 @@ export function useTheme() {
   }
   return context;
 }
-

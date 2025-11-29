@@ -65,20 +65,28 @@ class OptimizedDockerBenchmark(BaseBenchmark):
         self.host_batches: List[torch.Tensor] = []
         self.targets: List[torch.Tensor] = []
         self.prefetcher: Optional[Prefetcher] = None
+        # Align workload with baseline (smoke-aware) for input verification
+        from core.benchmark.smoke import is_smoke_mode
+        low_mem = is_smoke_mode()
+        self.input_dim = 512 if low_mem else 2048
+        self.hidden_dim = 1024 if low_mem else 4096
+        self.output_dim = 256 if low_mem else 1024
+        self.batch_size = 64 if low_mem else 256
+        self.num_batches = 2 if low_mem else 4
 
     def setup(self) -> None:
         torch.manual_seed(101)
         log_allocator_guidance("ch3/optimized_docker", optimized=True)
         self.model = nn.Sequential(
-            nn.Linear(2048, 4096),
+            nn.Linear(self.input_dim, self.hidden_dim),
             nn.GELU(),
-            nn.Linear(4096, 1024),
+            nn.Linear(self.hidden_dim, self.output_dim),
         ).to(self.device).half()
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-2, momentum=0.9)
 
-        for _ in range(4):
-            self.host_batches.append(torch.randn(256, 2048, dtype=torch.float16, pin_memory=True))
-            self.targets.append(torch.randn(256, 1024, dtype=torch.float16, pin_memory=True))
+        for _ in range(self.num_batches):
+            self.host_batches.append(torch.randn(self.batch_size, self.input_dim, dtype=torch.float16, pin_memory=True))
+            self.targets.append(torch.randn(self.batch_size, self.output_dim, dtype=torch.float16, pin_memory=True))
         self.prefetcher = Prefetcher(self.device, self.host_batches, self.targets)
         torch.cuda.synchronize()
 

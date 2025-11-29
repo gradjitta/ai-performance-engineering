@@ -1,10 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Server, Loader2, AlertTriangle, RefreshCw, Network, Cpu } from 'lucide-react';
+import { Server, Loader2, AlertTriangle, RefreshCw, Network } from 'lucide-react';
 import { getParallelismTopology, getParallelismPresets, getParallelismProfiles } from '@/lib/api';
 import { NcclTuningCard } from '@/components/NcclTuningCard';
 import { ParallelismExtrasCard } from '@/components/ParallelismExtrasCard';
+import { ParallelismWizard } from '@/components/ParallelismWizard';
+import { SlurmGeneratorCard } from '@/components/SlurmGeneratorCard';
+import { ParallelismMemoryCard } from '@/components/ParallelismMemoryCard';
+import { ParallelismAdvancedGrid } from '@/components/ParallelismAdvancedGrid';
+import { DistributedCoverageCard } from '@/components/DistributedCoverageCard';
 
 export function DistributedTab() {
   const [loading, setLoading] = useState(true);
@@ -12,6 +17,21 @@ export function DistributedTab() {
   const [topology, setTopology] = useState<any>(null);
   const [presets, setPresets] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
+  const [selectedStrategy, setSelectedStrategy] = useState<{
+    model?: string;
+    tp?: number;
+    pp?: number;
+    dp?: number;
+    batchSize?: number;
+    seqLength?: number;
+  }>({
+    model: 'llama-3.1-70b',
+    tp: 1,
+    pp: 1,
+    dp: 8,
+    batchSize: 8,
+    seqLength: 4096,
+  });
 
   async function loadData() {
     try {
@@ -37,6 +57,19 @@ export function DistributedTab() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (topology?.total_gpus) {
+      setSelectedStrategy((prev) => ({ ...prev, dp: topology.total_gpus }));
+    }
+  }, [topology?.total_gpus]);
+
+  const handleApplyStrategy = (s: Partial<typeof selectedStrategy>) => {
+    setSelectedStrategy((prev) => ({
+      ...prev,
+      ...s,
+    }));
+  };
 
   if (loading) {
     return (
@@ -175,8 +208,35 @@ export function DistributedTab() {
         </div>
       </div>
 
-      <NcclTuningCard />
-      <ParallelismExtrasCard />
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="xl:col-span-2 space-y-4">
+          <ParallelismWizard
+            topology={topology}
+            initialStrategy={selectedStrategy}
+            onApply={handleApplyStrategy}
+          />
+          <ParallelismMemoryCard
+            defaultModel="llama-3.1-70b"
+            defaultTp={1}
+            defaultPp={1}
+            defaultDp={topology?.total_gpus || 8}
+            strategy={selectedStrategy}
+          />
+        </div>
+        <div className="space-y-4">
+          <SlurmGeneratorCard
+            defaultModel="llama-3.1-70b"
+            defaultGpus={topology?.gpus_per_node || 8}
+            gpusPerNode={topology?.gpus_per_node || 8}
+            strategy={selectedStrategy}
+          />
+          <NcclTuningCard />
+        </div>
+      </div>
+
+      <ParallelismExtrasCard onApply={handleApplyStrategy} />
+      <ParallelismAdvancedGrid onApplyStrategy={handleApplyStrategy} />
+      <DistributedCoverageCard />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   Legend,
   Tooltip,
 } from 'recharts';
+import type { CSSProperties } from 'react';
 import { getStatusColor } from '@/lib/utils';
 
 interface StatusChartProps {
@@ -20,6 +21,12 @@ interface StatusChartProps {
 }
 
 export function StatusChart({ summary }: StatusChartProps) {
+  const chartStroke = 'var(--bg-card, #0c0c14)';
+  const tooltipTextStyle: CSSProperties = {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 12,
+  };
+
   const chartData = [
     { name: 'Succeeded', value: summary.succeeded, color: getStatusColor('succeeded') },
     { name: 'Failed', value: summary.failed, color: getStatusColor('failed') },
@@ -42,9 +49,16 @@ export function StatusChart({ summary }: StatusChartProps) {
               outerRadius={90}
               paddingAngle={2}
               dataKey="value"
+              stroke={chartStroke}
+              strokeWidth={2}
             >
               {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
+                <Cell
+                  key={`cell-${index}`}
+                  fill={entry.color}
+                  stroke={chartStroke}
+                  strokeWidth={2}
+                />
               ))}
             </Pie>
             <Tooltip
@@ -52,7 +66,10 @@ export function StatusChart({ summary }: StatusChartProps) {
                 backgroundColor: 'rgba(16, 16, 24, 0.95)',
                 border: '1px solid rgba(255,255,255,0.1)',
                 borderRadius: '8px',
+                color: 'rgba(255, 255, 255, 0.92)',
               }}
+              labelStyle={tooltipTextStyle}
+              itemStyle={tooltipTextStyle}
               formatter={(value: number, name: string) => [
                 `${value} (${summary.total > 0 ? ((value / summary.total) * 100).toFixed(1) : '0'}%)`,
                 name,
@@ -84,4 +101,3 @@ export function StatusChart({ summary }: StatusChartProps) {
     </div>
   );
 }
-

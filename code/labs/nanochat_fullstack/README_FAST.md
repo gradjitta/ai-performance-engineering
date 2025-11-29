@@ -78,3 +78,22 @@ This repo now defaults to the fastest kernels available on Blackwell/GB200: Flas
 - Device/checkpoint: NVIDIA B200, `chatsft_checkpoints/d32`, bf16.
 - Modes are cumulative: baseline (math SDP), +flash SDP, +FA3 varlen, +FA3 with KV block/page hints (`kv_block_size=32`), +persistent decode (buffer reuse) when enabled.
 - Output includes tokens/sec and % delta vs baseline so you can see incremental uplifts per flag.
+
+## Decode Optimization Results (B200)
+
+Measured via `labs/decode_optimization/` (batch=8, prompt=256, decode=64, hidden=1024):
+
+| Optimization | Speedup | Tokens/sec | What it does |
+|--------------|---------|------------|--------------|
+| **CUDA Graphs (full)** | **4.39x** | 704K | Prefill + decode captured in graphs |
+| **CUDA Graphs (decode)** | **4.18x** | 690K | Decode-only graph capture |
+| **torch.compile** | **3.25x** | 317K | Kernel fusion via Inductor/Triton |
+| Pinned Memory | 1.43x | 170K | Async H2D with pinned host buffers |
+| Streams | ~1.0x | 163K | Overlapped copy/compute (no gain here) |
+
+**Best path**: CUDA Graphs + FlashAttention-3 → **4.4x** decode speedup.
+
+Run the microbenchmarks:
+```bash
+python -m cli.aisp bench run --targets labs/decode_optimization --profile none
+```

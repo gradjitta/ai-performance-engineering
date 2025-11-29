@@ -197,7 +197,7 @@ export function WebhooksTab() {
         </div>
         {hasChanges && (
           <div className="px-5 py-2 bg-accent-warning/10 border-t border-accent-warning/20 text-sm text-accent-warning">
-            ⚠️ You have unsaved changes. Click "Save Changes" to persist them.
+            ⚠️ You have unsaved changes. Click &quot;Save Changes&quot; to persist them.
           </div>
         )}
       </div>

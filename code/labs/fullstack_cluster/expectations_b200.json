@@ -1,0 +1,53 @@
+{
+  "examples": {
+    "cluster_gemm": {
+      "example": "cluster_gemm",
+      "metadata": {
+        "best_optimization": "optimized_cluster_gemm",
+        "best_optimization_file": "optimized_cluster_gemm.py",
+        "best_optimization_speedup": 9.19050737226706,
+        "best_optimization_time_ms": 0.6849919954935709,
+        "git_commit": "7c54dd7a5f2ab25b1d0153be8339fd5d1ee294f5",
+        "updated_at": "2025-11-29T03:02:18.901557"
+      },
+      "metrics": {
+        "baseline_p75_ms": 6.295423984527588,
+        "baseline_throughput.latency_ms": 6.295423984527588,
+        "baseline_throughput.requests_per_s": 158.84553644960587,
+        "baseline_throughput.samples_per_s": 666246468.9127277,
+        "baseline_throughput.tokens_per_s": 666246468.9127277,
+        "baseline_time_ms": 6.295423984527588,
+        "best_optimized_p75_ms": 0.6480000019073486,
+        "best_optimized_speedup": 9.19050737226706,
+        "best_optimized_throughput.latency_ms": 0.6849919954935709,
+        "best_optimized_throughput.requests_per_s": 1459.8710737918186,
+        "best_optimized_throughput.samples_per_s": 6123143084.28932,
+        "best_optimized_throughput.tokens_per_s": 6123143084.28932,
+        "best_optimized_time_ms": 0.6849919954935709,
+        "best_speedup": 9.19050737226706
+      },
+      "type": "python"
+    },
+    "moe_readiness": {
+      "example": "moe_readiness",
+      "metadata": {
+        "best_optimization": "optimized_moe_readiness",
+        "best_optimization_file": "optimized_moe_readiness.py",
+        "best_optimization_speedup": 1.0474692742416976,
+        "best_optimization_time_ms": 7548.079967498779,
+        "git_commit": "7c54dd7a5f2ab25b1d0153be8339fd5d1ee294f5",
+        "updated_at": "2025-11-29T03:02:50.073680"
+      },
+      "metrics": {
+        "baseline_p75_ms": 7906.381845474243,
+        "baseline_time_ms": 7906.381845474243,
+        "best_optimized_p75_ms": 7548.079967498779,
+        "best_optimized_speedup": 1.0474692742416976,
+        "best_optimized_time_ms": 7548.079967498779,
+        "best_speedup": 1.0474692742416976
+      },
+      "type": "python"
+    }
+  },
+  "hardware_key": "b200"
+}

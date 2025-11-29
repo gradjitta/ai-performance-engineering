@@ -13,6 +13,7 @@ import {
 } from '@/lib/api';
 import { Brain, AlertTriangle, Lightbulb, Loader2, RefreshCw, Sparkles, Send } from 'lucide-react';
 import { AISuggestionsCard } from '@/components/AISuggestionsCard';
+import { OptimizationIntelligencePanel } from '@/components/OptimizationIntelligencePanel';
 
 export function LLMInsightsTab() {
   const [analysis, setAnalysis] = useState<any>(null);
@@ -485,6 +486,8 @@ export function LLMInsightsTab() {
           </div>
         </div>
       </div>
+
+      <OptimizationIntelligencePanel />
     </div>
   );
 }

@@ -35,6 +35,8 @@ import {
   FilterBar,
   FilterState,
   GpuThermalMonitor,
+  LiveGpuMonitor,
+  InsightsCard,
   RegressionAlerts,
   DiagnosticsCard,
   SystemContextCard,
@@ -59,10 +61,11 @@ import {
   RLHFTab,
   InferenceTab,
   HistoryTab,
-  BatchOptTab,
+  BatchSizeOptimizationTab,
   WebhooksTab,
   ThemesTab,
   MicrobenchTab,
+  AIAssistantTab,
 } from '@/components/tabs';
 import {
   Zap,
@@ -943,6 +946,12 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* Performance Insights */}
+            <InsightsCard />
+
+            {/* Live GPU Monitoring */}
+            <LiveGpuMonitor />
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <CudaEnvCard />
               <GpuThermalMonitor />
@@ -1134,13 +1143,16 @@ export default function Dashboard() {
 
         {activeTab === 'history' && <HistoryTab />}
 
-        {activeTab === 'batchopt' && <BatchOptTab />}
+        {activeTab === 'batchopt' && <BatchSizeOptimizationTab />}
 
         {activeTab === 'webhooks' && <WebhooksTab />}
 
         {activeTab === 'microbench' && <MicrobenchTab />}
 
         {activeTab === 'themes' && <ThemesTab />}
+
+        {activeTab === 'aiassistant' && <AIAssistantTab />}
+
       </main>
 
       {/* Global modals/overlays */}
