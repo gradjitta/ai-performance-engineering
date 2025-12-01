@@ -150,10 +150,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-
-    bench = get_benchmark()
-    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())
-    result = harness.benchmark(bench)
-    mean_ms = result.timing.mean_ms if result and result.timing else 0.0
-    print(f"[flexattention optimized] mean iteration {mean_ms:.3f} ms")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

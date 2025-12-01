@@ -107,9 +107,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BaselineComputeBoundBenchmark().get_config(),
-    )
-    result = harness.benchmark(get_benchmark())
-    print(f"Baseline compute-bound: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

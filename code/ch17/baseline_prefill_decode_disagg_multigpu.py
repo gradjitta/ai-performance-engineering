@@ -44,9 +44,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode, BenchmarkConfig
-
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=BenchmarkConfig(iterations=3, warmup=5))
-    result = harness.benchmark(benchmark)
-    print(f"Prefill/decode baseline (multi-GPU): {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

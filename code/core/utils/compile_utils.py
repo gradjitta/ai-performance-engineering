@@ -368,7 +368,16 @@ def _set_matmul_precision(precision: str) -> None:
         backend_mut = cast(Any, matmul_backend)
         backend_mut.fp32_precision = _map_precision_to_backend(precision)
     if hasattr(torch, 'set_float32_matmul_precision'):
-        torch.set_float32_matmul_precision(precision)
+        # Normalize precision to valid PyTorch API values: 'highest', 'high', or 'medium'
+        # Map legacy/internal "tf32" to "high" for PyTorch 2.0+ compatibility
+        api_precision = precision.lower()
+        if api_precision in ("tf32", "enable", "on", "true"):
+            api_precision = "high"
+        elif api_precision in ("fp32", "disable", "off", "false", "none"):
+            api_precision = "highest"
+        elif api_precision not in ("highest", "high", "medium"):
+            api_precision = "high"  # Default fallback
+        torch.set_float32_matmul_precision(api_precision)
 
 
 def _set_cudnn_precision(precision: str) -> None:

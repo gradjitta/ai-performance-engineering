@@ -129,10 +129,6 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedGuidedDecodingMathBenchmark()
 
 
-if __name__ == '__main__':
-    benchmark = get_benchmark()
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-
-    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=benchmark.get_config())
-    result = harness.benchmark(benchmark)
-    print(f"\nOptimized Guided Decoding (math SDP): {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
+if __name__ == "__main__":
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

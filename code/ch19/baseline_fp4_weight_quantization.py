@@ -351,33 +351,6 @@ def get_benchmark() -> BaseBenchmark:
     return BaselineFP4WeightQuantizationBenchmark()
 
 
-def main() -> None:
-    """Standalone execution."""
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=50, warmup=10)
-    )
-    benchmark = BaselineFP4WeightQuantizationBenchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("=" * 70)
-    print("Baseline: FP4 Weight Quantization")
-    print("=" * 70)
-    print(f"Configuration:")
-    print(f"  Batch: {benchmark.batch_size}, Seq: {benchmark.seq_len}")
-    print(f"  Model: {benchmark.d_model}, FF: {benchmark.d_ff}")
-    print()
-    print(f"Results:")
-    print(f"  Average: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"  Median: {result.timing.median_ms if result.timing else 0.0:.3f} ms")
-    print()
-    print("Baseline limitations:")
-    print("  - Per-tensor scaling (reduced precision)")
-    print("  - Dequantize on every forward (slow)")
-    print("  - No FP8 tensor core acceleration")
-    print("  - No weight cache")
-
-
 if __name__ == "__main__":
-    main()
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

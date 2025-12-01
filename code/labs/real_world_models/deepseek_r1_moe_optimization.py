@@ -293,42 +293,5 @@ def run_benchmark(
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="DeepSeek-R1 MoE Optimization")
-    parser.add_argument("--batch-size", type=int, default=4)
-    parser.add_argument("--seq-length", type=int, default=2048)
-    parser.add_argument("--hidden-size", type=int, default=4096)
-    parser.add_argument("--num-experts", type=int, default=64)
-    parser.add_argument("--top-k", type=int, default=6)
-    parser.add_argument("--profile", type=str, default="none")
-    
-    args = parser.parse_args()
-    
-    result = run_benchmark(
-        batch_size=args.batch_size,
-        seq_length=args.seq_length,
-        hidden_size=args.hidden_size,
-        num_experts=args.num_experts,
-        top_k=args.top_k,
-        profile=args.profile,
-    )
-    
-    print(f"\n{'='*60}")
-    print(f"DeepSeek-R1 MoE Optimization Results")
-    print(f"{'='*60}")
-    print(f"Config: {result['config']}")
-    print(f"Mean time: {result['mean_time_ms']:.2f} ms")
-    print(f"Throughput: {result['throughput']:.2f} tokens/sec")
-    print(f"Balance loss: {result['balance_loss']:.6f}")
-    print(f"Gini coefficient: {result['gini_coefficient']:.4f}")
-    print(f"Router entropy: {result['router_entropy']:.4f}")
-    print(f"{'='*60}\n")
-    print(f"Optimizations:")
-    print(f"  - Load-balanced routing reduces expert imbalance")
-    print(f"  - FP8 experts for 2× memory savings on Blackwell")
-    print(f"  - Expert parallelism for multi-GPU scaling")
-
-
-
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

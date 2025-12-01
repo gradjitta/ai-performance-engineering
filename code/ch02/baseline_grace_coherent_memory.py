@@ -197,26 +197,5 @@ def run_benchmark(
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Baseline Grace coherent memory")
-    parser.add_argument("--size-mb", type=int, default=256, help="Buffer size in MB")
-    parser.add_argument("--iterations", type=int, default=100, help="Number of iterations")
-    parser.add_argument("--profile", type=str, default="none", help="Profiling mode")
-    
-    args = parser.parse_args()
-    
-    result = run_benchmark(
-        size_mb=args.size_mb,
-        iterations=args.iterations,
-        profile=args.profile,
-    )
-    
-    print(f"\n{'='*60}")
-    print(f"Baseline Grace Coherent Memory Results")
-    print(f"{'='*60}")
-    print(f"Grace-Blackwell: {result['is_grace_blackwell']}")
-    print(f"Buffer size: {result['size_mb']} MB")
-    print(f"Iterations: {result['iterations']}")
-    print(f"Mean time: {result['mean_time_ms']:.2f} ms")
-    print(f"{'='*60}\n")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

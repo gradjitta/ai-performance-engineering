@@ -228,6 +228,10 @@ def discover_benchmarks(
 ) -> List[Tuple[Path, List[Path], str]]:
     """Discover benchmark modules by looking for baseline_*.py files with matching optimized_*.py.
     
+    Note: This function only discovers Python benchmarks (.py files).
+    CUDA benchmarks (.cu files) should be discovered separately via discover_cuda_benchmarks()
+    in core.harness.run_all_benchmarks to avoid trying to load .cu files as Python modules.
+    
     Args:
         chapter_dir: Path to chapter directory (e.g., Path('ch16'))
         validate: If True, check that files have get_benchmark() and skip those that don't
@@ -238,7 +242,8 @@ def discover_benchmarks(
         Example: (Path('ch16/baseline_moe_dense.py'), [Path('ch16/optimized_moe_sparse.py')], 'moe')
     """
     pairs = []
-    baseline_files = sorted(chapter_dir.glob("baseline_*.py")) + sorted(chapter_dir.glob("baseline_*.cu"))
+    # Only discover Python files - CUDA benchmarks are handled by discover_cuda_benchmarks()
+    baseline_files = sorted(chapter_dir.glob("baseline_*.py"))
 
     example_names = {
         baseline_file.stem.replace("baseline_", "")

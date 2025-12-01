@@ -235,40 +235,5 @@ def run_benchmark(
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Llama 3.1 8B Optimization")
-    parser.add_argument("--batch-size", type=int, default=1)
-    parser.add_argument("--seq-length", type=int, default=8192)
-    parser.add_argument("--no-compile", action="store_true")
-    parser.add_argument("--use-fp8", action="store_true")
-    parser.add_argument("--no-flex-attention", action="store_true")
-    parser.add_argument("--profile", type=str, default="none")
-    
-    args = parser.parse_args()
-    
-    result = run_benchmark(
-        batch_size=args.batch_size,
-        seq_length=args.seq_length,
-        use_compile=not args.no_compile,
-        use_fp8=args.use_fp8,
-        use_flex_attention=not args.no_flex_attention,
-        profile=args.profile,
-    )
-    
-    print(f"\n{'='*60}")
-    print(f"Llama 3.1 8B Optimization Results")
-    print(f"{'='*60}")
-    print(f"Sequence length: {result['seq_length']:,} tokens")
-    print(f"Optimizations: {result['optimizations']}")
-    print(f"Mean time: {result['mean_time_ms']:.2f} ms")
-    print(f"{'='*60}\n")
-    print(f"Expected improvements:")
-    print(f"  - torch.compile: 1.5-2× speedup")
-    print(f"  - FP8: 2× speedup on Blackwell")
-    print(f"  - FlexAttention: Lower memory, better efficiency")
-
-
-
-
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

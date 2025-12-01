@@ -109,11 +109,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=50, warmup=5),
-    )
-    result = harness.benchmark(benchmark)
-    timing = result.timing.mean_ms if result.timing else 0.0
-    print(f"\nOptimized cuBLAS (TF32): {timing:.3f} ms")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

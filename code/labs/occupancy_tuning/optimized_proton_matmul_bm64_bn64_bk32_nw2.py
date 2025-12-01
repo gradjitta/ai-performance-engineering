@@ -50,12 +50,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=benchmark.get_config())
-    result = harness.benchmark(benchmark)
-    
-    if result.timing:
-        print(f"\nLarge-Tile Triton Matmul ({SCHEDULE.name})")
-        print(f"  Time: {result.timing.mean_ms:.3f} ms")
-        print(f"  Notes: {SCHEDULE.notes}")
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

@@ -167,14 +167,6 @@ def get_benchmark() -> BaseBenchmark:
     return BaselineFSDP2FP32CommBenchmark()
 
 
-if __name__ == '__main__':
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config()
-    )
-    result = harness.benchmark(benchmark)
-    print(f"\nFSDP2 + FP32 Communication: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"  Communication volume: {benchmark._comm_bytes / 1e6:.1f} MB per all-reduce")
-    print(f"  Compression ratio: 1x (no compression)")
-
+if __name__ == "__main__":
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

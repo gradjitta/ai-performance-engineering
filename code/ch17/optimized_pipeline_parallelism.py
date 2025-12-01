@@ -242,11 +242,5 @@ def parse_args() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    benchmark = OptimizedPipelineParallelismBenchmark(micro_batches=args.microbatches)
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config(),
-    )
-    result = harness.benchmark(benchmark)
-    print(result)
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

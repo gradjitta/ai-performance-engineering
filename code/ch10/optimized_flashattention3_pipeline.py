@@ -419,46 +419,6 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedFlashAttention3Benchmark()
 
 
-def main() -> None:
-    """Standalone execution with FA3 optimization summary."""
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=50, warmup=10)
-    )
-    benchmark = OptimizedFlashAttention3Benchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("=" * 70)
-    print("Optimized: FlashAttention-3 Style Pipeline")
-    print("=" * 70)
-    print(f"Configuration:")
-    print(f"  Batch: {benchmark.batch_size}, Seq: {benchmark.seq_len}")
-    print(f"  Hidden: {benchmark.hidden_dim}")
-    print(f"  Heads: {benchmark.num_heads}, KV Heads: {benchmark.num_kv_heads} (GQA)")
-    print()
-    print(f"Results:")
-    print(f"  Average: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"  Median: {result.timing.median_ms if result.timing else 0.0:.3f} ms")
-    print()
-    print("FA3 Optimizations Applied:")
-    print("  ✓ Fused QKV projection (reduced memory traffic)")
-    print("  ✓ Optimal SDPA backend selection")
-    print("  ✓ torch.compile with max-autotune")
-    print("  ✓ GQA (Grouped Query Attention) for KV efficiency")
-    print("  ✓ 3-stage async pipeline (via SDPA internals)")
-    print("  ✓ Online softmax (O(n) memory)")
-    
-    if torch.cuda.is_available():
-        major, minor = torch.cuda.get_device_capability()
-        print()
-        if major >= 10:
-            print(f"  ✓ Blackwell (SM {major}.{minor}): Enhanced TMA, TCGEN05")
-        elif major >= 9:
-            print(f"  ✓ Hopper (SM {major}.{minor}): WGMMA, FP8 Tensor Cores")
-        elif major >= 8:
-            print(f"  ✓ Ampere (SM {major}.{minor}): Async copy, TF32")
-
-
 if __name__ == "__main__":
-    main()
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

@@ -155,24 +155,6 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedSymmetricMemoryPerfBenchmark()
 
 
-def main() -> None:
-    """Standalone execution for testing."""
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=20, warmup=5),
-    )
-    benchmark = OptimizedSymmetricMemoryPerfBenchmark()
-    result = harness.benchmark(benchmark)
-
-    if dist.get_rank() == 0:
-        print("=" * 70)
-        print("Optimized: SymmetricMemory Peer-Put")
-        print("=" * 70)
-        print(f"Average time: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-        print(f"Bandwidth: {benchmark._last_gbps:.2f} GB/s")
-
-
 if __name__ == "__main__":
-    main()
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

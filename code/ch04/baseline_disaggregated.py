@@ -172,24 +172,6 @@ def get_benchmark() -> BaseBenchmark:
     return BaselineDisaggregatedBenchmark()
 
 
-def main() -> None:
-    """Standalone execution (for testing)."""
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-    
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=50, warmup=5)
-    )
-    benchmark = BaselineDisaggregatedBenchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("=" * 70)
-    print(f"Baseline: disaggregated")
-    print("=" * 70)
-    print(f"Average time: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"Median: {result.timing.median_ms if result.timing else 0.0:.3f} ms")
-    print(f"Std: {result.timing.std_ms if result.timing else 0.0:.3f} ms")
-
-
 if __name__ == "__main__":
-    main()
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

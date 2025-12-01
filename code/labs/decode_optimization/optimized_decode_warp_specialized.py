@@ -167,14 +167,5 @@ def get_benchmark() -> TritonFusedDecodeBenchmark:
 
 
 if __name__ == "__main__":
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode  # noqa: E402
-
-    bench = get_benchmark()
-    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())
-    result = harness.benchmark(bench)
-    mean = result.timing.mean_ms if result.timing else 0.0
-    print(f"\noptimized_decode_warp_specialized: {mean:.3f} ms/iter")
-
-
-
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

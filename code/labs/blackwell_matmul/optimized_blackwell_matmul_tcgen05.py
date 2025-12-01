@@ -67,13 +67,5 @@ def get_benchmark(size: int = 2048, *, cta2: bool = False) -> GraceBlackwellMatm
 
 
 if __name__ == "__main__":
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config(),
-    )
-    result = harness.benchmark(benchmark)
-    mean_ms = result.timing.mean_ms if result.timing else 0.0
-    print(f"\ntcgen05 (TMEM) : {mean_ms:.3f} ms")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

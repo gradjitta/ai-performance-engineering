@@ -204,28 +204,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Baseline KV Cache")
-    parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--num-layers", type=int, default=32)
-    parser.add_argument("--max-seq-length", type=int, default=8192)
-    parser.add_argument("--profile", type=str, default="none")
-    
-    args = parser.parse_args()
-    
-    result = run_benchmark(
-        batch_size=args.batch_size,
-        num_layers=args.num_layers,
-        max_seq_length=args.max_seq_length,
-        profile=args.profile,
-    )
-    
-    print(f"\n{'='*60}")
-    print(f"Baseline KV Cache Results")
-    print(f"{'='*60}")
-    print(f"Precision: {result['precision']}")
-    print(f"Memory: {result['memory_gb']:.2f} GB")
-    print(f"Throughput: {result['tokens_per_sec']:.2f} tokens/sec")
-    print(f"{'='*60}\n")
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

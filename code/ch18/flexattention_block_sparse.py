@@ -212,40 +212,5 @@ def run_benchmark(
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="FlexAttention Block-Sparse")
-    parser.add_argument("--batch-size", type=int, default=2)
-    parser.add_argument("--num-heads", type=int, default=32)
-    parser.add_argument("--seq-length", type=int, default=8192)
-    parser.add_argument("--head-dim", type=int, default=128)
-    parser.add_argument("--block-size", type=int, default=256)
-    parser.add_argument("--no-compile", action="store_true")
-    parser.add_argument("--profile", type=str, default="none")
-    
-    args = parser.parse_args()
-    
-    result = run_benchmark(
-        batch_size=args.batch_size,
-        num_heads=args.num_heads,
-        seq_length=args.seq_length,
-        head_dim=args.head_dim,
-        block_size=args.block_size,
-        use_compile=not args.no_compile,
-        profile=args.profile,
-    )
-    
-    print(f"\n{'='*60}")
-    print(f"FlexAttention Block-Sparse Results")
-    print(f"{'='*60}")
-    print(f"Sequence length: {result['seq_length']:,}")
-    print(f"Block size: {result['block_size']}")
-    print(f"Sparsity: {result['sparsity_pct']:.1f}%")
-    print(f"Mean time: {result['mean_time_ms']:.2f} ms")
-    print(f"{'='*60}\n")
-    print(f"Expected: ~3-5× faster than dense attention for long sequences")
-
-
-
-
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

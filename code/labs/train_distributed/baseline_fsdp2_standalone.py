@@ -214,34 +214,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Baseline FSDP2")
-    parser.add_argument("--batch-size", type=int, default=4)
-    parser.add_argument("--seq-length", type=int, default=2048)
-    parser.add_argument("--hidden-size", type=int, default=4096)
-    parser.add_argument("--num-layers", type=int, default=8)
-    parser.add_argument("--micro-batch-size", type=int, default=1)
-    parser.add_argument("--profile", type=str, default="none")
-    
-    args = parser.parse_args()
-    
-    result = run_benchmark(
-        batch_size=args.batch_size,
-        seq_length=args.seq_length,
-        hidden_size=args.hidden_size,
-        num_layers=args.num_layers,
-        micro_batch_size=args.micro_batch_size,
-        profile=args.profile,
-    )
-    
-    print(f"\n{'='*60}")
-    print(f"Baseline FSDP2 Results")
-    print(f"{'='*60}")
-    print(f"Precision: {result['precision']}")
-    print(f"Mean time: {result['mean_time_ms']:.2f} ms")
-    print(f"Peak memory: {result['peak_memory_gb']:.2f} GB")
-    print(f"Loss: {result['loss']:.6f}")
-    print(f"{'='*60}\n")
-    print(f"Launch with: torchrun --nproc_per_node=2 {__file__}")
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

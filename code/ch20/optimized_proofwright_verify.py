@@ -493,58 +493,6 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedProofwrightBenchmark()
 
 
-def main() -> None:
-    """Standalone execution with detailed output."""
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-    
-    print("=" * 70)
-    print("Optimized: ProofWright-Style Agentic Formal Verification")
-    print("=" * 70)
-    print()
-    print("This demonstrates LLM-based automated formal verification.")
-    print("Advantages over manual testing:")
-    print("  ✓ Complete coverage via mathematical proofs")
-    print("  ✓ Automatic specification generation")
-    print("  ✓ Scales to complex kernels")
-    print("  ✓ Catches subtle concurrency bugs")
-    print("  ✓ LLM discovers edge cases humans miss")
-    print()
-    
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=10, warmup=5)
-    )
-    benchmark = OptimizedProofwrightBenchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("Verification Results:")
-    print("-" * 40)
-    
-    report = benchmark._verification_report
-    summary = report.get("summary", {})
-    
-    print(f"  Properties verified: {summary.get('total_properties', 0)}")
-    print(f"  Proven: {summary.get('proven', 0)}")
-    print(f"  Refuted: {summary.get('refuted', 0)}")
-    print(f"  Edge cases discovered: {report.get('discovered_edge_cases', 0)}")
-    print()
-    
-    print("Proof Details:")
-    for proof in report.get("proofs", []):
-        status_icon = "✓" if proof["status"] == "proven" else "✗"
-        print(f"  {status_icon} {proof['property']}: {proof['status']} ({proof['steps']} steps)")
-    
-    print()
-    print(f"Average verification time: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print()
-    print("Comparison with manual testing (baseline):")
-    print("  Manual:     Random samples, no formal guarantees")
-    print("  ProofWright: Mathematical proofs, complete coverage")
-    print()
-    print("Key insight: Formal verification provides *proofs*, not just tests.")
-    print("A passing test suite means 'no bugs found'. A proof means 'no bugs exist'.")
-
-
 if __name__ == "__main__":
-    main()
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

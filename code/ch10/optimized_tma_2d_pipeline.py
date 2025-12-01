@@ -39,11 +39,5 @@ def get_benchmark() -> CudaBinaryBenchmark:
 
 
 if __name__ == "__main__":
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config(),
-    )
-    result = harness.benchmark(benchmark)
-    mean_ms = result.timing.mean_ms if result.timing else 0.0
-    print(f"\nOptimized TMA 2D pipeline time: {mean_ms:.3f} ms")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

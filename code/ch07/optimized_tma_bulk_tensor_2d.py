@@ -46,11 +46,5 @@ def get_benchmark() -> OptimizedTMABulkTensor2D:
 
 
 if __name__ == "__main__":
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config(),
-    )
-    result = harness.benchmark(benchmark)
-    timing = result.timing.mean_ms if result.timing else 0.0
-    print(f"\nOptimized 2D tensor copy (TMA bulk): {timing:.3f} ms")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

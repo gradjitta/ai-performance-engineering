@@ -171,20 +171,6 @@ def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return OptimizedMemoryDoubleBufferingBenchmark()
 
-def main() -> None:
-    """Standalone execution."""
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=20, warmup=5)
-    )
-    benchmark = OptimizedMemoryDoubleBufferingBenchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("=" * 70)
-    print("Optimized: Memory Double Buffering (Ping-Pong)")
-    print("=" * 70)
-    print(f"Average time: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(" Tip: Double buffering overlaps memory transfers with compute operations")
-
 if __name__ == "__main__":
-    main()
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

@@ -115,9 +115,6 @@ def get_benchmark() -> BaseBenchmark:
     return BaselineWarpSpecializationPipelineBenchmark()
 
 
-if __name__ == '__main__':
-    benchmark = get_benchmark()
-    config = benchmark.get_config()
-    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config)
-    result = harness.benchmark(benchmark)
-    print(f"\nBaseline Warp Specialization (Pipeline): {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
+if __name__ == "__main__":
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

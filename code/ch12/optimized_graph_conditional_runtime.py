@@ -167,39 +167,6 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedGraphBenchmark()
 
 
-def main() -> None:
-    """Standalone execution."""
-    print("=" * 70)
-    print("Optimized: CUDA Graph Replay")
-    print("=" * 70)
-    
-    if torch.cuda.is_available():
-        print(f"GPU: {torch.cuda.get_device_name()}")
-        major, minor = torch.cuda.get_device_capability()
-        print(f"Compute Capability: {major}.{minor}")
-        print(f"CUDA Version: {torch.version.cuda}")
-        print(f"Conditional Graphs (12.4+): {supports_conditional_graphs()}")
-    
-    print()
-    
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=100, warmup=20)
-    )
-    
-    benchmark = get_benchmark()
-    result = harness.benchmark(benchmark)
-    
-    print(f"Results:")
-    print(f"  Average: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"  Median: {result.timing.median_ms if result.timing else 0.0:.3f} ms")
-    print()
-    print("Optimizations:")
-    print("  ✓ CUDA graph capture and replay")
-    print("  ✓ ~35 kernel launches batched into single submission")
-    print("  ✓ Eliminates per-kernel launch overhead")
-    print("  ✓ Ideal for inference with fixed shapes")
-
-
 if __name__ == "__main__":
-    main()
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

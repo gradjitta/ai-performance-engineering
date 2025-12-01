@@ -168,20 +168,6 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedPagedAttentionBenchmark()
 
 
-def main() -> None:
-    """Standalone execution (for testing)."""
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=20, warmup=5)
-    )
-    benchmark = OptimizedPagedAttentionBenchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("=" * 70)
-    print(f"Optimized: paged_attention (Flash Attention)")
-    print("=" * 70)
-    print(f"Average time: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-
-
 if __name__ == "__main__":
-    main()
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

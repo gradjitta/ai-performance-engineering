@@ -27,15 +27,5 @@ def get_benchmark() -> FlashSDPLabBenchmark:
 
 
 if __name__ == "__main__":
-    choice = _parse_cli_backend()
-    if choice:
-        _DEFAULT_BACKEND = choice
-    bench = get_benchmark()
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-
-    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=bench.get_config())
-    result = harness.benchmark(bench)
-    print(
-        f"[cudnn_sdpa_bench optimized backend={bench.backend}] mean iteration "
-        f"{result.timing.mean_ms if result and result.timing else 0.0:.3f} ms"
-    )
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

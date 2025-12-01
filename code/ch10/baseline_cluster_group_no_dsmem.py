@@ -51,10 +51,5 @@ def get_benchmark() -> BaselineClusterGroupNoDSMEMBenchmark:
 
 
 if __name__ == "__main__":
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config(),
-    )
-    result = harness.benchmark(benchmark)
-    print(f"\nBaseline Cluster Group (no DSMEM): {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

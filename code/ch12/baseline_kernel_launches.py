@@ -125,29 +125,6 @@ def get_benchmark() -> BaseBenchmark:
     return BaselineKernelLaunchesBenchmark()
 
 
-def main() -> None:
-    """Standalone execution with timing."""
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=30, warmup=5)
-    )
-    benchmark = BaselineKernelLaunchesBenchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("=" * 70)
-    print("Baseline: Many Small Kernel Launches")
-    print("=" * 70)
-    print(f"Tensor size: {benchmark.size}")
-    print(f"Operations per iteration: 3 (add, multiply, relu)")
-    print(f"Total kernel launches: {benchmark.iterations * 3} per run")
-    print("Problem: Each operation = separate kernel launch overhead\n")
-    print(f"Average time: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"Median: {result.timing.median_ms if result.timing else 0.0:.3f} ms")
-    print(f"Std: {result.timing.std_ms if result.timing else 0.0:.3f} ms")
-    print(f"Total kernel launches: {benchmark.iterations * 3}")
-    print(f"Overhead: High (300 launches per run)")
-    print("\n Tip: Use CUDA Graphs to reduce launch overhead")
-
-
 if __name__ == "__main__":
-    main()
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

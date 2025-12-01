@@ -222,16 +222,5 @@ def _parse_cli_backend(argv: Optional[list[str]] = None) -> Optional[str]:
 
 
 if __name__ == "__main__":
-    choice = _parse_cli_backend()
-    if choice:
-        _CLI_BACKEND = choice
-    bench = get_benchmark()
-    harness_cfg = bench.get_config()
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-
-    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=harness_cfg)
-    result = harness.benchmark(bench)
-    print(
-        f"[cudnn_sdpa_bench backend={bench.backend}] mean iteration "
-        f"{result.timing.mean_ms if result and result.timing else 0.0:.3f} ms"
-    )
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

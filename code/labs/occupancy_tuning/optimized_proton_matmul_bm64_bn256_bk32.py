@@ -51,24 +51,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from labs.occupancy_tuning.baseline_proton_matmul import BaselineProtonMatmul
-    
-    # Run baseline
-    baseline = BaselineProtonMatmul()
-    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=baseline.get_config())
-    baseline_result = harness.benchmark(baseline)
-    baseline_time = baseline_result.timing.mean_ms if baseline_result.timing else 0
-    
-    # Run optimized
-    optimized = get_benchmark()
-    harness2 = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=optimized.get_config())
-    optimized_result = harness2.benchmark(optimized)
-    optimized_time = optimized_result.timing.mean_ms if optimized_result.timing else 0
-    
-    print(f"\n=== Occupancy Tuning Results ===")
-    print(f"Baseline ({baseline.schedule.name}): {baseline_time:.3f} ms")
-    print(f"Optimized ({OPTIMIZED_SCHEDULE.name}): {optimized_time:.3f} ms")
-    if baseline_time > 0:
-        print(f"Speedup: {baseline_time / optimized_time:.2f}x")
-    print(f"\nOptimization: {OPTIMIZED_SCHEDULE.notes}")
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

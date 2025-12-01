@@ -266,37 +266,6 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedFlashAttentionBenchmark()
 
 
-def main() -> None:
-    """Standalone execution with explanation of Ch10 concepts."""
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=50, warmup=10)
-    )
-    benchmark = OptimizedFlashAttentionBenchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("=" * 70)
-    print("Optimized: Tiled Attention (FlashAttention via SDPA)")
-    print("=" * 70)
-    print(f"Configuration:")
-    print(f"  Batch size: {benchmark.batch_size}")
-    print(f"  Sequence length: {benchmark.seq_len}")
-    print(f"  Hidden dim: {benchmark.hidden_dim}")
-    print(f"  Num heads: {benchmark.num_heads}")
-    print()
-    print(f"Results:")
-    print(f"  Average time: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"  Median: {result.timing.median_ms if result.timing else 0.0:.3f} ms")
-    print()
-    print("Chapter 10 concepts demonstrated:")
-    print("  - Tiled computation (attention computed in SRAM-sized blocks)")
-    print("  - Producer-consumer pattern (load K/V tiles, compute partial scores)")
-    print("  - Memory efficiency: O(seq_len) instead of O(seq_len²)")
-    print()
-    print("Memory comparison at seq_len=1024:")
-    print(f"  Standard attention: {benchmark.seq_len**2 * 4 / 1024:.0f} KB per head")
-    print(f"  Tiled attention: ~{benchmark.seq_len * 4 / 1024:.0f} KB per head")
-
-
 if __name__ == "__main__":
-    main()
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

@@ -288,37 +288,6 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedTorchcommsBenchmark()
 
 
-def main() -> None:
-    """Standalone execution with comparison info."""
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-    
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=50, warmup=5)
-    )
-    benchmark = OptimizedTorchcommsBenchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("=" * 70)
-    print("Optimized: Modern torchcomms API Patterns")
-    print("=" * 70)
-    print(f"Average time: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"Median: {result.timing.median_ms if result.timing else 0.0:.3f} ms")
-    print(f"Std: {result.timing.std_ms if result.timing else 0.0:.3f} ms")
-    print()
-    print("Modern torchcomms patterns demonstrated:")
-    print("  ✓ Functional collectives (torch.compile compatible)")
-    print("  ✓ Async-first design with automatic overlap")
-    print("  ✓ Reduce-scatter + all-gather pattern (FSDP2-style)")
-    print("  ✓ No in-place tensor modification")
-    print()
-    print(f"torchcomms available: {TORCHCOMMS_AVAILABLE}")
-    print()
-    print("Key API differences from legacy torch.distributed:")
-    print("  Legacy:  dist.all_reduce(tensor)  # modifies in-place, sync")
-    print("  Modern:  result = functional_all_reduce(tensor)  # returns new, async")
-
-
 if __name__ == "__main__":
-    main()
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

@@ -84,23 +84,5 @@ def get_benchmark() -> BaselineMatmulTCGen05PipelinedBenchmark:
 
 
 if __name__ == "__main__":
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-    
-    print("cuBLAS Baseline (8192x8192)")
-    print("=" * 50)
-    
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config(),
-    )
-    result = harness.benchmark(benchmark)
-    
-    time_ms = result.timing.mean_ms if result.timing else 0.0
-    size = benchmark.size
-    flops = 2 * size ** 3
-    tflops = (flops / 1e12) / (time_ms / 1000) if time_ms > 0 else 0
-    
-    print(f"Results ({size}x{size}x{size}):")
-    print(f"  Time: {time_ms:.3f} ms")
-    print(f"  Performance: {tflops:.1f} TFLOPS")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

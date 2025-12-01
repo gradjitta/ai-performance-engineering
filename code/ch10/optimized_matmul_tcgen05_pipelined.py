@@ -92,34 +92,5 @@ def get_benchmark() -> OptimizedMatmulTCGen05PipelinedBenchmark:
 
 
 if __name__ == "__main__":
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-    
-    print("TCGen05 Pipelined Matmul Benchmark")
-    print("=" * 50)
-    print()
-    print("This benchmark demonstrates WHERE optimization")
-    print("opportunities exist in tensor core kernels:")
-    print()
-    print("1. DOUBLE BUFFERING: Load next tile while computing current")
-    print("2. ASYNC PREFETCH: Use TMA to hide memory latency")
-    print("3. PERSISTENT KERNELS: Keep CTAs resident for better occupancy")
-    print("4. WARP SPECIALIZATION: Dedicate warps to load vs compute")
-    print()
-    
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config(),
-    )
-    result = harness.benchmark(benchmark)
-    
-    time_ms = result.timing.mean_ms if result.timing else 0.0
-    size = benchmark.size
-    flops = 2 * size ** 3
-    tflops = (flops / 1e12) / (time_ms / 1000) if time_ms > 0 else 0
-    
-    print(f"Results ({size}x{size}x{size}):")
-    print(f"  Time: {time_ms:.3f} ms")
-    print(f"  Performance: {tflops:.1f} TFLOPS")
-    print()
-    print("Compare with cuBLAS to see the optimization gap.")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

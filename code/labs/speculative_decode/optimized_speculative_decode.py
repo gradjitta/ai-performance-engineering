@@ -241,17 +241,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-    
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=benchmark.get_config())
-    result = harness.benchmark(benchmark)
-    
-    mean_ms = result.timing.mean_ms if result.timing else 0.0
-    metrics = benchmark.get_custom_metrics()
-    
-    print(f"\nSpeculative Decoding: {mean_ms:.3f} ms")
-    print(f"Tokens/sec: {benchmark.tokens_generated / (mean_ms / 1000):.1f}")
-    print(f"Acceptance rate: {metrics['speculative_decode.acceptance_rate']:.1%}")
-    print(f"Draft rounds: {metrics['speculative_decode.draft_rounds']:.0f}")
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

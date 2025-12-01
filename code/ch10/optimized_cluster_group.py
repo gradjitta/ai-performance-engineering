@@ -69,13 +69,5 @@ def get_benchmark() -> OptimizedClusterGroupBenchmark:
 
 
 if __name__ == "__main__":
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config(),
-    )
-    result = harness.benchmark(benchmark)
-    print(
-        f"\nOptimized Cluster Group (DSMEM): "
-        f"{result.timing.mean_ms if result.timing else 0.0:.3f} ms"
-    )
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

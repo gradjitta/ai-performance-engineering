@@ -252,33 +252,6 @@ def get_benchmark() -> BaseBenchmark:
     return BaselineFlashAttention3Benchmark()
 
 
-def main() -> None:
-    """Standalone execution."""
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=50, warmup=10)
-    )
-    benchmark = BaselineFlashAttention3Benchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("=" * 70)
-    print("Baseline: FlashAttention-3 Style (Standard Tiled Attention)")
-    print("=" * 70)
-    print(f"Configuration:")
-    print(f"  Batch: {benchmark.batch_size}, Seq: {benchmark.seq_len}")
-    print(f"  Hidden: {benchmark.hidden_dim}, Heads: {benchmark.num_heads}")
-    print()
-    print(f"Results:")
-    print(f"  Average: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"  Median: {result.timing.median_ms if result.timing else 0.0:.3f} ms")
-    print()
-    print("Missing FA3 optimizations (see optimized version):")
-    print("  - Warp specialization (producer/consumer warps)")
-    print("  - 3-stage async pipeline (memory → softmax → output)")
-    print("  - Persistent kernel with block scheduling")
-    print("  - Intra-warp GEMM/softmax pipelining")
-
-
 if __name__ == "__main__":
-    main()
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

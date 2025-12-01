@@ -254,40 +254,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Optimized FSDP2 + FP8")
-    parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--seq-length", type=int, default=2048)
-    parser.add_argument("--hidden-size", type=int, default=4096)
-    parser.add_argument("--num-layers", type=int, default=8)
-    parser.add_argument("--micro-batch-size", type=int, default=2)
-    parser.add_argument("--no-fp8", action="store_true")
-    parser.add_argument("--profile", type=str, default="none")
-    
-    args = parser.parse_args()
-    
-    result = run_benchmark(
-        batch_size=args.batch_size,
-        seq_length=args.seq_length,
-        hidden_size=args.hidden_size,
-        num_layers=args.num_layers,
-        micro_batch_size=args.micro_batch_size,
-        use_fp8=not args.no_fp8,
-        profile=args.profile,
-    )
-    
-    print(f"\n{'='*60}")
-    print(f"Optimized FSDP2 + FP8 Results")
-    print(f"{'='*60}")
-    print(f"Precision: {result['precision']}")
-    print(f"Mean time: {result['mean_time_ms']:.2f} ms")
-    print(f"Peak memory: {result['peak_memory_gb']:.2f} GB")
-    print(f"Throughput: {result['tokens_per_sec']:.0f} tokens/sec")
-    print(f"Loss: {result['loss']:.6f}")
-    print(f"{'='*60}\n")
-    print(f"Expected improvements vs baseline:")
-    print(f"  - FP8: 2× throughput on Blackwell")
-    print(f"  - Memory: ~40% reduction with FP8 all-gather")
-    print(f"Launch with: torchrun --nproc_per_node=2 {__file__}")
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

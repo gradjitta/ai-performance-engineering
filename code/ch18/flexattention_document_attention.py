@@ -142,31 +142,5 @@ def run_benchmark(
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="FlexAttention Document")
-    parser.add_argument("--seq-length", type=int, default=8192)
-    parser.add_argument("--num-documents", type=int, default=8)
-    parser.add_argument("--profile", type=str, default="none")
-    
-    args = parser.parse_args()
-    
-    result = run_benchmark(
-        seq_length=args.seq_length,
-        num_documents=args.num_documents,
-        profile=args.profile,
-    )
-    
-    print(f"\n{'='*60}")
-    print(f"Document Attention Results")
-    print(f"{'='*60}")
-    print(f"Documents: {result['num_documents']}")
-    print(f"Doc length: {result['doc_length']}")
-    print(f"Mean time: {result['mean_time_ms']:.2f} ms")
-    print(f"{'='*60}\n")
-    print(f"Use case: Multi-document batching, RAG pipelines")
-
-
-
-
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

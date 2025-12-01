@@ -188,17 +188,6 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedFP8PerChannelBenchmark()
 
 
-if __name__ == '__main__':
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config()
-    )
-    result = harness.benchmark(benchmark)
-    print(f"\nOptimized Per-Channel FP8: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"  Error: {benchmark._error_sum * 100:.4f}%")
-    print(f"  Note: Per-channel provides ~2x better accuracy than per-tensor")
-
-
-
-
+if __name__ == "__main__":
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

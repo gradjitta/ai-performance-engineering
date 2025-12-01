@@ -103,11 +103,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=2, warmup=5),
-    )
-    bench = BaselineDdpNvlinkNaiveBenchmark()
-    result = harness.benchmark(bench)
-    print(result)
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(BaselineDdpNvlinkNaiveBenchmark)

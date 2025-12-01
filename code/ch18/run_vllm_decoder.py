@@ -842,4 +842,5 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

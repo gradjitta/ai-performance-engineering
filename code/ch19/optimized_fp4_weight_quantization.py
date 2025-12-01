@@ -453,47 +453,6 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedFP4WeightQuantizationBenchmark()
 
 
-def main() -> None:
-    """Standalone execution with comparison."""
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=50, warmup=10)
-    )
-    benchmark = OptimizedFP4WeightQuantizationBenchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("=" * 70)
-    print("Optimized: FP4 Weight Quantization for Blackwell")
-    print("=" * 70)
-    print(f"Configuration:")
-    print(f"  Batch: {benchmark.batch_size}, Seq: {benchmark.seq_len}")
-    print(f"  Model: {benchmark.d_model}, FF: {benchmark.d_ff}")
-    print(f"  Block size: {benchmark.block_size}")
-    print()
-    print(f"Results:")
-    print(f"  Average: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"  Median: {result.timing.median_ms if result.timing else 0.0:.3f} ms")
-    print()
-    print("Optimizations applied:")
-    print("  ✓ Per-block scaling (128 elements)")
-    print("  ✓ Weight cache (dequant once)")
-    if is_blackwell():
-        print("  ✓ FP8 tensor core bridge (Blackwell)")
-    else:
-        print("  ○ FP8 tensor core bridge (needs Blackwell)")
-    print()
-    
-    # Memory comparison
-    metrics = benchmark.get_custom_metrics()
-    if metrics:
-        fp16_mb = metrics["fp4_optimized.fp16_weight_bytes"] / 1024**2
-        fp4_mb = metrics["fp4_optimized.fp4_weight_bytes"] / 1024**2
-        print(f"Memory:")
-        print(f"  FP16 weights: {fp16_mb:.1f} MB")
-        print(f"  FP4 weights: {fp4_mb:.1f} MB")
-        print(f"  Compression: {metrics['fp4_optimized.compression_ratio']:.1f}x")
-
-
 if __name__ == "__main__":
-    main()
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

@@ -186,37 +186,5 @@ def run_benchmark(
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="GPT-4 Architecture Optimization")
-    parser.add_argument("--batch-size", type=int, default=1)
-    parser.add_argument("--seq-length", type=int, default=8192)
-    parser.add_argument("--no-moe", action="store_true")
-    parser.add_argument("--no-fp8", action="store_true")
-    parser.add_argument("--context-parallel", action="store_true")
-    parser.add_argument("--profile", type=str, default="none")
-    
-    args = parser.parse_args()
-    
-    result = run_benchmark(
-        batch_size=args.batch_size,
-        seq_length=args.seq_length,
-        use_moe=not args.no_moe,
-        use_fp8=not args.no_fp8,
-        use_context_parallel=args.context_parallel,
-        profile=args.profile,
-    )
-    
-    print(f"\n{'='*60}")
-    print(f"GPT-4 Architecture Optimization")
-    print(f"{'='*60}")
-    print(f"Optimizations: {result['optimizations']}")
-    print(f"Mean time: {result['mean_time_ms']:.2f} ms")
-    print(f"{'='*60}\n")
-    print(f"NOTE: Full GPT-4 requires ~24+ B200 GPUs")
-    print(f"      This benchmark demonstrates optimization patterns")
-
-
-
-
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

@@ -322,45 +322,6 @@ def get_benchmark() -> BaseBenchmark:
     return BaselineKernelVerificationBenchmark()
 
 
-def main() -> None:
-    """Standalone execution with detailed output."""
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-    
-    print("=" * 70)
-    print("Baseline: Manual GPU Kernel Verification")
-    print("=" * 70)
-    print()
-    print("This demonstrates traditional manual verification approaches.")
-    print("Limitations of manual verification:")
-    print("  ✗ Incomplete coverage - random tests miss edge cases")
-    print("  ✗ No formal proofs - can't guarantee memory/thread safety")
-    print("  ✗ Human effort - edge cases must be manually identified")
-    print("  ✗ Doesn't scale - complex kernels need exponentially more tests")
-    print()
-    
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=10, warmup=5)
-    )
-    benchmark = BaselineKernelVerificationBenchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("Verification Results:")
-    print("-" * 40)
-    for category, res in benchmark._verification_results.items():
-        status = "✓ PASS" if res["passed"] else "✗ FAIL"
-        print(f"  {category}: {status}")
-        if res["errors"]:
-            for err in res["errors"][:3]:
-                print(f"    - {err}")
-    
-    print()
-    print(f"Average verification time: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print()
-    print("See optimized_proofwright_verify.py for automated formal verification")
-    print("with LLM-based agents and mathematical proofs.")
-
-
 if __name__ == "__main__":
-    main()
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

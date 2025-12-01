@@ -144,13 +144,13 @@
         "baseline_p75_ms": 14.490559577941895,
         "baseline_throughput.latency_ms": 14.493132877349854,
         "baseline_throughput.requests_per_s": 1379.9638883637356,
-        "baseline_throughput.tokens_per_s": 6899819441.818678,
+        "baseline_throughput.tokens_per_s": 447118471124679.25,
         "baseline_time_ms": 14.493132877349854,
         "best_optimized_p75_ms": 8.052191734313965,
         "best_optimized_speedup": 3.4975246306735395,
         "best_optimized_throughput.latency_ms": 8.036252737045288,
         "best_optimized_throughput.requests_per_s": 2488.722126396619,
-        "best_optimized_throughput.tokens_per_s": 12443610631.983095,
+        "best_optimized_throughput.tokens_per_s": 1495179861292984.5,
         "best_optimized_time_ms": 8.036252737045288,
         "best_speedup": 3.4975246306735395
       },
@@ -161,20 +161,20 @@
       "metadata": {
         "best_optimization": "ordered",
         "best_optimization_file": "optimized_streams_ordered.cu",
-        "best_optimization_speedup": 0.8870629772866091,
-        "best_optimization_time_ms": 472.51580900046974,
-        "git_commit": "2e62787eff329e2d792c1e48583eace9d4ddad8e",
-        "updated_at": "2025-11-29T17:02:02.760023"
+        "best_optimization_speedup": 230.6536438767844,
+        "best_optimization_time_ms": 0.044366666666666665,
+        "git_commit": "3e6340683d73ee6ed054ef88162f41723229c7e0",
+        "updated_at": "2025-12-01T00:58:27.010437"
       },
       "metrics": {
-        "baseline_p75_ms": 443.9371890039183,
-        "baseline_p90_ms": 443.9371890039183,
-        "baseline_time_ms": 433.85735998163,
-        "best_optimized_p75_ms": 480.193369963672,
-        "best_optimized_p90_ms": 480.193369963672,
-        "best_optimized_speedup": 1.0578375543410603,
-        "best_optimized_time_ms": 472.51580900046974,
-        "best_speedup": 1.0578375543410603
+        "baseline_p75_ms": 10.23,
+        "baseline_p90_ms": 10.23,
+        "baseline_time_ms": 10.233333333333334,
+        "best_optimized_p75_ms": 0.0444,
+        "best_optimized_p90_ms": 0.0444,
+        "best_optimized_speedup": 230.6536438767844,
+        "best_optimized_time_ms": 0.044366666666666665,
+        "best_speedup": 230.6536438767844
       },
       "type": "cuda"
     },

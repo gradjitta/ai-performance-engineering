@@ -140,17 +140,6 @@ def get_benchmark() -> BaseBenchmark:
     return BaselineIlpBasicBenchmark()
 
 
-if __name__ == '__main__':
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-    
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config()
-    )
-    result = harness.benchmark(benchmark)
-    timing = result.timing
-    if timing:
-        print(f"\nBaseline ILP Basic: {timing.mean_ms:.3f} ms")
-    else:
-        print("\nBaseline ILP Basic: No timing data available")
+if __name__ == "__main__":
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

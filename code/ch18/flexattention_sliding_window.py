@@ -221,40 +221,5 @@ def run_benchmark(
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="FlexAttention Sliding Window")
-    parser.add_argument("--batch-size", type=int, default=4)
-    parser.add_argument("--num-heads", type=int, default=32)
-    parser.add_argument("--seq-length", type=int, default=16384)
-    parser.add_argument("--head-dim", type=int, default=128)
-    parser.add_argument("--window-size", type=int, default=1024)
-    parser.add_argument("--no-compile", action="store_true")
-    parser.add_argument("--profile", type=str, default="none")
-    
-    args = parser.parse_args()
-    
-    result = run_benchmark(
-        batch_size=args.batch_size,
-        num_heads=args.num_heads,
-        seq_length=args.seq_length,
-        head_dim=args.head_dim,
-        window_size=args.window_size,
-        use_compile=not args.no_compile,
-        profile=args.profile,
-    )
-    
-    print(f"\n{'='*60}")
-    print(f"FlexAttention Sliding Window Results")
-    print(f"{'='*60}")
-    print(f"Sequence length: {result['seq_length']:,}")
-    print(f"Window size: {result['window_size']}")
-    print(f"Memory savings: {result['memory_savings']:.1f}×")
-    print(f"Mean time: {result['mean_time_ms']:.2f} ms")
-    print(f"{'='*60}\n")
-    print(f"Use case: Efficient long-context processing (music, code, documents)")
-
-
-
-
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

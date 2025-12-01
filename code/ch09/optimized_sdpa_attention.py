@@ -137,20 +137,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=OptimizedSDPAAttentionBenchmark().get_config(),
-    )
-    result = harness.benchmark(get_benchmark())
-    
-    # Report backend used
-    print(f"Optimized SDPA attention (fused): {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    
-    # Compare arithmetic intensity
-    baseline_ai = 0.54  # From baseline estimate
-    optimized_ai = 26.7  # From optimized estimate (no S×S traffic)
-    print(f"\nArithmetic intensity improvement: ~{optimized_ai/baseline_ai:.1f}x")
-    print("(Fused attention avoids writing S×S attention scores to HBM)")
-
-
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

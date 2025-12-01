@@ -163,17 +163,6 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedIlpBasicBenchmark()
 
 
-if __name__ == '__main__':
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-    
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config()
-    )
-    result = harness.benchmark(benchmark)
-    timing = result.timing
-    if timing:
-        print(f"\nOptimized ILP Basic: {timing.mean_ms:.3f} ms")
-    else:
-        print("\nOptimized ILP Basic: No timing data available")
+if __name__ == "__main__":
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

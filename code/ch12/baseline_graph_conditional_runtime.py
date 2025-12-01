@@ -125,36 +125,6 @@ def get_benchmark() -> BaseBenchmark:
     return BaselineGraphBenchmark()
 
 
-def main() -> None:
-    """Standalone execution."""
-    print("=" * 70)
-    print("Baseline: Fresh Kernel Launches (No CUDA Graph)")
-    print("=" * 70)
-    
-    if torch.cuda.is_available():
-        print(f"GPU: {torch.cuda.get_device_name()}")
-    
-    print()
-    
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=100, warmup=20)
-    )
-    
-    benchmark = get_benchmark()
-    result = harness.benchmark(benchmark)
-    
-    print(f"Results:")
-    print(f"  Average: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"  Median: {result.timing.median_ms if result.timing else 0.0:.3f} ms")
-    print()
-    print("Overhead sources:")
-    print("  - ~35 kernel launches per iteration")
-    print("  - Driver overhead per launch (~5-10us)")
-    print("  - No operation batching")
-    print()
-    print("See optimized version for CUDA graph improvement.")
-
-
 if __name__ == "__main__":
-    main()
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

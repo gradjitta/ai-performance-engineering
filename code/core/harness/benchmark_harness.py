@@ -1762,6 +1762,51 @@ class BenchmarkHarness:
             else:
                 # Parse JSON result from isolated runner
                 try:
+                    # Strip any non-JSON prefix (e.g., compilation messages from CUDA extensions)
+                    # that may be printed before the JSON output
+                    json_start = stdout.find('{')
+                    if json_start > 0:
+                        # There's content before JSON - store it for debugging but parse only JSON
+                        prefix = stdout[:json_start].strip()
+                        if prefix:
+                            # Log the prefix for debugging but don't treat as error
+                            if LOGGER_AVAILABLE:
+                                logger.debug(f"Stripped non-JSON prefix from subprocess output: {prefix[:200]}")
+                        stdout = stdout[json_start:]
+                    
+                    # Strip any non-JSON suffix (e.g., torch exit cleanup logging)
+                    # Find the matching closing brace for the JSON object
+                    if stdout.startswith('{'):
+                        brace_count = 0
+                        json_end = -1
+                        in_string = False
+                        escape_next = False
+                        for i, c in enumerate(stdout):
+                            if escape_next:
+                                escape_next = False
+                                continue
+                            if c == '\\' and in_string:
+                                escape_next = True
+                                continue
+                            if c == '"' and not escape_next:
+                                in_string = not in_string
+                                continue
+                            if in_string:
+                                continue
+                            if c == '{':
+                                brace_count += 1
+                            elif c == '}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    json_end = i + 1
+                                    break
+                        if json_end > 0 and json_end < len(stdout):
+                            suffix = stdout[json_end:].strip()
+                            if suffix:
+                                if LOGGER_AVAILABLE:
+                                    logger.debug(f"Stripped non-JSON suffix from subprocess output: {suffix[:200]}")
+                            stdout = stdout[:json_end]
+                    
                     result_dict = json.loads(stdout)
                     if result_dict.get("success") and result_dict.get("result_json"):
                         # Deserialize Pydantic BenchmarkResult from JSON
@@ -3297,3 +3342,82 @@ def compare_benchmarks(
         "baseline_result": baseline_result,
         "optimized_result": optimized_result,
     }
+
+
+def benchmark_main(
+    get_benchmark_fn: Callable[[], 'BaseBenchmark'],
+    iterations: int = 10,
+    warmup: int = 5,
+    name: Optional[str] = None,
+) -> None:
+    """Safe helper for running benchmarks in __main__ blocks.
+    
+    This function avoids CUDA initialization issues by NOT calling get_benchmark_fn()
+    in the parent process when using subprocess mode. Instead, it:
+    1. Checks if subprocess mode would be used
+    2. If so, runs the benchmark directly without harness subprocess (single process)
+    3. If not, uses the harness normally
+    
+    Usage in benchmark files:
+        if __name__ == "__main__":
+            from core.harness.benchmark_harness import benchmark_main
+            benchmark_main(get_benchmark)
+    
+    This prevents the common mistake of:
+        if __name__ == "__main__":
+            bench = get_benchmark()  # <-- This initializes CUDA!
+            harness = BenchmarkHarness(...)
+            harness.benchmark(bench)  # <-- Subprocess inherits corrupted CUDA
+    
+    Args:
+        get_benchmark_fn: Callable that returns a benchmark instance
+        iterations: Number of timed iterations
+        warmup: Number of warmup iterations  
+        name: Optional name for output
+    """
+    # Run directly without harness to avoid CUDA subprocess issues
+    # The harness subprocess mode is designed for run_all_benchmarks.py
+    # which properly manages CUDA context by spawning fresh subprocesses
+    
+    benchmark = get_benchmark_fn()
+    bench_name = name or getattr(benchmark, 'name', None) or benchmark.__class__.__name__
+    
+    # Setup
+    benchmark.setup()
+    
+    # Check for CUDA
+    cuda_available = torch.cuda.is_available()
+    if cuda_available:
+        torch.cuda.synchronize()
+    
+    # Warmup
+    for _ in range(warmup):
+        benchmark.benchmark_fn()
+        if cuda_available:
+            torch.cuda.synchronize()
+    
+    # Timed runs
+    times_ms: List[float] = []
+    for _ in range(iterations):
+        if cuda_available:
+            torch.cuda.synchronize()
+        
+        start = time.perf_counter()
+        benchmark.benchmark_fn()
+        
+        if cuda_available:
+            torch.cuda.synchronize()
+        
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        times_ms.append(elapsed_ms)
+    
+    # Teardown
+    benchmark.teardown()
+    
+    # Report results
+    mean = sum(times_ms) / len(times_ms) if times_ms else 0.0
+    std = (sum((t - mean) ** 2 for t in times_ms) / len(times_ms)) ** 0.5 if len(times_ms) > 1 else 0.0
+    min_t = min(times_ms) if times_ms else 0.0
+    max_t = max(times_ms) if times_ms else 0.0
+    
+    print(f"\n{bench_name}: {mean:.3f} ms/iter (std={std:.3f}, min={min_t:.3f}, max={max_t:.3f})")

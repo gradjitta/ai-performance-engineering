@@ -173,35 +173,6 @@ def get_benchmark() -> BaseBenchmark:
     return BaselineCudaPythonBenchmark()
 
 
-def main() -> None:
-    """Standalone execution."""
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-    
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=100, warmup=10)
-    )
-    benchmark = BaselineCudaPythonBenchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("=" * 70)
-    print("Baseline: PyTorch Eager Mode (No CUDA Python)")
-    print("=" * 70)
-    print(f"Average time: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"Median: {result.timing.median_ms if result.timing else 0.0:.3f} ms")
-    print(f"Std: {result.timing.std_ms if result.timing else 0.0:.3f} ms")
-    print()
-    print("Baseline characteristics:")
-    print("  - 4 separate kernel launches")
-    print("  - 3 intermediate tensor allocations")
-    print("  - No fusion between operations")
-    print("  - Full dispatcher overhead per op")
-    print()
-    print("See optimized_cuda_python.py for native CUDA Python fusion.")
-
-
 if __name__ == "__main__":
-    main()
-
-
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

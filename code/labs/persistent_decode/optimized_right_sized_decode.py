@@ -75,19 +75,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-
-    bench = get_benchmark()
-    cfg = bench.get_config()
-    if _CLI_ARGS.smoke_test:
-        cfg.use_subprocess = False
-        cfg.iterations = 1
-        cfg.warmup = 0
-        cfg.measurement_timeout_seconds = max(180, getattr(cfg, "measurement_timeout_seconds", 0) or 0)
-        bench._config = cfg  # type: ignore[attr-defined]
-        bench.get_config = lambda: cfg  # type: ignore[assignment]
-
-    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=cfg)
-    result = harness.benchmark(bench)
-    mean_ms = result.timing.mean_ms if result and result.timing else 0.0
-    print(f"[{bench.__class__.__name__}] mean iteration {mean_ms:.3f} ms")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

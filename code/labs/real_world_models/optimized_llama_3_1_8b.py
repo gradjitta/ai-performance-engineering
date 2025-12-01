@@ -69,26 +69,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    from labs.real_world_models.baseline_llama_3_1_8b import BaselineLlama31_8B
-    
-    print("=== Llama 3.1 8B Optimization Comparison ===\n")
-    
-    # Run baseline
-    baseline = BaselineLlama31_8B()
-    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=baseline.get_config())
-    baseline_result = harness.benchmark(baseline)
-    baseline_time = baseline_result.timing.mean_ms if baseline_result.timing else 0
-    print(f"Baseline (eager): {baseline_time:.3f} ms")
-    
-    # Run optimized
-    optimized = get_benchmark()
-    harness2 = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=optimized.get_config())
-    optimized_result = harness2.benchmark(optimized)
-    optimized_time = optimized_result.timing.mean_ms if optimized_result.timing else 0
-    print(f"Optimized (compile+flex): {optimized_time:.3f} ms")
-    
-    if baseline_time > 0 and optimized_time > 0:
-        speedup = baseline_time / optimized_time
-        print(f"\nSpeedup: {speedup:.2f}x")
-        print(f"Optimizations: torch.compile + FlexAttention")
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

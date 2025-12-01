@@ -18,6 +18,8 @@ from typing import Optional, List, Tuple
 # Regex patterns to parse timing from stdout (supports ms, us, s units)
 # Each tuple: (compiled_pattern, multiplier_to_ms)
 _TIME_PATTERNS: List[Tuple[re.Pattern, float]] = [
+    # TIME_MS format: "TIME_MS: 0.9026" or "TIME_MS:0.9026" (common in CUDA benchmarks)
+    (re.compile(r'TIME_MS:\s*(\d+\.?\d*)', re.IGNORECASE), 1.0),
     # Milliseconds: "2.3074 ms", "0.008 ms"
     (re.compile(r'(\d+\.?\d*)\s*ms\b', re.IGNORECASE), 1.0),
     # Microseconds: "1234 us", "500 μs"

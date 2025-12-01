@@ -35,10 +35,5 @@ def get_benchmark() -> NvlinkOffloadBenchmark:
 
 
 if __name__ == "__main__":
-    benchmark = get_benchmark()
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-
-    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=benchmark.get_config())
-    result = harness.benchmark(benchmark)
-    mean = result.timing.mean_ms if result.timing else 0.0
-    print(f"\nnvlink_offload_optimized: {mean:.3f} ms/iter")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

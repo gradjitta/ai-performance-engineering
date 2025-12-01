@@ -131,11 +131,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=MemoryDoubleBufferingBenchmark().get_config(),
-    )
-    benchmark = get_benchmark()
-    result = harness.benchmark(benchmark)
-    print(f"\nBaseline Memory double buffering (Single GPU): {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(" Note: Single-GPU operation, no distributed computing")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

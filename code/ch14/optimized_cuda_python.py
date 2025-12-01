@@ -435,42 +435,6 @@ def demonstrate_cuda_python_api():
         print("  conda install -c nvidia cuda-python")
 
 
-def main() -> None:
-    """Standalone execution."""
-    demonstrate_cuda_python_api()
-    print()
-    
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode
-    
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=100, warmup=10)
-    )
-    benchmark = OptimizedCudaPythonBenchmark()
-    result = harness.benchmark(benchmark)
-    
-    print("=" * 70)
-    print("Benchmark Results: Fused CUDA Python Kernel")
-    print("=" * 70)
-    print(f"Average time: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"Median: {result.timing.median_ms if result.timing else 0.0:.3f} ms")
-    print(f"Std: {result.timing.std_ms if result.timing else 0.0:.3f} ms")
-    print()
-    print(f"Kernel compiled: {benchmark.kernel_compiled}")
-    print()
-    print("Optimization techniques:")
-    print("  ✓ Single fused kernel (vs 4 separate)")
-    print("  ✓ Zero intermediate allocations")
-    print("  ✓ Shared memory for LayerNorm reduction")
-    print("  ✓ Direct nvrtc compilation from Python")
-    print()
-    print("When to use CUDA Python vs alternatives:")
-    print("  Triton:        Portable, auto-tuned, high-level")
-    print("  CUDA Python:   Maximum control, legacy CUDA ports")
-    print("  torch.compile: Standard PyTorch model optimization")
-    print("  Raw CUDA C++:  Performance-critical, production kernels")
-
-
 if __name__ == "__main__":
-    main()
-
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

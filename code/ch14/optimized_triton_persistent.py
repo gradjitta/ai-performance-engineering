@@ -114,13 +114,6 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedTritonPersistentBenchmark()
 
 
-if __name__ == '__main__':
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config()
-    )
-    result = harness.benchmark(benchmark)
-    print(f"\nOptimized (Batched Fused): {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"  Config: batch={benchmark.batch_size}, M={benchmark.M}, N={benchmark.N}, K={benchmark.K}")
-    print(f"  Benefit: Single kernel launch vs {benchmark.batch_size} individual launches")
+if __name__ == "__main__":
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

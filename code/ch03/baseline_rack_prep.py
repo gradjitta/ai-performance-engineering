@@ -93,14 +93,5 @@ def get_benchmark() -> BaseBenchmark:
 
 
 if __name__ == "__main__":
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=5, warmup=5),
-    )
-    result = harness.benchmark(benchmark)
-    print(f"\nBaseline rack prep latency: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    if benchmark.nic_snapshot:
-        print("\nObserved NIC topology (baseline, no pinning):")
-        for nic in benchmark.nic_snapshot:
-            print(f"  {nic.name}: NUMA={nic.numa_node} local_cpus={format_cpulist(nic.local_cpus)} IRQs={','.join(map(str, nic.irq_ids)) or 'n/a'}")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

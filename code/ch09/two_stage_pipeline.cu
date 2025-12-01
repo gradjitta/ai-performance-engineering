@@ -37,7 +37,11 @@ void stage_ab_tiles(const float* __restrict__ globalA,
 
     constexpr auto scope = cuda::thread_scope_block;
     constexpr int stages = 2;
+    // Suppress NVCC warning about dynamic initialization - cuda::pipeline_shared_state
+    // is trivially initializable and designed for use with __shared__ memory
+    #pragma nv_diag_suppress 20054
     __shared__ cuda::pipeline_shared_state<scope, stages> pstate;
+    #pragma nv_diag_default 20054
     auto pipe = cuda::make_pipeline(block, &pstate);
 
     // Prime stage 0.

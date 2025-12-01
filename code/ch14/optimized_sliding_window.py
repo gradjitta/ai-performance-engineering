@@ -166,14 +166,6 @@ def get_benchmark() -> BaseBenchmark:
     return OptimizedSlidingWindowBenchmark()
 
 
-if __name__ == '__main__':
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=benchmark.get_config()
-    )
-    result = harness.benchmark(benchmark)
-    print(f"\nOptimized Sliding Window: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
-    print(f"  Config: batch={benchmark.batch_size}, seq={benchmark.seq_len}, window={benchmark.window_size}")
-    print(f"  Complexity: O(n·{benchmark.window_size}) vs O(n²)")
-
+if __name__ == "__main__":
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

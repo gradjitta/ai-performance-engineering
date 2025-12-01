@@ -182,18 +182,5 @@ def _parse_args():
 
 
 if __name__ == "__main__":
-    args = _parse_args()
-    config = BenchmarkConfig(
-        iterations=args.iterations,
-        warmup=args.warmup,
-        enable_memory_tracking=args.enable_memory_tracking,
-        enable_profiling=args.enable_profiling,
-    )
-
-    benchmark = get_benchmark()
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=config
-    )
-    result = harness.benchmark(benchmark)
-    print(f"\nBaseline No Overlap: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

@@ -40,15 +40,5 @@ def get_benchmark() -> OptimizedTilingBenchmarkTCGen05:
 
 
 if __name__ == "__main__":
-    from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, BenchmarkHarness, BenchmarkMode
-
-    harness = BenchmarkHarness(
-        mode=BenchmarkMode.CUSTOM,
-        config=BenchmarkConfig(iterations=20, warmup=5),
-    )
-    benchmark = OptimizedTilingBenchmarkTCGen05()
-    result = harness.benchmark(benchmark)
-    print("=" * 70)
-    print("Optimized: Tiling (tcgen05 tensor cores)")
-    print("=" * 70)
-    print(f"Average time: {result.timing.mean_ms if result.timing else 0.0:.3f} ms")
+    from core.harness.benchmark_harness import benchmark_main
+    benchmark_main(get_benchmark)

@@ -104,7 +104,7 @@ except ImportError:
 
 def reset_gpu_via_script(reason: str) -> None:
     """Invoke core/scripts/reset_gpu.py with the provided reason."""
-    reset_script = Path(__file__).resolve().parents[1] / "tools" / "reset_gpu.py"
+    reset_script = Path(__file__).resolve().parents[1] / "scripts" / "reset_gpu.py"
     if not reset_script.exists():
         logger.warning("GPU reset script not found at %s", reset_script)
         return
