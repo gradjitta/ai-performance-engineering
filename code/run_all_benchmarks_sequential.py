@@ -14,6 +14,8 @@ import subprocess
 import sys
 import json
 import time
+import argparse
+import threading
 from pathlib import Path
 from datetime import datetime
 
@@ -35,13 +37,20 @@ def get_all_chapters_and_labs():
         print(f"stderr: {e.stderr}")
         sys.exit(1)
 
-def run_benchmark_for_chapter(chapter, log_file):
+def run_benchmark_for_chapter(chapter, log_file, update_expectations=False, accept_regressions=False, 
+                              cold_start=False, reproducible=False, suite_timeout=None, timeout_multiplier=None):
     """
     Run benchmark with deep profiling for a single chapter/lab.
     
     Args:
         chapter: Chapter/lab name (e.g., 'ch01', 'labs/decode_optimization')
         log_file: File handle to write logs to
+        update_expectations: If True, add --update-expectations flag
+        accept_regressions: If True, add --accept-regressions flag
+        cold_start: If True, add --cold-start flag (reset GPU state between benchmarks)
+        reproducible: If True, add --reproducible flag (set seeds to 42)
+        suite_timeout: Optional timeout in seconds for the suite
+        timeout_multiplier: Optional multiplier for benchmark timeouts
     """
     print(f"\n{'='*80}")
     print(f"Starting benchmark for: {chapter}")
@@ -63,6 +72,20 @@ def run_benchmark_for_chapter(chapter, log_file):
             "--profile", "deep_dive"
             # Note: llm_analysis defaults to False, so we don't need to disable it
         ]
+        
+        # Add expectation update flags if requested
+        if update_expectations:
+            cmd.append("--update-expectations")
+        if accept_regressions:
+            cmd.append("--accept-regressions")
+        if cold_start:
+            cmd.append("--cold-start")
+        if reproducible:
+            cmd.append("--reproducible")
+        if suite_timeout is not None:
+            cmd.extend(["--suite-timeout", str(suite_timeout)])
+        if timeout_multiplier is not None:
+            cmd.extend(["--timeout-multiplier", str(timeout_multiplier)])
         
         print(f"Command: {' '.join(cmd)}")
         log_file.write(f"Command: {' '.join(cmd)}\n")
@@ -108,10 +131,62 @@ def run_benchmark_for_chapter(chapter, log_file):
 
 def main():
     """Main function to run benchmarks sequentially."""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description="Run full benchmarks with deep profiling on every chapter and lab sequentially",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--update-expectations",
+        action="store_true",
+        help="Force-write observed metrics into expectation files (overrides regressions)"
+    )
+    parser.add_argument(
+        "--accept-regressions",
+        action="store_true",
+        help="Update expectation files when improvements are detected instead of flagging regressions"
+    )
+    parser.add_argument(
+        "--cold-start",
+        action="store_true",
+        help="Reset GPU state between benchmarks for cold start measurements"
+    )
+    parser.add_argument(
+        "--reproducible",
+        action="store_true",
+        help="Enable reproducible mode: set all seeds to 42 and force deterministic algorithms"
+    )
+    parser.add_argument(
+        "--suite-timeout",
+        type=int,
+        default=None,
+        help="Suite timeout in seconds (default: 14400 = 4 hours, 0 = disabled)"
+    )
+    parser.add_argument(
+        "--timeout-multiplier",
+        type=float,
+        default=None,
+        help="Multiply all benchmark timeouts by this factor (e.g., 2.0 = double all timeouts)"
+    )
+    args = parser.parse_args()
+    
     print("="*80)
     print("Sequential Benchmark Runner with Deep Profiling")
     print("="*80)
     print(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Profile: deep_dive (always enabled)")
+    if args.update_expectations:
+        print("Mode: --update-expectations enabled")
+    if args.accept_regressions:
+        print("Mode: --accept-regressions enabled")
+    if args.cold_start:
+        print("Mode: --cold-start enabled")
+    if args.reproducible:
+        print("Mode: --reproducible enabled")
+    if args.suite_timeout is not None:
+        print(f"Suite timeout: {args.suite_timeout} seconds")
+    if args.timeout_multiplier is not None:
+        print(f"Timeout multiplier: {args.timeout_multiplier}x")
     
     # Get all chapters and labs
     print("\nFetching list of chapters and labs...")
@@ -127,6 +202,10 @@ def main():
     log_file_path = log_dir / f"sequential_benchmark_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
     
     print(f"\nLog file: {log_file_path}")
+    print(f"\n{'='*80}")
+    print("TO MONITOR PROGRESS IN ANOTHER TERMINAL, RUN:")
+    print(f"tail -f {log_file_path}")
+    print(f"{'='*80}\n")
     
     # Track results
     results = {
@@ -140,6 +219,19 @@ def main():
     with open(log_file_path, 'w') as log_file:
         log_file.write("Sequential Benchmark Runner with Deep Profiling\n")
         log_file.write(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        log_file.write("Profile: deep_dive (always enabled)\n")
+        if args.update_expectations:
+            log_file.write("Mode: --update-expectations enabled\n")
+        if args.accept_regressions:
+            log_file.write("Mode: --accept-regressions enabled\n")
+        if args.cold_start:
+            log_file.write("Mode: --cold-start enabled\n")
+        if args.reproducible:
+            log_file.write("Mode: --reproducible enabled\n")
+        if args.suite_timeout is not None:
+            log_file.write(f"Suite timeout: {args.suite_timeout} seconds\n")
+        if args.timeout_multiplier is not None:
+            log_file.write(f"Timeout multiplier: {args.timeout_multiplier}x\n")
         log_file.write(f"Total chapters/labs: {len(chapters)}\n")
         log_file.write(f"Chapters/labs list:\n")
         for ch in chapters:
@@ -152,7 +244,16 @@ def main():
             print(f"\n\nProcessing {idx}/{len(chapters)}: {chapter}")
             
             chapter_start_time = time.time()
-            success = run_benchmark_for_chapter(chapter, log_file)
+            success = run_benchmark_for_chapter(
+                chapter, 
+                log_file,
+                update_expectations=args.update_expectations,
+                accept_regressions=args.accept_regressions,
+                cold_start=args.cold_start,
+                reproducible=args.reproducible,
+                suite_timeout=args.suite_timeout,
+                timeout_multiplier=args.timeout_multiplier
+            )
             chapter_duration = time.time() - chapter_start_time
             
             result_entry = {
@@ -199,6 +300,12 @@ def main():
     # Write final results
     with open(results_file, 'w') as f:
         json.dump(results, f, indent=2)
+    
+    # Show how to tail the log file
+    print(f"\n{'='*80}")
+    print("TO MONITOR PROGRESS, RUN:")
+    print(f"tail -f {log_file_path}")
+    print(f"{'='*80}\n")
     
     # Exit with error code if any failed
     if results["failed"] > 0:
