@@ -105,16 +105,17 @@ def reset_gpu_via_script(reason: str) -> None:
     """Invoke core/scripts/reset_gpu.py with the provided reason."""
     reset_script = Path(__file__).resolve().parents[1] / "scripts" / "reset_gpu.py"
     if not reset_script.exists():
-        logger.warning("GPU reset script not found at %s", reset_script)
-        return
-    try:
-        subprocess.run(
-            [sys.executable, str(reset_script), "--reason", reason],
-            check=False,
-            timeout=180,
+        raise FileNotFoundError(
+            f"GPU reset script not found at {reset_script}\n"
+            f"Expected: {reset_script.resolve()}\n"
+            f"This is a configuration error - the script must exist."
         )
-    except Exception as exc:
-        logger.warning("GPU reset script failed: %s", exc)
+    # Let errors propagate - no silent failures
+    subprocess.run(
+        [sys.executable, str(reset_script), "--reason", reason],
+        check=True,
+        timeout=180,
+    )
 
 
 def maybe_reset_gpu_for_error(error_message: str, context: str) -> None:
@@ -5081,51 +5082,46 @@ def main():
     dump_environment_and_capabilities()
     logger.info("")
     
-    # Dump hardware capabilities at start
+    # Dump hardware capabilities at start - MUST succeed
     logger.info("Dumping hardware capabilities...")
-    try:
-        dump_caps_path = repo_root / "tools" / "utilities" / "dump_hardware_capabilities.py"
-        if dump_caps_path.exists():
-            import subprocess
-            result = subprocess.run(
-                [sys.executable, str(dump_caps_path), "--fast"],
-                capture_output=True,
-                text=True,
-                timeout=15
-            )
-            logger.info(result.stdout)
-            if result.stderr:
-                logger.warning(result.stderr)
-        else:
-            logger.warning("WARNING: Hardware capabilities script not found")
-    except Exception as e:
-        logger.warning(f"WARNING: Could not dump hardware capabilities: {e}")
-        logger.info("")
+    dump_caps_path = repo_root / "core" / "scripts" / "utilities" / "dump_hardware_capabilities.py"
+    if not dump_caps_path.exists():
+        raise FileNotFoundError(
+            f"Hardware capabilities script not found: {dump_caps_path}\n"
+            f"Expected: {dump_caps_path.resolve()}\n"
+            f"This is a critical configuration error."
+        )
+    import subprocess
+    result = subprocess.run(
+        [sys.executable, str(dump_caps_path), "--fast"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True  # Fail if script fails
+    )
+    logger.info(result.stdout)
+    if result.stderr:
+        logger.warning(result.stderr)
     
-    # Pre-compile CUDA extensions before running benchmarks
+    # Pre-compile CUDA extensions before running benchmarks - MUST succeed
     logger.info("Pre-compiling CUDA extensions...")
-    try:
-        precompile_path = repo_root / "tools" / "utilities" / "precompile_cuda_extensions.py"
-        if precompile_path.exists():
-            import subprocess
-            result = subprocess.run(
-                [sys.executable, str(precompile_path)],
-                capture_output=True,
-                text=True,
-                timeout=60  # 60s - pre-compilation can take time for multiple extensions
-            )
-            logger.info(result.stdout)
-            if result.stderr:
-                logger.warning(result.stderr)
-            precompile_success = result.returncode == 0
-            if not precompile_success:
-                logger.warning("WARNING: Some CUDA extensions failed to pre-compile")
-                logger.warning("   Benchmarks using these extensions may fail")
-        else:
-            logger.warning("WARNING: Pre-compilation script not found - extensions will compile at runtime")
-    except Exception as e:
-        logger.warning(f"WARNING: Could not pre-compile CUDA extensions: {e}")
-        logger.warning("   Extensions will compile at runtime (may cause segfaults)")
+    precompile_path = repo_root / "core" / "scripts" / "utilities" / "precompile_cuda_extensions.py"
+    if not precompile_path.exists():
+        raise FileNotFoundError(
+            f"Pre-compilation script not found: {precompile_path}\n"
+            f"Expected: {precompile_path.resolve()}\n"
+            f"This is a critical configuration error."
+        )
+    result = subprocess.run(
+        [sys.executable, str(precompile_path)],
+        capture_output=True,
+        text=True,
+        timeout=60,  # 60s - pre-compilation can take time for multiple extensions
+        check=True  # Fail if script fails
+    )
+    logger.info(result.stdout)
+    if result.stderr:
+        logger.warning(result.stderr)
     logger.info("")
     
     # Determine chapters to test

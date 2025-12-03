@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Tuple
 
-repo_root = Path(__file__).resolve().parents[2]
+repo_root = Path(__file__).resolve().parents[3]  # utilities -> scripts -> core -> repo_root
 if str(repo_root) not in __import__("sys").path:
     __import__("sys").path.insert(0, str(repo_root))
 

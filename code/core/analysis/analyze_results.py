@@ -195,7 +195,7 @@ Examples:
             import subprocess
             result = subprocess.run([
                 sys.executable,
-                str(code_root / "tools" / "power_efficiency_analyzer.py"),
+                str(code_root / "core" / "analysis" / "power_efficiency_analyzer.py"),
                 "--power-file", str(args.power_file),
                 "--throughput-file", str(args.throughput_file),
                 "--output", str(args.output) if args.output else "-",

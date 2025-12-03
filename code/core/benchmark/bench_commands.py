@@ -38,12 +38,12 @@ if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 UTILITY_SCRIPTS = {
-    "kv-cache": repo_root / "scripts" / "utilities" / "kv_cache_calc.py",
-    "cost-per-token": repo_root / "scripts" / "utilities" / "calculate_cost_per_token.py",
-    "compare-precision": repo_root / "scripts" / "utilities" / "compare_precision_accuracy.py",
-    "detect-cutlass": repo_root / "scripts" / "utilities" / "detect_cutlass_info.py",
-    "dump-hw": repo_root / "scripts" / "utilities" / "dump_hardware_capabilities.py",
-    "probe-hw": repo_root / "scripts" / "utilities" / "probe_hardware_capabilities.py",
+    "kv-cache": repo_root / "core" / "scripts" / "utilities" / "kv_cache_calc.py",
+    "cost-per-token": repo_root / "core" / "scripts" / "utilities" / "calculate_cost_per_token.py",
+    "compare-precision": repo_root / "core" / "scripts" / "utilities" / "compare_precision_accuracy.py",
+    "detect-cutlass": repo_root / "core" / "scripts" / "utilities" / "detect_cutlass_info.py",
+    "dump-hw": repo_root / "core" / "scripts" / "utilities" / "dump_hardware_capabilities.py",
+    "probe-hw": repo_root / "core" / "scripts" / "utilities" / "probe_hardware_capabilities.py",
 }
 
 from core.analysis.performance_analyzer import PerformanceAnalyzer, load_benchmark_data as load_benchmark_results

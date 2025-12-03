@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]  # core/scripts/utilities -> core/scripts -> core -> repo_root
 ARTIFACTS_DIR = REPO_ROOT / "artifacts"
 CACHE_PATH = ARTIFACTS_DIR / "hardware_capabilities.json"
 

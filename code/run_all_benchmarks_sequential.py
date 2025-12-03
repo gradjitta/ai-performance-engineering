@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Script to run full benchmarks with deep profiling on EVERY chapter and lab,
-ONE at a time, sequentially.
+Script to run full benchmarks on EVERY chapter and lab,
+ONE at a time, sequentially with TRUE ISOLATION.
 
 Requirements:
 - NO LLM analysis
-- Deep profiling (deep_dive)
 - Sequential execution (one chapter/lab at a time)
 - NO parallel execution
+- Kill all GPU processes between benchmarks for true isolation
 """
 
 import subprocess
@@ -15,9 +15,82 @@ import sys
 import json
 import time
 import argparse
-import threading
+import os
+import signal
+import fnmatch
 from pathlib import Path
 from datetime import datetime
+
+
+def kill_gpu_processes(exclude_pids=None, log_file=None):
+    """Kill all processes using the GPU except excluded PIDs.
+    
+    This ensures true isolation between benchmarks by clearing any
+    lingering GPU processes from profilers or previous runs.
+    """
+    exclude_pids = exclude_pids or set()
+    # Add current process and parent to exclusions
+    exclude_pids.add(os.getpid())
+    exclude_pids.add(os.getppid())
+    
+    try:
+        # Get PIDs of processes using GPU
+        result = subprocess.run(
+            ["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode != 0:
+            return 0
+        
+        pids_to_kill = []
+        for line in result.stdout.strip().split('\n'):
+            if line.strip():
+                try:
+                    pid = int(line.strip())
+                    if pid not in exclude_pids:
+                        pids_to_kill.append(pid)
+                except ValueError:
+                    continue
+        
+        killed = 0
+        for pid in pids_to_kill:
+            try:
+                # Try SIGTERM first
+                os.kill(pid, signal.SIGTERM)
+                killed += 1
+                msg = f"  Killed GPU process {pid} (SIGTERM)"
+                print(msg)
+                if log_file:
+                    log_file.write(msg + "\n")
+            except ProcessLookupError:
+                pass  # Process already dead
+            except PermissionError:
+                msg = f"  WARNING: No permission to kill GPU process {pid}"
+                print(msg)
+                if log_file:
+                    log_file.write(msg + "\n")
+        
+        # Wait a bit for processes to die
+        if killed > 0:
+            time.sleep(2)
+            
+            # Force kill any remaining
+            for pid in pids_to_kill:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass
+        
+        return killed
+    except Exception as e:
+        msg = f"  WARNING: Failed to check/kill GPU processes: {e}"
+        print(msg)
+        if log_file:
+            log_file.write(msg + "\n")
+        return 0
 
 # Get the list of all chapters and labs
 def get_all_chapters_and_labs():
@@ -37,10 +110,59 @@ def get_all_chapters_and_labs():
         print(f"stderr: {e.stderr}")
         sys.exit(1)
 
-def run_benchmark_for_chapter(chapter, log_file, update_expectations=False, accept_regressions=False, 
-                              cold_start=False, reproducible=False, suite_timeout=None, timeout_multiplier=None):
+
+def filter_chapters(chapters, chapter_patterns=None, lab_patterns=None, chapter_list=None, lab_list=None):
     """
-    Run benchmark with deep profiling for a single chapter/lab.
+    Filter chapters and labs based on wildcard patterns or explicit lists.
+    
+    Args:
+        chapters: List of all available chapters/labs
+        chapter_patterns: List of wildcard patterns for chapters (e.g., ['ch1*', 'ch2*'])
+        lab_patterns: List of wildcard patterns for labs (e.g., ['labs/*'])
+        chapter_list: Explicit list of chapter names to include
+        lab_list: Explicit list of lab names to include
+    
+    Returns:
+        Filtered list of chapters/labs
+    """
+    filtered = []
+    
+    # If no filters specified, return all chapters
+    if not chapter_patterns and not lab_patterns and not chapter_list and not lab_list:
+        return chapters
+    
+    # Process explicit lists first (they take precedence)
+    if chapter_list:
+        for ch in chapter_list:
+            if ch in chapters and ch not in filtered:
+                filtered.append(ch)
+    
+    if lab_list:
+        for lab in lab_list:
+            if lab in chapters and lab not in filtered:
+                filtered.append(lab)
+    
+    # Process wildcard patterns
+    if chapter_patterns:
+        for pattern in chapter_patterns:
+            for ch in chapters:
+                if fnmatch.fnmatch(ch, pattern) and ch not in filtered:
+                    filtered.append(ch)
+    
+    if lab_patterns:
+        for pattern in lab_patterns:
+            for lab in chapters:
+                if fnmatch.fnmatch(lab, pattern) and lab not in filtered:
+                    filtered.append(lab)
+    
+    return filtered
+
+
+def run_benchmark_for_chapter(chapter, log_file, update_expectations=False, accept_regressions=False, 
+                              cold_start=False, reproducible=False, suite_timeout=None, timeout_multiplier=None,
+                              profile="deep_dive", kill_gpu=True):
+    """
+    Run benchmark for a single chapter/lab with TRUE ISOLATION.
     
     Args:
         chapter: Chapter/lab name (e.g., 'ch01', 'labs/decode_optimization')
@@ -51,6 +173,8 @@ def run_benchmark_for_chapter(chapter, log_file, update_expectations=False, acce
         reproducible: If True, add --reproducible flag (set seeds to 42)
         suite_timeout: Optional timeout in seconds for the suite
         timeout_multiplier: Optional multiplier for benchmark timeouts
+        profile: Profiling level ('none', 'minimal', 'deep_dive', 'roofline')
+        kill_gpu: If True, kill all GPU processes before running benchmark
     """
     print(f"\n{'='*80}")
     print(f"Starting benchmark for: {chapter}")
@@ -62,14 +186,26 @@ def run_benchmark_for_chapter(chapter, log_file, update_expectations=False, acce
     log_file.write(f"{'='*80}\n")
     log_file.flush()
     
+    # Kill GPU processes for true isolation
+    if kill_gpu:
+        print("  Cleaning up GPU processes for isolation...")
+        log_file.write("  Cleaning up GPU processes for isolation...\n")
+        log_file.flush()
+        killed = kill_gpu_processes(log_file=log_file)
+        if killed > 0:
+            print(f"  Killed {killed} lingering GPU process(es)")
+            log_file.write(f"  Killed {killed} lingering GPU process(es)\n")
+            log_file.flush()
+            time.sleep(2)  # Give GPU time to fully release resources
+    
     start_time = time.time()
     
     try:
-        # Run benchmark with deep profiling, NO LLM analysis (default is False)
+        # Run benchmark with specified profiling level, NO LLM analysis (default is False)
         cmd = [
             "python", "-m", "cli.aisp", "bench", "run",
             "--targets", chapter,
-            "--profile", "deep_dive"
+            "--profile", profile
             # Note: llm_analysis defaults to False, so we don't need to disable it
         ]
         
@@ -168,13 +304,55 @@ def main():
         default=None,
         help="Multiply all benchmark timeouts by this factor (e.g., 2.0 = double all timeouts)"
     )
+    parser.add_argument(
+        "--profile",
+        choices=["none", "minimal", "deep_dive", "roofline"],
+        default="deep_dive",
+        help="Profiling level (default: deep_dive). Use 'none' for fastest runs without profiling."
+    )
+    parser.add_argument(
+        "--no-kill-gpu",
+        action="store_true",
+        help="Don't kill GPU processes between benchmarks (faster but less isolated)"
+    )
+    parser.add_argument(
+        "--chapter-patterns",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Wildcard patterns for chapters to include (e.g., 'ch1*' 'ch2*')"
+    )
+    parser.add_argument(
+        "--lab-patterns",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Wildcard patterns for labs to include (e.g., 'labs/*' 'labs/decode*')"
+    )
+    parser.add_argument(
+        "--chapters",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Explicit list of chapter names to include (e.g., 'ch01' 'ch02')"
+    )
+    parser.add_argument(
+        "--labs",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Explicit list of lab names to include (e.g., 'labs/decode_optimization')"
+    )
     args = parser.parse_args()
     
+    kill_gpu = not args.no_kill_gpu
+    
     print("="*80)
-    print("Sequential Benchmark Runner with Deep Profiling")
+    print("Sequential Benchmark Runner with TRUE ISOLATION")
     print("="*80)
     print(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Profile: deep_dive (always enabled)")
+    print(f"Profile: {args.profile}")
+    print(f"Kill GPU processes between runs: {kill_gpu}")
     if args.update_expectations:
         print("Mode: --update-expectations enabled")
     if args.accept_regressions:
@@ -190,11 +368,39 @@ def main():
     
     # Get all chapters and labs
     print("\nFetching list of chapters and labs...")
-    chapters = get_all_chapters_and_labs()
+    all_chapters = get_all_chapters_and_labs()
     
-    print(f"\nFound {len(chapters)} chapters/labs to process:")
+    # Filter chapters based on provided patterns/lists
+    chapters = filter_chapters(
+        all_chapters,
+        chapter_patterns=args.chapter_patterns,
+        lab_patterns=args.lab_patterns,
+        chapter_list=args.chapters,
+        lab_list=args.labs
+    )
+    
+    # Display filter information
+    if args.chapter_patterns or args.lab_patterns or args.chapters or args.labs:
+        print(f"\nFiltering applied:")
+        if args.chapter_patterns:
+            print(f"  Chapter patterns: {args.chapter_patterns}")
+        if args.lab_patterns:
+            print(f"  Lab patterns: {args.lab_patterns}")
+        if args.chapters:
+            print(f"  Explicit chapters: {args.chapters}")
+        if args.labs:
+            print(f"  Explicit labs: {args.labs}")
+        print(f"\nFound {len(all_chapters)} total chapters/labs")
+        print(f"Filtered to {len(chapters)} chapters/labs to process:")
+    else:
+        print(f"\nFound {len(chapters)} chapters/labs to process:")
+    
     for i, ch in enumerate(chapters, 1):
         print(f"  {i:3d}. {ch}")
+    
+    if len(chapters) == 0:
+        print("\nERROR: No chapters/labs match the specified filters!")
+        sys.exit(1)
     
     # Create log file
     log_dir = Path("artifacts")
@@ -252,7 +458,9 @@ def main():
                 cold_start=args.cold_start,
                 reproducible=args.reproducible,
                 suite_timeout=args.suite_timeout,
-                timeout_multiplier=args.timeout_multiplier
+                timeout_multiplier=args.timeout_multiplier,
+                profile=args.profile,
+                kill_gpu=kill_gpu
             )
             chapter_duration = time.time() - chapter_start_time
             

@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = REPO_ROOT / "artifacts"
 PROBE_FILE = ARTIFACTS_DIR / "hardware_capabilities.json"
-PROBE_SCRIPT = REPO_ROOT / "tools" / "utilities" / "probe_hardware_capabilities.py"
+PROBE_SCRIPT = REPO_ROOT / "core" / "scripts" / "utilities" / "probe_hardware_capabilities.py"
 
 __all__ = [
     "HardwareCapabilities",
@@ -111,51 +111,23 @@ def _run_probe_if_needed() -> None:
     if PROBE_FILE.exists():
         return
 
-    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        subprocess.run([sys.executable, str(PROBE_SCRIPT)], check=True, timeout=180)
-        return
-    except Exception as exc:
-        # Fall back to a minimal stub if probing fails (e.g., OOM during set_device).
-        import torch  # local import to avoid optional dependency during docs builds
+    # Fail loudly if the probe script doesn't exist - no silent fallbacks
+    if not PROBE_SCRIPT.exists():
+        raise FileNotFoundError(
+            f"Hardware probe script not found: {PROBE_SCRIPT}\n"
+            f"Expected location: {PROBE_SCRIPT.resolve()}\n"
+            f"This is a critical configuration error - fix the path or restore the file."
+        )
 
-        devices = []
-        if torch.cuda.is_available():
-            for idx in range(torch.cuda.device_count()):
-                props = torch.cuda.get_device_properties(idx)
-                cc = f"{props.major}.{props.minor}"
-                devices.append(
-                    {
-                        "device_index": idx,
-                        "key": f"sm_{props.major}{props.minor}",
-                        "name": props.name,
-                        "architecture": "blackwell" if props.major >= 10 else "other",
-                        "compute_capability": cc,
-                        "total_memory_gb": round(props.total_memory / 1e9, 2),
-                        "num_sms": props.multi_processor_count,
-                        "warp_size": props.warp_size,
-                        "max_threads_per_block": props.max_threads_per_block,
-                        "max_shared_mem_per_block": props.shared_memory_per_block,
-                        "tma": {"supported": False, "compiler_support": False},
-                    }
-                )
-        else:
-            devices.append(
-                {
-                    "device_index": 0,
-                    "key": "sm_00",
-                    "name": "unknown",
-                    "architecture": "other",
-                    "compute_capability": "0.0",
-                    "total_memory_gb": 0,
-                    "num_sms": 0,
-                    "warp_size": 32,
-                    "max_threads_per_block": 1024,
-                    "max_shared_mem_per_block": 48 * 1024,
-                    "tma": {"supported": False, "compiler_support": False},
-                }
-            )
-        PROBE_FILE.write_text(json.dumps({"devices": devices}, indent=2))
+    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+    # Run the probe script - let errors propagate, no silent fallbacks
+    subprocess.run([sys.executable, str(PROBE_SCRIPT)], check=True, timeout=180)
+    
+    if not PROBE_FILE.exists():
+        raise RuntimeError(
+            f"Probe script ran but did not create expected output: {PROBE_FILE}\n"
+            f"The probe script may have failed silently."
+        )
 
 
 def _load_probe_data() -> Dict[str, Any]:

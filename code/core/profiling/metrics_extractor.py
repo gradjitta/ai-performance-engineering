@@ -125,9 +125,9 @@ def extract_nsys_metrics(nsys_rep_path: Path, timeout: int = 60) -> NsysMetrics:
     # Also try using the extract_nsys_summary module if available
     try:
         repo_root = Path(__file__).resolve().parent.parent
-        tools_path = repo_root / "tools" / "profiling"
-        if str(tools_path) not in sys.path:
-            sys.path.insert(0, str(tools_path))
+        profiling_path = repo_root / "profiling"
+        if str(profiling_path) not in sys.path:
+            sys.path.insert(0, str(profiling_path))
         
         from extract_nsys_summary import harvest
         harvested = harvest(nsys_rep_path)

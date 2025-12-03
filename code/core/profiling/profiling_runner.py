@@ -163,11 +163,25 @@ def _run_deep_profiling_report(
     output_base: Path,
     *,
     timeout: int = 90,
-) -> Optional[Dict[str, str]]:
-    """Invoke the deep profiling reporter (markdown + JSON)."""
-    script = _repo_root() / "tools" / "analysis" / "deep_profiling_report.py"
-    if not script.exists() or not ncu_csv.exists():
-        return None
+) -> Dict[str, str]:
+    """Invoke the deep profiling reporter (markdown + JSON).
+    
+    Raises:
+        FileNotFoundError: If the script or ncu_csv doesn't exist
+        RuntimeError: If the script fails
+    """
+    script = _repo_root() / "core" / "analysis" / "deep_profiling_report.py"
+    if not script.exists():
+        raise FileNotFoundError(
+            f"Deep profiling report script not found: {script}\n"
+            f"Expected: {script.resolve()}\n"
+            f"This is a critical configuration error."
+        )
+    if not ncu_csv.exists():
+        raise FileNotFoundError(
+            f"NCU CSV file not found: {ncu_csv}\n"
+            f"Deep profiling requires NCU output."
+        )
     md_path = output_base.with_suffix(".md")
     json_path = output_base.with_suffix(".json")
     cmd = [
@@ -181,21 +195,16 @@ def _run_deep_profiling_report(
     ]
     if nsys_report and nsys_report.exists():
         cmd.extend(["--nsys-report", str(nsys_report)])
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return None
-    if result.returncode != 0:
-        return None
-    try:
-        md_path.write_text(result.stdout)
-    except Exception:
-        return None
+    
+    # Let errors propagate - no silent failures
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=True,
+    )
+    md_path.write_text(result.stdout)
     return {"deep_profile_md": str(md_path), "deep_profile_json": str(json_path)}
 
 
