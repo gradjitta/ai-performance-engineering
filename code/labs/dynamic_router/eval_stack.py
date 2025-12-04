@@ -27,6 +27,7 @@ from statistics import mean, pstdev
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import torch
+from labs.common.model_fetcher import ensure_gpt_oss_20b
 
 try:  # Optional import here; runtime will error if vLLM is actually needed and missing.
     from vllm import LLM, SamplingParams  # type: ignore
@@ -670,9 +671,7 @@ class CheapEvalStack:
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA is not available; a GPU is required for the eval stack.")
 
-        model_path = Path(self.cfg.model_path)
-        if not model_path.exists():
-            raise RuntimeError(f"SKIPPED: Model path not found: {model_path}")
+        model_path = ensure_gpt_oss_20b(Path(self.cfg.model_path))
         if torch.cuda.device_count() <= 0:
             raise RuntimeError("No CUDA devices visible; cannot start vLLM.")
 

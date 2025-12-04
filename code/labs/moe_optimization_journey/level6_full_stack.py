@@ -158,6 +158,15 @@ class Level6FullStack(BaseBenchmark):
     def __init__(self, config: Optional[MoEConfig] = None):
         super().__init__()
         self.config = config or get_config("small")
+        # Surface workload parameters for harness input verification
+        self.batch_size = self.config.batch_size
+        self.seq_len = self.config.seq_len
+        self.hidden_size = self.config.hidden_size
+        self.intermediate_size = self.config.intermediate_size
+        self.num_experts = self.config.num_experts
+        self.num_experts_per_tok = self.config.num_experts_per_tok
+        self.vocab_size = self.config.vocab_size
+        self.num_heads = self.config.num_attention_heads
         self.model: Optional[Any] = None
         self.compiled_model: Optional[Any] = None
         self.input_ids: Optional[torch.Tensor] = None
@@ -272,6 +281,19 @@ class Level6FullStack(BaseBenchmark):
             "latency_ms": self.last_latency_ms,
             "tokens_per_sec": self.last_tokens_per_sec,
             "cuda_graphs": 1.0,
+        }
+
+    def get_input_signature(self) -> Dict[str, Any]:
+        """Align CUDA-graphs variant with baseline MoE workload parameters."""
+        return {
+            "batch_size": self.batch_size,
+            "seq_len": self.seq_len,
+            "hidden_size": self.hidden_size,
+            "intermediate_size": self.intermediate_size,
+            "num_experts": self.num_experts,
+            "num_experts_per_tok": self.num_experts_per_tok,
+            "vocab_size": self.vocab_size,
+            "num_heads": self.num_heads,
         }
 
 

@@ -72,12 +72,13 @@ CONFIGS = {
     ),
     "small": MoEConfig(
         hidden_size=512,
-        intermediate_size=1024,
-        num_experts=8,
+        intermediate_size=2048,
+        num_experts=4,
         num_experts_per_tok=2,
-        num_layers=4,
-        num_attention_heads=8,
+        num_layers=1,
+        num_attention_heads=32,
         vocab_size=32000,
+        seq_len=128,
     ),
     "medium": MoEConfig(
         hidden_size=1024,
@@ -110,4 +111,3 @@ def get_config(name: str = "small", **overrides) -> MoEConfig:
         if hasattr(config, key):
             setattr(config, key, value)
     return config
-

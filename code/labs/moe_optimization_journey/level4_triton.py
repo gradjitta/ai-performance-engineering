@@ -360,6 +360,19 @@ class Level4Triton(BaseBenchmark):
             "tokens_per_sec": self.last_tokens_per_sec,
         }
 
+    def get_input_signature(self) -> Dict[str, Any]:
+        """Expose workload parameters for input verification."""
+        return {
+            "batch_size": self.config.batch_size,
+            "seq_len": self.config.seq_len,
+            "hidden_size": self.config.hidden_size,
+            "intermediate_size": self.config.intermediate_size,
+            "num_experts": self.config.num_experts,
+            "num_experts_per_tok": self.config.num_experts_per_tok,
+            "vocab_size": self.config.vocab_size,
+            "num_heads": getattr(self.config, "num_attention_heads", None),
+        }
+
 
 def get_benchmark() -> BaseBenchmark:
     return Level4Triton()

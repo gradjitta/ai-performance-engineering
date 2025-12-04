@@ -48,14 +48,18 @@ def _supports_fused_fp8_attention() -> bool:
     if not torch.cuda.is_available():
         return False
     cc_major, _ = torch.cuda.get_device_capability()
-    if cc_major < 10:
-        return False
+    if cc_major >= 10:
+        return True
+    # For completeness, honor Transformer Engine SDPA when available on older GPUs.
+    try:
         from torch.nn.attention import sdpa_kernel as _sdpa_kernel, SDPBackend as _SDPBackend
 
         available = getattr(_sdpa_kernel, "available_backends", lambda: [])()
         te_backend = getattr(_SDPBackend, "TRANSFORMER_ENGINE", None)
         if available and te_backend is not None:
             return te_backend in available
+    except Exception:
+        pass
     return False
 
 

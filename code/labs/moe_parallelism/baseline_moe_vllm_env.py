@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from labs.common.model_fetcher import ensure_gpt_oss_20b  # noqa: E402
 from labs.moe_parallelism.benchmarking import PlanBenchmark, run_benchmark  # noqa: E402
 from labs.moe_parallelism.moe_env_presets import (  # noqa: E402
     DEFAULT_VALIDATION,
@@ -235,6 +236,7 @@ class BaselineMoeVllmEnvBenchmark(PlanBenchmark):
         defaults = _default_run_args(fabric_key)
         self.ngpu = int(ngpu or defaults["ngpu"])
         self.model_path = str(model_path or defaults["model_path"])
+        ensure_gpt_oss_20b(Path(self.model_path))
         self.tp = int(tp or defaults["tp"])
         self.pp = int(pp or defaults["pp"])
         self.max_len = int(max_len or defaults["max_len"])
