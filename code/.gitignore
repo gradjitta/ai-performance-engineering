@@ -14,6 +14,8 @@ report.html
 mcp_tools_test_report.md
 core/artifacts/ 
 .hypothesis/
+artifacts_chXX/
+benchmark_profiles_chXX/
 config/.env
 config/.env.local
 benchmark_test_results.json

@@ -1,0 +1,58 @@
+{
+  "examples": {
+    "flex_attention": {
+      "example": "flex_attention",
+      "metadata": {
+        "best_optimization": "optimized_flex_attention",
+        "best_optimization_file": "optimized_flex_attention.py",
+        "best_optimization_speedup": 32.945488932165674,
+        "best_optimization_time_ms": 0.24280000180006028,
+        "git_commit": "75cbbbcfaaac628797e7636c22f2adb10d4d072f",
+        "updated_at": "2025-12-08T19:37:11.704063"
+      },
+      "metrics": {
+        "baseline_p75_ms": 7.958144187927246,
+        "baseline_throughput.latency_ms": 7.999164772033692,
+        "baseline_throughput.requests_per_s": 250.02610359925416,
+        "baseline_throughput.tokens_per_s": 256026.73008563626,
+        "baseline_time_ms": 7.999164772033692,
+        "best_optimized_p75_ms": 0.18534399569034576,
+        "best_optimized_speedup": 32.945488932165674,
+        "best_optimized_throughput.latency_ms": 0.24280000180006028,
+        "best_optimized_throughput.requests_per_s": 8237.232228881736,
+        "best_optimized_throughput.tokens_per_s": 8434925.802374898,
+        "best_optimized_time_ms": 0.24280000180006028,
+        "best_speedup": 32.945488932165674
+      },
+      "type": "python"
+    },
+    "flex_attention_cute": {
+      "example": "flex_attention_cute",
+      "metadata": {
+        "best_optimization": "optimized_flex_attention_cute",
+        "best_optimization_file": "optimized_flex_attention_cute.py",
+        "best_optimization_speedup": 0.9955625046244339,
+        "best_optimization_time_ms": 0.1652586671213309,
+        "git_commit": "75cbbbcfaaac628797e7636c22f2adb10d4d072f",
+        "updated_at": "2025-12-08T19:39:38.478139"
+      },
+      "metrics": {
+        "baseline_p75_ms": 0.17420800030231476,
+        "baseline_throughput.latency_ms": 0.16452533255020776,
+        "baseline_throughput.requests_per_s": 12156.18269235022,
+        "baseline_throughput.tokens_per_s": 12447931.076966625,
+        "baseline_time_ms": 0.16452533255020776,
+        "best_optimized_p75_ms": 0.1650879979133606,
+        "best_optimized_speedup": 0.9955625046244339,
+        "best_optimized_throughput.latency_ms": 0.1652586671213309,
+        "best_optimized_throughput.requests_per_s": 12102.23968786838,
+        "best_optimized_throughput.tokens_per_s": 12392693.44037722,
+        "best_optimized_time_ms": 0.1652586671213309,
+        "best_speedup": 0.9955625046244339
+      },
+      "type": "python"
+    }
+  },
+  "hardware_key": "b200",
+  "schema_version": 2
+}

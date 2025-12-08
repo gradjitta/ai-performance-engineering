@@ -13,7 +13,18 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 class BenchmarkContract:
-    """Defines the contract that all benchmarks must follow."""
+    """Defines the contract that all benchmarks must follow.
+    
+    The contract includes required methods that must be implemented by all benchmarks,
+    and recommended methods that support verification enforcement.
+    
+    Verification Enforcement (phased rollout):
+    - Phase 1 (DETECT): get_input_signature and validate_result are recommended
+    - Phase 2 (QUARANTINE): Benchmarks without these methods are quarantined
+    - Phase 3 (GATE): These methods become required for CI to pass
+    
+    See core.benchmark.verification for enforcement phase configuration.
+    """
     
     # Required methods that must be implemented
     REQUIRED_METHODS: Set[str] = {
@@ -22,10 +33,18 @@ class BenchmarkContract:
         "teardown",
     }
     
-    # Optional methods that are recommended
+    # Methods recommended for verification enforcement
+    # These will become required in Phase 3 (GATE)
     RECOMMENDED_METHODS: Set[str] = {
         "get_config",
-        "validate_result",
+        "validate_result",  # Returns error message or None
+        "get_input_signature",  # Returns workload description dict
+    }
+    
+    # Methods for verification skip control (use sparingly with justification)
+    VERIFICATION_SKIP_METHODS: Set[str] = {
+        "skip_input_verification",
+        "skip_output_verification",
     }
     
     # Required attributes (if using BaseBenchmark)
@@ -173,6 +192,72 @@ class BenchmarkContract:
                 errors.append(f"setup() raised exception: {type(e).__name__}: {e}")
         
         return len(errors) == 0, errors
+    
+    @staticmethod
+    def check_verification_compliance(benchmark: Any) -> Tuple[bool, List[str], List[str]]:
+        """Check if a benchmark is compliant with verification enforcement requirements.
+        
+        This is separate from validate_benchmark_instance as verification requirements
+        are enforced according to the enforcement phase (DETECT, QUARANTINE, GATE).
+        
+        Args:
+            benchmark: Benchmark instance to check
+            
+        Returns:
+            Tuple of (is_compliant, errors, warnings)
+            - In DETECT phase: all issues are warnings
+            - In QUARANTINE/GATE phase: missing methods are errors
+        """
+        from core.benchmark.verification import get_enforcement_phase, EnforcementPhase
+        
+        errors: List[str] = []
+        warnings: List[str] = []
+        phase = get_enforcement_phase()
+        
+        # Check verification methods
+        for method_name in ["get_input_signature", "validate_result"]:
+            if not hasattr(benchmark, method_name):
+                msg = f"Missing verification method: {method_name}()"
+                if phase == EnforcementPhase.DETECT:
+                    warnings.append(msg)
+                else:
+                    errors.append(msg)
+            else:
+                method = getattr(benchmark, method_name)
+                if not callable(method):
+                    msg = f"Verification method {method_name} is not callable"
+                    if phase == EnforcementPhase.DETECT:
+                        warnings.append(msg)
+                    else:
+                        errors.append(msg)
+        
+        # Check for skip flags (always warn - these should have justification)
+        for skip_method in BenchmarkContract.VERIFICATION_SKIP_METHODS:
+            if hasattr(benchmark, skip_method):
+                try:
+                    method = getattr(benchmark, skip_method)
+                    if callable(method) and method():
+                        # Check for justification
+                        justification = getattr(benchmark, f"{skip_method}_reason", None)
+                        if not justification:
+                            warnings.append(
+                                f"{skip_method}() returns True without justification attribute"
+                            )
+                except Exception:
+                    pass
+        
+        # Check for legacy skip flags (deprecated)
+        for legacy_flag in ["skip_output_check", "skip_input_check", "skip_verification"]:
+            if hasattr(benchmark, legacy_flag):
+                value = getattr(benchmark, legacy_flag)
+                if value:
+                    msg = f"Legacy skip flag '{legacy_flag}' is deprecated; use skip_*_verification() methods"
+                    if phase == EnforcementPhase.DETECT:
+                        warnings.append(msg)
+                    else:
+                        errors.append(msg)
+        
+        return len(errors) == 0, errors, warnings
 
 
 def get_benchmark_class_from_module(module_path: Path) -> Optional[type]:

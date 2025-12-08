@@ -1,0 +1,1005 @@
+"""Benchmark verification enforcement data models and utilities.
+
+This module provides the core data structures for mandatory correctness verification
+of benchmark pairs (baseline_*/optimized_*). It implements a dual-mode approach where
+verify mode validates correctness separately from perf mode.
+
+Key Components:
+- InputSignature: Complete workload description for equivalence checking
+- ToleranceSpec: Dtype-aware tolerance specification for output comparison
+- QuarantineReason: Enumeration of all quarantine reasons
+- EnforcementPhase: Phased rollout configuration (DETECT, QUARANTINE, GATE)
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import random
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+import numpy as np
+import torch
+
+
+# =============================================================================
+# Precision Configuration
+# =============================================================================
+
+
+@dataclass
+class PrecisionFlags:
+    """Precision configuration for benchmark workloads.
+    
+    Tracks which precision modes are enabled for a benchmark. This affects
+    tolerance selection and workload equivalence checking.
+    """
+    fp16: bool = False
+    bf16: bool = False
+    fp8: bool = False
+    tf32: bool = True  # Default on for CUDA
+    
+    def to_dict(self) -> Dict[str, bool]:
+        """Serialize to dictionary for JSON storage."""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PrecisionFlags":
+        """Deserialize from dictionary."""
+        return cls(
+            fp16=data.get("fp16", False),
+            bf16=data.get("bf16", False),
+            fp8=data.get("fp8", False),
+            tf32=data.get("tf32", True),
+        )
+
+
+# =============================================================================
+# Input Signature
+# =============================================================================
+
+
+@dataclass
+class InputSignature:
+    """Complete workload description for equivalence checking.
+    
+    Used to verify that baseline and optimized benchmarks operate on equivalent
+    workloads. Without this verification, performance comparisons are meaningless.
+    
+    Required fields must be provided for all benchmarks. Optional fields are
+    required only for specific benchmark types (distributed, streams/graphs, etc.)
+    """
+    
+    # Required fields
+    shapes: Dict[str, Tuple[int, ...]]  # Named tensor shapes
+    dtypes: Dict[str, str]  # Named tensor dtypes
+    batch_size: int
+    parameter_count: int
+    precision_flags: PrecisionFlags
+    
+    # Optional topology fields (required for distributed)
+    world_size: Optional[int] = None
+    ranks: Optional[List[int]] = None
+    shards: Optional[int] = None
+    pipeline_stages: Optional[int] = None
+    per_rank_batch_size: Optional[int] = None
+    collective_type: Optional[str] = None
+    
+    # Optional launch config (required for streams/graphs)
+    num_streams: Optional[int] = None
+    graph_capture_enabled: Optional[bool] = None
+    
+    # Optional algorithm flags
+    pruning_enabled: Optional[bool] = None
+    sparsity_ratio: Optional[float] = None
+    quantization_mode: Optional[str] = None
+    
+    def hash(self) -> str:
+        """Generate stable hash for cache keying.
+        
+        The hash is deterministic and based on all signature fields.
+        Used to key golden output caches and detect signature changes.
+        
+        Returns:
+            16-character hex string derived from SHA256 hash
+        """
+        # Convert to dict with sorted keys for deterministic ordering
+        data = self.to_dict()
+        json_str = json.dumps(data, sort_keys=True)
+        return hashlib.sha256(json_str.encode()).hexdigest()[:16]
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary for JSON storage."""
+        result: Dict[str, Any] = {
+            "shapes": {k: list(v) for k, v in self.shapes.items()},
+            "dtypes": self.dtypes,
+            "batch_size": self.batch_size,
+            "parameter_count": self.parameter_count,
+            "precision_flags": self.precision_flags.to_dict(),
+        }
+        
+        # Add optional fields if set
+        if self.world_size is not None:
+            result["world_size"] = self.world_size
+        if self.ranks is not None:
+            result["ranks"] = self.ranks
+        if self.shards is not None:
+            result["shards"] = self.shards
+        if self.pipeline_stages is not None:
+            result["pipeline_stages"] = self.pipeline_stages
+        if self.per_rank_batch_size is not None:
+            result["per_rank_batch_size"] = self.per_rank_batch_size
+        if self.collective_type is not None:
+            result["collective_type"] = self.collective_type
+        if self.num_streams is not None:
+            result["num_streams"] = self.num_streams
+        if self.graph_capture_enabled is not None:
+            result["graph_capture_enabled"] = self.graph_capture_enabled
+        if self.pruning_enabled is not None:
+            result["pruning_enabled"] = self.pruning_enabled
+        if self.sparsity_ratio is not None:
+            result["sparsity_ratio"] = self.sparsity_ratio
+        if self.quantization_mode is not None:
+            result["quantization_mode"] = self.quantization_mode
+            
+        return result
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "InputSignature":
+        """Deserialize from dictionary."""
+        shapes = {k: tuple(v) for k, v in data.get("shapes", {}).items()}
+        precision_data = data.get("precision_flags", {})
+        
+        return cls(
+            shapes=shapes,
+            dtypes=data.get("dtypes", {}),
+            batch_size=data.get("batch_size", 0),
+            parameter_count=data.get("parameter_count", 0),
+            precision_flags=PrecisionFlags.from_dict(precision_data),
+            world_size=data.get("world_size"),
+            ranks=data.get("ranks"),
+            shards=data.get("shards"),
+            pipeline_stages=data.get("pipeline_stages"),
+            per_rank_batch_size=data.get("per_rank_batch_size"),
+            collective_type=data.get("collective_type"),
+            num_streams=data.get("num_streams"),
+            graph_capture_enabled=data.get("graph_capture_enabled"),
+            pruning_enabled=data.get("pruning_enabled"),
+            sparsity_ratio=data.get("sparsity_ratio"),
+            quantization_mode=data.get("quantization_mode"),
+        )
+    
+    def matches(self, other: "InputSignature") -> bool:
+        """Check if two signatures are equivalent.
+        
+        Two signatures match if all their fields are equal. This is used to
+        verify baseline and optimized run on equivalent workloads.
+        """
+        return self.to_dict() == other.to_dict()
+    
+    def validate(self) -> List[str]:
+        """Validate that required fields are present and valid.
+        
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        errors = []
+        
+        if not self.shapes:
+            errors.append("shapes is required and cannot be empty")
+        if not self.dtypes:
+            errors.append("dtypes is required and cannot be empty")
+        if self.batch_size <= 0:
+            errors.append("batch_size must be positive")
+        if self.parameter_count < 0:
+            errors.append("parameter_count cannot be negative")
+            
+        return errors
+
+
+# =============================================================================
+# Tolerance Specification
+# =============================================================================
+
+
+@dataclass
+class ToleranceSpec:
+    """Output comparison tolerances for verification.
+    
+    Defines the tolerance for comparing outputs between baseline and optimized
+    benchmarks. Supports both numeric tolerances (rtol/atol) and custom
+    comparator functions for complex outputs.
+    """
+    rtol: float  # Relative tolerance
+    atol: float  # Absolute tolerance
+    comparator_fn: Optional[Callable[[torch.Tensor, torch.Tensor], bool]] = None
+    justification: Optional[str] = None  # Required if looser than dtype defaults
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary (comparator_fn is not serialized)."""
+        return {
+            "rtol": self.rtol,
+            "atol": self.atol,
+            "justification": self.justification,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ToleranceSpec":
+        """Deserialize from dictionary."""
+        return cls(
+            rtol=data.get("rtol", 1e-5),
+            atol=data.get("atol", 1e-8),
+            comparator_fn=None,  # Cannot deserialize functions
+            justification=data.get("justification"),
+        )
+
+
+# Default tolerances by dtype - these are the canonical tolerances used throughout
+DEFAULT_TOLERANCES: Dict[torch.dtype, ToleranceSpec] = {
+    torch.float32: ToleranceSpec(rtol=1e-5, atol=1e-8),
+    torch.float16: ToleranceSpec(rtol=1e-3, atol=1e-5),
+    torch.bfloat16: ToleranceSpec(rtol=1e-3, atol=1e-5),
+    torch.float64: ToleranceSpec(rtol=1e-9, atol=1e-12),
+    torch.int32: ToleranceSpec(rtol=0, atol=0),  # Exact match
+    torch.int64: ToleranceSpec(rtol=0, atol=0),  # Exact match
+    torch.int16: ToleranceSpec(rtol=0, atol=0),  # Exact match
+    torch.int8: ToleranceSpec(rtol=0, atol=0),  # Exact match
+    torch.uint8: ToleranceSpec(rtol=0, atol=0),  # Exact match
+    torch.bool: ToleranceSpec(rtol=0, atol=0),  # Exact match
+    torch.complex64: ToleranceSpec(rtol=1e-5, atol=1e-8),
+    torch.complex128: ToleranceSpec(rtol=1e-9, atol=1e-12),
+}
+
+# Add FP8 types if available (PyTorch 2.1+)
+try:
+    DEFAULT_TOLERANCES[torch.float8_e4m3fn] = ToleranceSpec(rtol=1e-2, atol=1e-3)
+    DEFAULT_TOLERANCES[torch.float8_e5m2] = ToleranceSpec(rtol=1e-2, atol=1e-3)
+except AttributeError:
+    pass  # FP8 types not available
+
+
+def get_tolerance_for_dtype(dtype: torch.dtype) -> ToleranceSpec:
+    """Get default tolerance for a given dtype.
+    
+    Args:
+        dtype: PyTorch dtype
+        
+    Returns:
+        ToleranceSpec with appropriate tolerances for the dtype
+    """
+    return DEFAULT_TOLERANCES.get(dtype, ToleranceSpec(rtol=1e-5, atol=1e-8))
+
+
+def is_tolerance_looser(custom: ToleranceSpec, default: ToleranceSpec) -> bool:
+    """Check if a custom tolerance is looser than the default.
+    
+    A tolerance is "looser" if it allows larger differences to pass.
+    This triggers a warning and requires justification.
+    
+    Args:
+        custom: The custom tolerance being used
+        default: The default tolerance for the dtype
+        
+    Returns:
+        True if custom is looser than default
+    """
+    return custom.rtol > default.rtol or custom.atol > default.atol
+
+
+# =============================================================================
+# Quarantine Reasons
+# =============================================================================
+
+
+class QuarantineReason(Enum):
+    """Enumeration of all reasons a benchmark can be quarantined.
+    
+    Quarantined benchmarks are excluded from performance reports. Each reason
+    maps to a specific compliance failure that must be fixed.
+    """
+    # Discovery/loading errors
+    MISSING_INPUT_SIGNATURE = "missing_input_signature"
+    MISSING_VALIDATE_RESULT = "missing_validate_result"
+    MISSING_WORKLOAD_METADATA = "workload_metadata_missing"
+    MISSING_TOLERANCE_FOR_NONDETERMINISTIC = "missing_tolerance_for_nondeterministic"
+    
+    # Signature/workload errors
+    SIGNATURE_MISMATCH = "signature_mismatch"
+    WORKLOAD_MISMATCH = "workload_mismatch"
+    TIMING_CONFIG_MISMATCH = "timing_config_mismatch"
+    
+    # Output verification errors
+    OUTPUT_MISMATCH = "output_mismatch"
+    
+    # Anti-hacking check failures
+    JITTER_FAIL = "jitter_fail"
+    JITTER_DIMENSION_UNAVAILABLE = "jitter_dimension_unavailable"
+    FRESH_INPUT_FAIL = "fresh_input_fail"
+    CACHED_OUTPUT_DETECTED = "cached_output_detected"
+    
+    # CUDA verification errors
+    CUDA_VERIFY_FAILED = "cuda_verify_failed"
+    CUDA_NO_VERIFY_PATH = "cuda_no_verify_path"
+    CUDA_PERF_BINARY_CONTAMINATED = "cuda_perf_binary_contaminated"
+    
+    # Distributed verification errors
+    DISTRIBUTED_VERIFY_FAIL = "distributed_verify_fail"
+    TOPOLOGY_MISMATCH = "topology_mismatch"
+    
+    # Skip flag detection
+    SKIP_FLAG_PRESENT = "skip_flag_present"
+    
+    # Seed errors
+    SEED_MUTATION_DETECTED = "seed_mutation_detected"
+
+
+@dataclass
+class QuarantineRecord:
+    """Record of a quarantined benchmark.
+    
+    Tracks when and why a benchmark was quarantined, along with any
+    additional details that may help with debugging or fixing the issue.
+    """
+    benchmark_path: str
+    quarantine_reason: QuarantineReason
+    quarantine_timestamp: datetime
+    details: Optional[Dict[str, Any]] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary for JSON storage."""
+        return {
+            "benchmark_path": self.benchmark_path,
+            "quarantine_reason": self.quarantine_reason.value,
+            "quarantine_timestamp": self.quarantine_timestamp.isoformat(),
+            "details": self.details,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "QuarantineRecord":
+        """Deserialize from dictionary."""
+        return cls(
+            benchmark_path=data.get("benchmark_path", ""),
+            quarantine_reason=QuarantineReason(data.get("quarantine_reason", "missing_input_signature")),
+            quarantine_timestamp=datetime.fromisoformat(data.get("quarantine_timestamp", datetime.now().isoformat())),
+            details=data.get("details"),
+        )
+
+
+# =============================================================================
+# Enforcement Phases
+# =============================================================================
+
+
+class EnforcementPhase(Enum):
+    """Phased rollout configuration for verification enforcement.
+    
+    Allows gradual adoption of verification requirements:
+    - DETECT: Report issues but don't fail CI or quarantine
+    - QUARANTINE: Quarantine non-compliant benchmarks, exclude from perf reports
+    - GATE: Fail CI on any non-compliance
+    """
+    DETECT = "detect"      # Phase 1: Report only, no failures
+    QUARANTINE = "quarantine"  # Phase 2: Quarantine non-compliant, exclude from perf
+    GATE = "gate"          # Phase 3: Fail CI on any non-compliance
+
+
+def get_enforcement_phase() -> EnforcementPhase:
+    """Get current enforcement phase from environment.
+    
+    The phase is controlled by the VERIFY_ENFORCEMENT_PHASE environment variable.
+    Defaults to DETECT if not set.
+    
+    Returns:
+        Current EnforcementPhase
+    """
+    phase_str = os.environ.get("VERIFY_ENFORCEMENT_PHASE", "detect")
+    try:
+        return EnforcementPhase(phase_str.lower())
+    except ValueError:
+        return EnforcementPhase.DETECT
+
+
+def is_verification_enabled() -> bool:
+    """Check if verification is enabled.
+    
+    Verification is always enabled by default. Can be disabled via
+    VERIFY_DISABLED=1 environment variable for debugging only.
+    
+    Returns:
+        True if verification is enabled (default)
+    """
+    return os.environ.get("VERIFY_DISABLED", "0") != "1"
+
+
+# =============================================================================
+# Verification Results
+# =============================================================================
+
+
+@dataclass
+class ComparisonDetails:
+    """Details of output comparison between baseline and optimized."""
+    passed: bool
+    max_diff: Optional[float] = None
+    location: Optional[Tuple[int, ...]] = None
+    expected_sample: Optional[float] = None
+    actual_sample: Optional[float] = None
+    tolerance_used: Optional[ToleranceSpec] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        result: Dict[str, Any] = {
+            "passed": self.passed,
+        }
+        if self.max_diff is not None:
+            result["max_diff"] = self.max_diff
+        if self.location is not None:
+            result["location"] = list(self.location)
+        if self.expected_sample is not None:
+            result["expected_sample"] = self.expected_sample
+        if self.actual_sample is not None:
+            result["actual_sample"] = self.actual_sample
+        if self.tolerance_used is not None:
+            result["tolerance_used"] = self.tolerance_used.to_dict()
+        return result
+
+
+@dataclass
+class VerifyResult:
+    """Result of verification for a benchmark pair."""
+    passed: bool
+    reason: Optional[str] = None  # Failure reason if not passed
+    signature_hash: Optional[str] = None
+    comparison_details: Optional[ComparisonDetails] = None
+    baseline_checksum: Optional[str] = None
+    optimized_checksum: Optional[str] = None
+    workload_delta: Optional[Dict[str, float]] = None
+    jitter_exemption_reason: Optional[str] = None
+    seed_info: Optional[Dict[str, int]] = None
+    timestamp: Optional[datetime] = None
+    
+    @classmethod
+    def success(cls, signature_hash: str, **kwargs) -> "VerifyResult":
+        """Create a successful verification result."""
+        return cls(
+            passed=True,
+            signature_hash=signature_hash,
+            timestamp=datetime.now(),
+            **kwargs,
+        )
+    
+    @classmethod
+    def fail(cls, reason: str, details: Any = None) -> "VerifyResult":
+        """Create a failed verification result."""
+        return cls(
+            passed=False,
+            reason=reason,
+            timestamp=datetime.now(),
+        )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        result: Dict[str, Any] = {
+            "passed": self.passed,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+        }
+        if self.reason:
+            result["reason"] = self.reason
+        if self.signature_hash:
+            result["signature_hash"] = self.signature_hash
+        if self.comparison_details:
+            result["comparison_details"] = self.comparison_details.to_dict()
+        if self.baseline_checksum:
+            result["baseline_checksum"] = self.baseline_checksum
+        if self.optimized_checksum:
+            result["optimized_checksum"] = self.optimized_checksum
+        if self.workload_delta:
+            result["workload_delta"] = self.workload_delta
+        if self.jitter_exemption_reason:
+            result["jitter_exemption_reason"] = self.jitter_exemption_reason
+        if self.seed_info:
+            result["seed_info"] = self.seed_info
+        return result
+
+
+# =============================================================================
+# Seed Management for Deterministic Verification
+# =============================================================================
+
+
+def set_deterministic_seeds(seed: int = 42) -> Dict[str, int]:
+    """Set all RNG seeds for deterministic verification.
+    
+    CRITICAL: Both baseline and optimized MUST use identical seeds (seed=42) 
+    in verify mode. Benchmarks SHALL NOT override these seeds in verify mode.
+    
+    Args:
+        seed: The seed value to use (default: 42)
+        
+    Returns:
+        Dict with seed values set for manifest recording
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    
+    seed_info = {
+        "random_seed": seed,
+        "numpy_seed": seed,
+        "torch_seed": seed,
+    }
+    
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        seed_info["cuda_seed"] = seed
+        
+    # Enable deterministic algorithms
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    seed_info["cudnn_deterministic"] = True
+    seed_info["cudnn_benchmark"] = False
+    
+    return seed_info
+
+
+def detect_seed_mutation(initial_seeds: Dict[str, int]) -> bool:
+    """Detect if benchmark mutated RNG seeds during execution.
+    
+    Called after benchmark execution to verify seeds unchanged.
+    Benchmarks MUST NOT mutate seeds during perf runs.
+    
+    Args:
+        initial_seeds: Seed info dict from set_deterministic_seeds()
+        
+    Returns:
+        True if seeds were mutated (verification should fail)
+    """
+    try:
+        # Check PyTorch seed
+        current_torch_seed = torch.initial_seed()
+        if current_torch_seed != initial_seeds.get("torch_seed"):
+            return True
+            
+        # Note: random and numpy seeds are harder to check without state comparison
+        # For now, we trust the PyTorch seed as the primary indicator
+        
+        return False
+    except Exception:
+        # If we can't check, assume no mutation
+        return False
+
+
+# =============================================================================
+# Jitter Check Utilities
+# =============================================================================
+
+
+def select_jitter_dimension(input_signature: InputSignature) -> Optional[Tuple[str, int]]:
+    """Select dimension to perturb for jitter check.
+    
+    Algorithm:
+    1. Iterate through shapes in input_signature.shapes
+    2. For each shape, find first dimension that is NOT batch dimension (dim 0)
+    3. Return (tensor_name, dimension_index) for first suitable dimension
+    4. If no suitable dimension found, return None (requires jitter_exemption_reason)
+    
+    Example:
+        shapes = {"input": (32, 256, 256), "mask": (32, 256)}
+        → Returns ("input", 1) - perturb dim 1 of input tensor
+        
+    Args:
+        input_signature: The input signature to analyze
+        
+    Returns:
+        Tuple of (tensor_name, dimension_index) or None if no suitable dimension
+    """
+    for tensor_name, shape in input_signature.shapes.items():
+        if len(shape) > 1:  # Has non-batch dimensions
+            return (tensor_name, 1)  # First non-batch dimension
+    return None  # No suitable dimension - requires exemption
+
+
+# =============================================================================
+# Workload Comparison
+# =============================================================================
+
+
+def compare_workload_metrics(
+    baseline_metrics: Dict[str, float],
+    optimized_metrics: Dict[str, float],
+    tolerance: float = 0.01,  # 1% default
+) -> Tuple[bool, Dict[str, float]]:
+    """Compare workload metrics between baseline and optimized.
+    
+    Workload metrics (bytes/tokens/ops per iteration) must match within
+    tolerance to ensure fair performance comparison.
+    
+    Args:
+        baseline_metrics: Workload metrics from baseline
+        optimized_metrics: Workload metrics from optimized
+        tolerance: Maximum allowed relative difference (default: 1%)
+        
+    Returns:
+        Tuple of (match_passed, delta_dict) where delta_dict shows differences
+    """
+    deltas: Dict[str, float] = {}
+    passed = True
+    
+    # Compare all metrics present in either dict
+    all_keys = set(baseline_metrics.keys()) | set(optimized_metrics.keys())
+    
+    for key in all_keys:
+        baseline_val = baseline_metrics.get(key, 0.0)
+        optimized_val = optimized_metrics.get(key, 0.0)
+        
+        if baseline_val == 0 and optimized_val == 0:
+            continue
+            
+        if baseline_val == 0:
+            # Optimized has metric that baseline doesn't - flag as difference
+            deltas[key] = float('inf')
+            passed = False
+            continue
+            
+        relative_diff = abs(optimized_val - baseline_val) / baseline_val
+        deltas[key] = relative_diff
+        
+        if relative_diff > tolerance:
+            passed = False
+            
+    return passed, deltas
+
+
+# =============================================================================
+# Distributed Verification Support
+# =============================================================================
+
+
+@dataclass
+class DistributedTopology:
+    """Topology information for distributed benchmarks."""
+    world_size: int
+    ranks: List[int]
+    shards: Optional[int] = None
+    pipeline_stages: Optional[int] = None
+    per_rank_batch_size: Optional[int] = None
+    collective_type: Optional[str] = None  # allreduce, allgather, etc.
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        result: Dict[str, Any] = {
+            "world_size": self.world_size,
+            "ranks": self.ranks,
+        }
+        if self.shards is not None:
+            result["shards"] = self.shards
+        if self.pipeline_stages is not None:
+            result["pipeline_stages"] = self.pipeline_stages
+        if self.per_rank_batch_size is not None:
+            result["per_rank_batch_size"] = self.per_rank_batch_size
+        if self.collective_type is not None:
+            result["collective_type"] = self.collective_type
+        return result
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DistributedTopology":
+        """Deserialize from dictionary."""
+        return cls(
+            world_size=data.get("world_size", 1),
+            ranks=data.get("ranks", [0]),
+            shards=data.get("shards"),
+            pipeline_stages=data.get("pipeline_stages"),
+            per_rank_batch_size=data.get("per_rank_batch_size"),
+            collective_type=data.get("collective_type"),
+        )
+
+
+def extract_distributed_topology(signature: InputSignature) -> Optional[DistributedTopology]:
+    """Extract distributed topology from input signature.
+    
+    Args:
+        signature: Input signature with optional distributed fields
+        
+    Returns:
+        DistributedTopology if signature has distributed fields, None otherwise
+    """
+    if signature.world_size is None or signature.world_size <= 1:
+        return None
+    
+    ranks = signature.ranks or list(range(signature.world_size))
+    
+    return DistributedTopology(
+        world_size=signature.world_size,
+        ranks=ranks,
+        shards=signature.shards,
+        pipeline_stages=signature.pipeline_stages,
+        per_rank_batch_size=signature.per_rank_batch_size,
+        collective_type=signature.collective_type,
+    )
+
+
+def compare_topologies(
+    baseline_topo: Optional[DistributedTopology],
+    optimized_topo: Optional[DistributedTopology],
+) -> Tuple[bool, Optional[str]]:
+    """Compare distributed topologies for equivalence.
+    
+    Args:
+        baseline_topo: Baseline topology
+        optimized_topo: Optimized topology
+        
+    Returns:
+        Tuple of (match, mismatch_reason)
+    """
+    # Both None is OK (non-distributed)
+    if baseline_topo is None and optimized_topo is None:
+        return True, None
+    
+    # One None and one not is a mismatch
+    if baseline_topo is None or optimized_topo is None:
+        return False, "One benchmark is distributed and the other is not"
+    
+    # Compare world size
+    if baseline_topo.world_size != optimized_topo.world_size:
+        return False, f"World size mismatch: {baseline_topo.world_size} vs {optimized_topo.world_size}"
+    
+    # Compare shards
+    if baseline_topo.shards != optimized_topo.shards:
+        return False, f"Shards mismatch: {baseline_topo.shards} vs {optimized_topo.shards}"
+    
+    # Compare pipeline stages
+    if baseline_topo.pipeline_stages != optimized_topo.pipeline_stages:
+        return False, f"Pipeline stages mismatch: {baseline_topo.pipeline_stages} vs {optimized_topo.pipeline_stages}"
+    
+    return True, None
+
+
+def get_verify_ranks(benchmark: Any, default: int = 2) -> int:
+    """Get minimum ranks for verify mode.
+    
+    Args:
+        benchmark: Benchmark instance
+        default: Default number of ranks (2)
+        
+    Returns:
+        Number of ranks to use in verify mode
+    """
+    if hasattr(benchmark, "get_min_verify_ranks"):
+        try:
+            return benchmark.get_min_verify_ranks()
+        except Exception:
+            pass
+    return default
+
+
+# =============================================================================
+# Timing Fairness Enforcement
+# =============================================================================
+
+
+@dataclass
+class TimingConfig:
+    """Timing configuration for benchmark runs."""
+    iterations: int
+    warmup: int
+    timeout_seconds: Optional[int] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            "iterations": self.iterations,
+            "warmup": self.warmup,
+            "timeout_seconds": self.timeout_seconds,
+        }
+
+
+def extract_timing_config(benchmark: Any) -> Optional[TimingConfig]:
+    """Extract timing configuration from a benchmark.
+    
+    Args:
+        benchmark: Benchmark instance
+        
+    Returns:
+        TimingConfig if extractable, None otherwise
+    """
+    config = None
+    
+    # Try get_config() method
+    if hasattr(benchmark, "get_config"):
+        try:
+            cfg = benchmark.get_config()
+            if cfg:
+                iterations = getattr(cfg, "iterations", None)
+                warmup = getattr(cfg, "warmup", None)
+                timeout = getattr(cfg, "timeout_seconds", None)
+                
+                if iterations is not None and warmup is not None:
+                    config = TimingConfig(
+                        iterations=iterations,
+                        warmup=warmup,
+                        timeout_seconds=timeout,
+                    )
+        except Exception:
+            pass
+    
+    # Try direct attributes
+    if config is None:
+        iterations = getattr(benchmark, "iterations", None)
+        warmup = getattr(benchmark, "warmup", None)
+        
+        if iterations is not None and warmup is not None:
+            config = TimingConfig(
+                iterations=iterations,
+                warmup=warmup,
+                timeout_seconds=getattr(benchmark, "timeout_seconds", None),
+            )
+    
+    return config
+
+
+def compare_timing_configs(
+    baseline_cfg: Optional[TimingConfig],
+    optimized_cfg: Optional[TimingConfig],
+) -> Tuple[bool, Optional[str]]:
+    """Compare timing configurations for equivalence.
+    
+    Baseline and optimized must use the same iteration/warmup counts
+    for fair comparison.
+    
+    Args:
+        baseline_cfg: Baseline timing config
+        optimized_cfg: Optimized timing config
+        
+    Returns:
+        Tuple of (match, mismatch_reason)
+    """
+    if baseline_cfg is None or optimized_cfg is None:
+        # Can't compare if configs not available
+        return True, None
+    
+    if baseline_cfg.iterations != optimized_cfg.iterations:
+        return False, (
+            f"Iterations mismatch: baseline={baseline_cfg.iterations}, "
+            f"optimized={optimized_cfg.iterations}"
+        )
+    
+    if baseline_cfg.warmup != optimized_cfg.warmup:
+        return False, (
+            f"Warmup mismatch: baseline={baseline_cfg.warmup}, "
+            f"optimized={optimized_cfg.warmup}"
+        )
+    
+    return True, None
+
+
+# =============================================================================
+# Optional Verification Hooks (Task 2.4-2.5)
+# =============================================================================
+
+
+def get_output_tolerance(benchmark: Any) -> Optional[ToleranceSpec]:
+    """Get custom output tolerance from benchmark.
+    
+    Benchmarks can implement get_output_tolerance() to specify custom
+    tolerances for output comparison.
+    
+    Args:
+        benchmark: Benchmark instance
+        
+    Returns:
+        ToleranceSpec if benchmark provides custom tolerance, None otherwise
+    """
+    if hasattr(benchmark, "get_output_tolerance"):
+        try:
+            result = benchmark.get_output_tolerance()
+            if result is not None:
+                if isinstance(result, ToleranceSpec):
+                    return result
+                # Handle dict format
+                if isinstance(result, dict):
+                    return ToleranceSpec(
+                        rtol=result.get("rtol", 1e-5),
+                        atol=result.get("atol", 1e-8),
+                        justification=result.get("justification"),
+                    )
+        except Exception:
+            pass
+    return None
+
+
+def get_equivalence_fn(benchmark: Any) -> Optional[Callable[[torch.Tensor, torch.Tensor], bool]]:
+    """Get custom equivalence function from benchmark.
+    
+    Benchmarks producing semantically equivalent but bitwise different outputs
+    can implement get_equivalence_fn() to provide a custom comparator.
+    
+    Args:
+        benchmark: Benchmark instance
+        
+    Returns:
+        Comparator function if provided, None otherwise
+    """
+    if hasattr(benchmark, "get_equivalence_fn"):
+        try:
+            fn = benchmark.get_equivalence_fn()
+            if callable(fn):
+                return fn
+        except Exception:
+            pass
+    return None
+
+
+def get_verify_output(benchmark: Any) -> Optional[torch.Tensor]:
+    """Get verification output from benchmark.
+    
+    Benchmarks can implement get_verify_output() to return a tensor
+    for verification comparison.
+    
+    Args:
+        benchmark: Benchmark instance
+        
+    Returns:
+        Output tensor if available, None otherwise
+    """
+    if hasattr(benchmark, "get_verify_output"):
+        try:
+            output = benchmark.get_verify_output()
+            if isinstance(output, torch.Tensor):
+                return output
+        except Exception:
+            pass
+    
+    # Fallback to common output attributes
+    if hasattr(benchmark, "output") and isinstance(benchmark.output, torch.Tensor):
+        return benchmark.output
+    
+    return None
+
+
+def get_jitter_exemption_reason(benchmark: Any) -> Optional[str]:
+    """Get jitter exemption reason from benchmark.
+    
+    Args:
+        benchmark: Benchmark instance
+        
+    Returns:
+        Exemption reason string if declared, None otherwise
+    """
+    # Check attribute
+    if hasattr(benchmark, "jitter_exemption_reason"):
+        reason = getattr(benchmark, "jitter_exemption_reason")
+        if reason:
+            return str(reason)
+    
+    # Check non_jitterable_reason (alternative name)
+    if hasattr(benchmark, "non_jitterable_reason"):
+        reason = getattr(benchmark, "non_jitterable_reason")
+        if reason:
+            return str(reason)
+    
+    return None
+
+
+def get_workload_ratio_expected(benchmark: Any) -> Optional[Tuple[float, str]]:
+    """Get expected workload ratio from benchmark.
+    
+    Benchmarks that legitimately process different amounts can declare
+    workload_ratio_expected with expected ratio and justification.
+    
+    Args:
+        benchmark: Benchmark instance
+        
+    Returns:
+        Tuple of (ratio, justification) if declared, None otherwise
+    """
+    if hasattr(benchmark, "workload_ratio_expected"):
+        ratio = getattr(benchmark, "workload_ratio_expected")
+        justification = getattr(benchmark, "workload_ratio_justification", "No justification provided")
+        if ratio is not None:
+            return (float(ratio), str(justification))
+    return None
+

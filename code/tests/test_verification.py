@@ -1,0 +1,910 @@
+"""Tests for benchmark verification enforcement system.
+
+This module tests the verification data models, quarantine management,
+and verification runner functionality.
+"""
+
+import json
+import os
+import pickle
+import tempfile
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from unittest.mock import MagicMock, patch
+
+import pytest
+import torch
+import numpy as np
+
+from core.benchmark.verification import (
+    ComparisonDetails,
+    EnforcementPhase,
+    InputSignature,
+    PrecisionFlags,
+    QuarantineReason,
+    QuarantineRecord,
+    ToleranceSpec,
+    VerifyResult,
+    DEFAULT_TOLERANCES,
+    compare_workload_metrics,
+    detect_seed_mutation,
+    get_enforcement_phase,
+    is_verification_enabled,
+    get_tolerance_for_dtype,
+    is_tolerance_looser,
+    select_jitter_dimension,
+    set_deterministic_seeds,
+)
+from core.benchmark.quarantine import (
+    QuarantineManager,
+    check_benchmark_compliance,
+    detect_skip_flags,
+    SKIP_FLAGS,
+)
+from core.benchmark.verify_runner import (
+    GoldenOutput,
+    GoldenOutputCache,
+    VerifyConfig,
+    VerifyRunner,
+)
+
+
+# =============================================================================
+# PrecisionFlags Tests
+# =============================================================================
+
+
+class TestPrecisionFlags:
+    """Tests for PrecisionFlags dataclass."""
+    
+    def test_default_values(self):
+        """Test default precision flag values."""
+        flags = PrecisionFlags()
+        assert flags.fp16 is False
+        assert flags.bf16 is False
+        assert flags.fp8 is False
+        assert flags.tf32 is True  # Default on for CUDA
+    
+    def test_to_dict(self):
+        """Test serialization to dict."""
+        flags = PrecisionFlags(fp16=True, bf16=True)
+        d = flags.to_dict()
+        assert d == {"fp16": True, "bf16": True, "fp8": False, "tf32": True}
+    
+    def test_from_dict(self):
+        """Test deserialization from dict."""
+        d = {"fp16": True, "bf16": False, "fp8": True, "tf32": False}
+        flags = PrecisionFlags.from_dict(d)
+        assert flags.fp16 is True
+        assert flags.bf16 is False
+        assert flags.fp8 is True
+        assert flags.tf32 is False
+    
+    def test_from_dict_with_missing_keys(self):
+        """Test deserialization handles missing keys."""
+        d = {"fp16": True}
+        flags = PrecisionFlags.from_dict(d)
+        assert flags.fp16 is True
+        assert flags.bf16 is False
+        assert flags.fp8 is False
+        assert flags.tf32 is True  # Default
+
+
+# =============================================================================
+# InputSignature Tests
+# =============================================================================
+
+
+class TestInputSignature:
+    """Tests for InputSignature dataclass."""
+    
+    def test_create_basic_signature(self):
+        """Test creating a basic input signature."""
+        sig = InputSignature(
+            shapes={"input": (32, 256, 256)},
+            dtypes={"input": "float16"},
+            batch_size=32,
+            parameter_count=1000,
+            precision_flags=PrecisionFlags(fp16=True),
+        )
+        assert sig.shapes["input"] == (32, 256, 256)
+        assert sig.dtypes["input"] == "float16"
+        assert sig.batch_size == 32
+    
+    def test_hash_is_deterministic(self):
+        """Test that hash is deterministic."""
+        sig1 = InputSignature(
+            shapes={"input": (32, 256, 256)},
+            dtypes={"input": "float16"},
+            batch_size=32,
+            parameter_count=1000,
+            precision_flags=PrecisionFlags(),
+        )
+        sig2 = InputSignature(
+            shapes={"input": (32, 256, 256)},
+            dtypes={"input": "float16"},
+            batch_size=32,
+            parameter_count=1000,
+            precision_flags=PrecisionFlags(),
+        )
+        assert sig1.hash() == sig2.hash()
+    
+    def test_hash_changes_with_different_values(self):
+        """Test that hash changes when values differ."""
+        sig1 = InputSignature(
+            shapes={"input": (32, 256, 256)},
+            dtypes={"input": "float16"},
+            batch_size=32,
+            parameter_count=1000,
+            precision_flags=PrecisionFlags(),
+        )
+        sig2 = InputSignature(
+            shapes={"input": (64, 256, 256)},  # Different batch
+            dtypes={"input": "float16"},
+            batch_size=64,
+            parameter_count=1000,
+            precision_flags=PrecisionFlags(),
+        )
+        assert sig1.hash() != sig2.hash()
+    
+    def test_matches(self):
+        """Test signature matching."""
+        sig1 = InputSignature(
+            shapes={"input": (32, 256)},
+            dtypes={"input": "float32"},
+            batch_size=32,
+            parameter_count=0,
+            precision_flags=PrecisionFlags(),
+        )
+        sig2 = InputSignature(
+            shapes={"input": (32, 256)},
+            dtypes={"input": "float32"},
+            batch_size=32,
+            parameter_count=0,
+            precision_flags=PrecisionFlags(),
+        )
+        assert sig1.matches(sig2)
+    
+    def test_validate_missing_shapes(self):
+        """Test validation catches missing shapes."""
+        sig = InputSignature(
+            shapes={},  # Empty!
+            dtypes={"input": "float32"},
+            batch_size=32,
+            parameter_count=0,
+            precision_flags=PrecisionFlags(),
+        )
+        errors = sig.validate()
+        assert any("shapes" in e.lower() for e in errors)
+    
+    def test_validate_invalid_batch_size(self):
+        """Test validation catches invalid batch size."""
+        sig = InputSignature(
+            shapes={"input": (32, 256)},
+            dtypes={"input": "float32"},
+            batch_size=0,  # Invalid!
+            parameter_count=0,
+            precision_flags=PrecisionFlags(),
+        )
+        errors = sig.validate()
+        assert any("batch_size" in e for e in errors)
+    
+    def test_to_dict_and_from_dict_roundtrip(self):
+        """Test serialization roundtrip."""
+        sig = InputSignature(
+            shapes={"input": (32, 256), "mask": (32,)},
+            dtypes={"input": "float16", "mask": "bool"},
+            batch_size=32,
+            parameter_count=1000,
+            precision_flags=PrecisionFlags(fp16=True),
+            world_size=4,
+            num_streams=2,
+        )
+        d = sig.to_dict()
+        sig2 = InputSignature.from_dict(d)
+        assert sig.matches(sig2)
+
+
+# =============================================================================
+# ToleranceSpec Tests
+# =============================================================================
+
+
+class TestToleranceSpec:
+    """Tests for ToleranceSpec dataclass."""
+    
+    def test_default_tolerances_exist(self):
+        """Test that default tolerances exist for common dtypes."""
+        assert torch.float32 in DEFAULT_TOLERANCES
+        assert torch.float16 in DEFAULT_TOLERANCES
+        assert torch.bfloat16 in DEFAULT_TOLERANCES
+        assert torch.int32 in DEFAULT_TOLERANCES
+    
+    def test_get_tolerance_for_dtype(self):
+        """Test getting tolerance for specific dtype."""
+        tol = get_tolerance_for_dtype(torch.float16)
+        assert tol.rtol == 1e-3
+        assert tol.atol == 1e-5
+    
+    def test_get_tolerance_for_unknown_dtype(self):
+        """Test fallback tolerance for unknown dtype."""
+        # Create a mock dtype that doesn't exist in defaults
+        tol = get_tolerance_for_dtype(torch.complex64)  # Known but testing fallback logic
+        assert tol is not None
+        assert tol.rtol >= 0
+    
+    def test_is_tolerance_looser(self):
+        """Test looser tolerance detection."""
+        default = ToleranceSpec(rtol=1e-5, atol=1e-8)
+        looser = ToleranceSpec(rtol=1e-3, atol=1e-5)  # Looser
+        tighter = ToleranceSpec(rtol=1e-7, atol=1e-10)  # Tighter
+        
+        assert is_tolerance_looser(looser, default) is True
+        assert is_tolerance_looser(tighter, default) is False
+
+
+# =============================================================================
+# QuarantineReason Tests
+# =============================================================================
+
+
+class TestQuarantineReason:
+    """Tests for QuarantineReason enum."""
+    
+    def test_all_reasons_have_values(self):
+        """Test that all enum members have string values."""
+        for reason in QuarantineReason:
+            assert isinstance(reason.value, str)
+            assert len(reason.value) > 0
+    
+    def test_reason_values_are_unique(self):
+        """Test that all reason values are unique."""
+        values = [r.value for r in QuarantineReason]
+        assert len(values) == len(set(values))
+
+
+# =============================================================================
+# EnforcementPhase Tests  
+# =============================================================================
+
+
+class TestEnforcementPhase:
+    """Tests for EnforcementPhase enum and get_enforcement_phase."""
+    
+    def test_default_phase_is_detect(self):
+        """Test default enforcement phase is DETECT."""
+        with patch.dict(os.environ, {}, clear=True):
+            if "VERIFY_ENFORCEMENT_PHASE" in os.environ:
+                del os.environ["VERIFY_ENFORCEMENT_PHASE"]
+            phase = get_enforcement_phase()
+            assert phase == EnforcementPhase.DETECT
+    
+    def test_get_phase_from_env(self):
+        """Test reading phase from environment."""
+        with patch.dict(os.environ, {"VERIFY_ENFORCEMENT_PHASE": "gate"}):
+            phase = get_enforcement_phase()
+            assert phase == EnforcementPhase.GATE
+    
+    def test_quarantine_phase(self):
+        """Test QUARANTINE phase from environment."""
+        with patch.dict(os.environ, {"VERIFY_ENFORCEMENT_PHASE": "quarantine"}):
+            phase = get_enforcement_phase()
+            assert phase == EnforcementPhase.QUARANTINE
+    
+    def test_invalid_phase_defaults_to_detect(self):
+        """Test invalid phase value defaults to DETECT."""
+        with patch.dict(os.environ, {"VERIFY_ENFORCEMENT_PHASE": "invalid_value"}):
+            phase = get_enforcement_phase()
+            assert phase == EnforcementPhase.DETECT
+
+
+class TestVerificationEnabled:
+    """Tests for is_verification_enabled function."""
+    
+    def test_verification_enabled_by_default(self):
+        """Test verification is enabled by default."""
+        with patch.dict(os.environ, {}, clear=True):
+            if "VERIFY_DISABLED" in os.environ:
+                del os.environ["VERIFY_DISABLED"]
+            assert is_verification_enabled() is True
+    
+    def test_verification_can_be_disabled(self):
+        """Test verification can be disabled via env var."""
+        with patch.dict(os.environ, {"VERIFY_DISABLED": "1"}):
+            assert is_verification_enabled() is False
+    
+    def test_verification_enabled_with_zero(self):
+        """Test VERIFY_DISABLED=0 keeps verification enabled."""
+        with patch.dict(os.environ, {"VERIFY_DISABLED": "0"}):
+            assert is_verification_enabled() is True
+
+
+# =============================================================================
+# Seed Management Tests
+# =============================================================================
+
+
+class TestSeedManagement:
+    """Tests for seed management functions."""
+    
+    def test_set_deterministic_seeds(self):
+        """Test setting deterministic seeds."""
+        seed_info = set_deterministic_seeds(42)
+        
+        assert seed_info["random_seed"] == 42
+        assert seed_info["numpy_seed"] == 42
+        assert seed_info["torch_seed"] == 42
+        assert seed_info["cudnn_deterministic"] is True
+        assert seed_info["cudnn_benchmark"] is False
+    
+    def test_seeds_produce_reproducible_results(self):
+        """Test that seeds produce reproducible random values."""
+        set_deterministic_seeds(42)
+        val1 = torch.rand(10)
+        
+        set_deterministic_seeds(42)
+        val2 = torch.rand(10)
+        
+        assert torch.allclose(val1, val2)
+
+
+# =============================================================================
+# Jitter Check Tests
+# =============================================================================
+
+
+class TestJitterCheck:
+    """Tests for jitter dimension selection."""
+    
+    def test_select_jitter_dimension_with_multidim(self):
+        """Test selecting jitter dimension with multi-dimensional tensor."""
+        sig = InputSignature(
+            shapes={"input": (32, 256, 256)},
+            dtypes={"input": "float32"},
+            batch_size=32,
+            parameter_count=0,
+            precision_flags=PrecisionFlags(),
+        )
+        dim = select_jitter_dimension(sig)
+        assert dim is not None
+        assert dim == ("input", 1)  # First non-batch dimension
+    
+    def test_select_jitter_dimension_batch_only(self):
+        """Test jitter selection with batch-only tensor returns None."""
+        sig = InputSignature(
+            shapes={"input": (32,)},  # 1D tensor
+            dtypes={"input": "float32"},
+            batch_size=32,
+            parameter_count=0,
+            precision_flags=PrecisionFlags(),
+        )
+        dim = select_jitter_dimension(sig)
+        assert dim is None  # No suitable dimension
+
+
+# =============================================================================
+# Workload Comparison Tests
+# =============================================================================
+
+
+class TestWorkloadComparison:
+    """Tests for workload metrics comparison."""
+    
+    def test_compare_matching_metrics(self):
+        """Test comparing identical workload metrics."""
+        baseline = {"bytes_per_iter": 1000.0, "flops_per_iter": 2000.0}
+        optimized = {"bytes_per_iter": 1000.0, "flops_per_iter": 2000.0}
+        
+        passed, deltas = compare_workload_metrics(baseline, optimized)
+        assert passed is True
+        assert all(d == 0 for d in deltas.values())
+    
+    def test_compare_within_tolerance(self):
+        """Test comparing metrics within tolerance."""
+        baseline = {"bytes_per_iter": 1000.0}
+        optimized = {"bytes_per_iter": 1005.0}  # 0.5% difference
+        
+        passed, deltas = compare_workload_metrics(baseline, optimized, tolerance=0.01)
+        assert passed is True
+    
+    def test_compare_outside_tolerance(self):
+        """Test comparing metrics outside tolerance."""
+        baseline = {"bytes_per_iter": 1000.0}
+        optimized = {"bytes_per_iter": 1100.0}  # 10% difference
+        
+        passed, deltas = compare_workload_metrics(baseline, optimized, tolerance=0.01)
+        assert passed is False
+
+
+# =============================================================================
+# QuarantineManager Tests
+# =============================================================================
+
+
+class TestQuarantineManager:
+    """Tests for QuarantineManager."""
+    
+    @pytest.fixture
+    def temp_quarantine_path(self, tmp_path):
+        """Fixture providing a temporary quarantine file path."""
+        return tmp_path / "quarantine.json"
+    
+    def test_create_manager(self, temp_quarantine_path):
+        """Test creating a quarantine manager."""
+        manager = QuarantineManager(temp_quarantine_path)
+        assert len(manager.get_all_quarantined()) == 0
+    
+    def test_quarantine_benchmark(self, temp_quarantine_path):
+        """Test quarantining a benchmark."""
+        manager = QuarantineManager(temp_quarantine_path)
+        
+        record = manager.quarantine(
+            "ch01/baseline_gemm.py",
+            QuarantineReason.MISSING_INPUT_SIGNATURE,
+        )
+        
+        assert manager.is_quarantined("ch01/baseline_gemm.py")
+        assert record.quarantine_reason == QuarantineReason.MISSING_INPUT_SIGNATURE
+    
+    def test_clear_quarantine(self, temp_quarantine_path):
+        """Test clearing quarantine."""
+        manager = QuarantineManager(temp_quarantine_path)
+        manager.quarantine("ch01/baseline_gemm.py", QuarantineReason.SKIP_FLAG_PRESENT)
+        
+        assert manager.is_quarantined("ch01/baseline_gemm.py")
+        
+        cleared = manager.clear_quarantine("ch01/baseline_gemm.py")
+        assert cleared is True
+        assert not manager.is_quarantined("ch01/baseline_gemm.py")
+    
+    def test_persistence(self, temp_quarantine_path):
+        """Test quarantine persistence across manager instances."""
+        manager1 = QuarantineManager(temp_quarantine_path)
+        manager1.quarantine("ch01/baseline_gemm.py", QuarantineReason.OUTPUT_MISMATCH)
+        
+        # Create new manager instance
+        manager2 = QuarantineManager(temp_quarantine_path)
+        assert manager2.is_quarantined("ch01/baseline_gemm.py")
+    
+    def test_get_quarantine_summary(self, temp_quarantine_path):
+        """Test getting quarantine summary."""
+        manager = QuarantineManager(temp_quarantine_path)
+        manager.quarantine("a.py", QuarantineReason.MISSING_INPUT_SIGNATURE)
+        manager.quarantine("b.py", QuarantineReason.MISSING_INPUT_SIGNATURE)
+        manager.quarantine("c.py", QuarantineReason.OUTPUT_MISMATCH)
+        
+        summary = manager.get_quarantine_summary()
+        assert summary["missing_input_signature"] == 2
+        assert summary["output_mismatch"] == 1
+
+
+# =============================================================================
+# Skip Flag Detection Tests
+# =============================================================================
+
+
+class TestSkipFlagDetection:
+    """Tests for skip flag detection."""
+    
+    def test_detect_skip_output_check_attribute(self):
+        """Test detecting skip_output_check attribute."""
+        benchmark = MagicMock()
+        benchmark.skip_output_check = True
+        benchmark.skip_input_check = False
+        benchmark.skip_verification = False
+        benchmark.skip_input_verification = MagicMock(return_value=False)
+        benchmark.skip_output_verification = MagicMock(return_value=False)
+        
+        result = detect_skip_flags(benchmark)
+        assert result == QuarantineReason.SKIP_FLAG_PRESENT
+    
+    def test_detect_skip_input_verification_method(self):
+        """Test detecting skip_input_verification method."""
+        benchmark = MagicMock()
+        benchmark.skip_output_check = False
+        benchmark.skip_input_check = False
+        benchmark.skip_verification = False
+        benchmark.skip_input_verification = MagicMock(return_value=True)
+        benchmark.skip_output_verification = MagicMock(return_value=False)
+        
+        result = detect_skip_flags(benchmark)
+        assert result == QuarantineReason.SKIP_FLAG_PRESENT
+    
+    def test_no_skip_flags(self):
+        """Test benchmark without skip flags."""
+        benchmark = MagicMock()
+        benchmark.skip_output_check = False
+        benchmark.skip_input_check = False
+        benchmark.skip_verification = False
+        benchmark.skip_input_verification = MagicMock(return_value=False)
+        benchmark.skip_output_verification = MagicMock(return_value=False)
+        
+        result = detect_skip_flags(benchmark)
+        assert result is None
+
+
+# =============================================================================
+# GoldenOutputCache Tests
+# =============================================================================
+
+
+class TestGoldenOutputCache:
+    """Tests for GoldenOutputCache."""
+    
+    @pytest.fixture
+    def temp_cache_dir(self, tmp_path):
+        """Fixture providing a temporary cache directory."""
+        return tmp_path / "golden_cache"
+    
+    def test_cache_put_and_get(self, temp_cache_dir):
+        """Test storing and retrieving golden output."""
+        cache = GoldenOutputCache(temp_cache_dir)
+        
+        golden = GoldenOutput(
+            signature_hash="abc123",
+            outputs={"output": torch.tensor([1.0, 2.0, 3.0])},
+            workload_metrics={"bytes_per_iter": 1000.0},
+            checksum="",
+            created_at=datetime.now(),
+            seed=42,
+        )
+        golden.checksum = golden.compute_checksum()
+        
+        cache.put(golden)
+        
+        retrieved = cache.get("abc123")
+        assert retrieved is not None
+        assert torch.allclose(retrieved.outputs["output"], golden.outputs["output"])
+    
+    def test_cache_has(self, temp_cache_dir):
+        """Test checking cache existence."""
+        cache = GoldenOutputCache(temp_cache_dir)
+        
+        assert not cache.has("nonexistent")
+        
+        golden = GoldenOutput(
+            signature_hash="exists",
+            outputs={"out": torch.tensor([1.0])},
+            workload_metrics={},
+            checksum="",
+            created_at=datetime.now(),
+            seed=42,
+        )
+        cache.put(golden)
+        
+        assert cache.has("exists")
+    
+    def test_cache_invalidate(self, temp_cache_dir):
+        """Test invalidating cache entry."""
+        cache = GoldenOutputCache(temp_cache_dir)
+        
+        golden = GoldenOutput(
+            signature_hash="to_delete",
+            outputs={"out": torch.tensor([1.0])},
+            workload_metrics={},
+            checksum="",
+            created_at=datetime.now(),
+            seed=42,
+        )
+        cache.put(golden)
+        
+        assert cache.has("to_delete")
+        
+        deleted = cache.invalidate("to_delete")
+        assert deleted is True
+        assert not cache.has("to_delete")
+
+
+# =============================================================================
+# VerifyRunner Tests
+# =============================================================================
+
+
+class MockWorkloadMetadata:
+    """Mock workload metadata for testing."""
+    
+    def __init__(self):
+        self.bytes_per_iter = 1024
+        self.tokens_per_iter = None
+        self.flops_per_iter = 2048
+
+
+class MockBenchmark:
+    """Mock benchmark for testing verification."""
+    
+    def __init__(
+        self,
+        name: str = "mock",
+        output: Optional[torch.Tensor] = None,
+        signature: Optional[Dict[str, Any]] = None,
+        include_workload: bool = True,
+    ):
+        self.name = name
+        self.output = output if output is not None else torch.randn(10)
+        self._signature = signature or {
+            "shapes": {"input": (32, 256)},
+            "dtypes": {"input": "float32"},
+            "batch_size": 32,
+            "parameter_count": 100,
+        }
+        self._workload_metadata = MockWorkloadMetadata() if include_workload else None
+    
+    def setup(self):
+        """Setup method."""
+        pass
+    
+    def benchmark_fn(self):
+        """Benchmark function."""
+        # Generate deterministic output based on current seed
+        self.output = torch.randn(10)
+    
+    def teardown(self):
+        """Teardown method."""
+        pass
+    
+    def get_input_signature(self) -> Dict[str, Any]:
+        """Return input signature."""
+        return self._signature
+    
+    def validate_result(self) -> Optional[str]:
+        """Validate result."""
+        return None
+    
+    def get_workload_metadata(self) -> Optional[Any]:
+        """Return workload metadata."""
+        return self._workload_metadata
+
+
+class TestVerifyRunner:
+    """Tests for VerifyRunner."""
+    
+    @pytest.fixture
+    def temp_dirs(self, tmp_path):
+        """Fixture providing temporary directories."""
+        return {
+            "cache": tmp_path / "cache",
+            "quarantine": tmp_path / "quarantine.json",
+        }
+    
+    def test_verify_baseline_success(self, temp_dirs):
+        """Test successful baseline verification."""
+        runner = VerifyRunner(
+            cache_dir=temp_dirs["cache"],
+            quarantine_manager=QuarantineManager(temp_dirs["quarantine"]),
+        )
+        
+        baseline = MockBenchmark("baseline")
+        result = runner.verify_baseline(baseline)
+        
+        assert result.passed is True
+        assert result.signature_hash is not None
+    
+    def test_verify_pair_matching_outputs(self, temp_dirs):
+        """Test verifying pair with matching outputs."""
+        runner = VerifyRunner(
+            cache_dir=temp_dirs["cache"],
+            quarantine_manager=QuarantineManager(temp_dirs["quarantine"]),
+        )
+        
+        # Both benchmarks produce same output with same seed
+        baseline = MockBenchmark("baseline")
+        optimized = MockBenchmark("optimized")
+        
+        config = VerifyConfig(seed=42)
+        result = runner.verify_pair(baseline, optimized, config)
+        
+        # Both get same random output with same seed
+        assert result.passed is True
+    
+    def test_verify_missing_signature(self, temp_dirs):
+        """Test verification fails for missing signature."""
+        runner = VerifyRunner(
+            cache_dir=temp_dirs["cache"],
+            quarantine_manager=QuarantineManager(temp_dirs["quarantine"]),
+        )
+        
+        baseline = MockBenchmark("baseline")
+        baseline._signature = {}  # Empty signature
+        
+        result = runner.verify_baseline(baseline)
+        assert result.passed is False
+        assert "signature" in result.reason.lower()
+
+
+# =============================================================================
+# VerifyResult Tests
+# =============================================================================
+
+
+class TestVerifyResult:
+    """Tests for VerifyResult dataclass."""
+    
+    def test_success_factory(self):
+        """Test success factory method."""
+        result = VerifyResult.success("abc123")
+        assert result.passed is True
+        assert result.signature_hash == "abc123"
+        assert result.timestamp is not None
+    
+    def test_fail_factory(self):
+        """Test fail factory method."""
+        result = VerifyResult.fail("Something went wrong")
+        assert result.passed is False
+        assert result.reason == "Something went wrong"
+        assert result.timestamp is not None
+    
+    def test_to_dict_serialization(self):
+        """Test serialization to dict."""
+        result = VerifyResult.success(
+            "abc123",
+            baseline_checksum="check1",
+            optimized_checksum="check2",
+        )
+        d = result.to_dict()
+        
+        assert d["passed"] is True
+        assert d["signature_hash"] == "abc123"
+        assert d["baseline_checksum"] == "check1"
+        assert d["optimized_checksum"] == "check2"
+
+
+# =============================================================================
+# ComparisonDetails Tests
+# =============================================================================
+
+
+class TestComparisonDetails:
+    """Tests for ComparisonDetails dataclass."""
+    
+    def test_passed_comparison(self):
+        """Test creating passed comparison details."""
+        details = ComparisonDetails(
+            passed=True,
+            max_diff=1e-7,
+        )
+        assert details.passed is True
+    
+    def test_failed_comparison_with_location(self):
+        """Test creating failed comparison with location."""
+        details = ComparisonDetails(
+            passed=False,
+            max_diff=0.5,
+            location=(10, 20),
+            expected_sample=1.0,
+            actual_sample=1.5,
+        )
+        assert details.passed is False
+        assert details.location == (10, 20)
+    
+    def test_to_dict(self):
+        """Test serialization."""
+        tol = ToleranceSpec(rtol=1e-3, atol=1e-5)
+        details = ComparisonDetails(
+            passed=False,
+            max_diff=0.1,
+            tolerance_used=tol,
+        )
+        d = details.to_dict()
+        
+        assert d["passed"] is False
+        assert d["max_diff"] == 0.1
+        assert "tolerance_used" in d
+
+
+# =============================================================================
+# Integration Tests
+# =============================================================================
+
+
+class TestVerificationIntegration:
+    """Integration tests for the full verification workflow."""
+    
+    @pytest.fixture
+    def temp_environment(self, tmp_path):
+        """Fixture setting up a complete temp environment."""
+        cache_dir = tmp_path / "cache"
+        quarantine_file = tmp_path / "quarantine.json"
+        return {
+            "cache_dir": cache_dir,
+            "quarantine_file": quarantine_file,
+        }
+    
+    def test_full_verification_workflow(self, temp_environment):
+        """Test complete verification workflow."""
+        # Create manager and runner
+        manager = QuarantineManager(temp_environment["quarantine_file"])
+        runner = VerifyRunner(
+            cache_dir=temp_environment["cache_dir"],
+            quarantine_manager=manager,
+        )
+        
+        # Create mock benchmarks
+        baseline = MockBenchmark("baseline")
+        optimized = MockBenchmark("optimized")
+        
+        # Run verification
+        result = runner.verify_pair(baseline, optimized)
+        
+        assert result.passed is True
+        
+        # Verify golden output was cached
+        sig = runner._extract_signature(baseline)
+        assert sig is not None
+        assert runner.cache.has(sig.hash())
+    
+    def test_quarantine_on_compliance_failure(self, temp_environment):
+        """Test quarantine is applied on compliance failure."""
+        manager = QuarantineManager(temp_environment["quarantine_file"])
+        
+        # Create benchmark with skip flag
+        benchmark = MagicMock()
+        benchmark.skip_output_check = True
+        benchmark.skip_input_check = False
+        benchmark.skip_verification = False
+        benchmark.skip_input_verification = MagicMock(return_value=False)
+        benchmark.skip_output_verification = MagicMock(return_value=False)
+        benchmark.get_input_signature = MagicMock(return_value={"shapes": {"x": (10,)}})
+        benchmark.validate_result = MagicMock(return_value=None)
+        benchmark.get_workload_metadata = MagicMock(return_value=None)
+        
+        issues = check_benchmark_compliance(benchmark)
+        assert len(issues) > 0
+        
+        # Apply quarantine for first issue
+        if issues:
+            manager.quarantine("test_benchmark.py", issues[0])
+        
+        assert manager.is_quarantined("test_benchmark.py")
+
+
+# =============================================================================
+# Property-Based Tests (using Hypothesis)
+# =============================================================================
+
+try:
+    from hypothesis import given, strategies as st, settings
+    HYPOTHESIS_AVAILABLE = True
+except ImportError:
+    HYPOTHESIS_AVAILABLE = False
+
+
+@pytest.mark.skipif(not HYPOTHESIS_AVAILABLE, reason="hypothesis not installed")
+class TestPropertyBased:
+    """Property-based tests using Hypothesis."""
+    
+    @given(st.integers(min_value=1, max_value=1000))
+    @settings(max_examples=20)
+    def test_signature_hash_deterministic(self, batch_size):
+        """Test that signature hash is always deterministic."""
+        sig1 = InputSignature(
+            shapes={"input": (batch_size, 256)},
+            dtypes={"input": "float32"},
+            batch_size=batch_size,
+            parameter_count=100,
+            precision_flags=PrecisionFlags(),
+        )
+        sig2 = InputSignature(
+            shapes={"input": (batch_size, 256)},
+            dtypes={"input": "float32"},
+            batch_size=batch_size,
+            parameter_count=100,
+            precision_flags=PrecisionFlags(),
+        )
+        assert sig1.hash() == sig2.hash()
+    
+    @given(
+        st.floats(min_value=0.0, max_value=1.0),
+        st.floats(min_value=0.0, max_value=1.0),
+    )
+    @settings(max_examples=20)
+    def test_tolerance_looser_reflexive(self, rtol, atol):
+        """Test that is_tolerance_looser is consistent."""
+        tol = ToleranceSpec(rtol=rtol, atol=atol)
+        # A tolerance should never be looser than itself
+        assert not is_tolerance_looser(tol, tol)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
+

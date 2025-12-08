@@ -348,6 +348,104 @@ class SeedInfo(BaseModel):
     schemaVersion: str = Field(SCHEMA_VERSION, description="Schema version for forward compatibility")
 
 
+class ComparisonResult(BaseModel):
+    """Details of output comparison between baseline and optimized."""
+    
+    passed: bool = Field(..., description="Whether comparison passed")
+    max_diff: Optional[float] = Field(None, description="Maximum difference found")
+    location: Optional[list] = Field(None, description="Index location of max difference")
+    expected_sample: Optional[float] = Field(None, description="Expected value at max diff location")
+    actual_sample: Optional[float] = Field(None, description="Actual value at max diff location")
+    
+    schemaVersion: str = Field(SCHEMA_VERSION, description="Schema version for forward compatibility")
+
+
+class ToleranceUsed(BaseModel):
+    """Tolerance specification used for comparison."""
+    
+    rtol: float = Field(..., description="Relative tolerance")
+    atol: float = Field(..., description="Absolute tolerance")
+    justification: Optional[str] = Field(None, description="Justification if looser than defaults")
+    
+    schemaVersion: str = Field(SCHEMA_VERSION, description="Schema version for forward compatibility")
+
+
+class WorkloadMetrics(BaseModel):
+    """Workload metrics for verification."""
+    
+    bytes_per_iteration: Optional[float] = Field(None, description="Bytes processed per iteration")
+    tokens_per_iteration: Optional[float] = Field(None, description="Tokens processed per iteration")
+    ops_per_iteration: Optional[float] = Field(None, description="Operations per iteration")
+    samples_per_iteration: Optional[float] = Field(None, description="Samples processed per iteration")
+    
+    schemaVersion: str = Field(SCHEMA_VERSION, description="Schema version for forward compatibility")
+
+
+class VerifyManifestEntry(BaseModel):
+    """Verify results stored in run manifest - complete field enumeration for CI parsing.
+    
+    This captures all verification-related information for a benchmark pair,
+    including comparison results, checksums, workload metrics, and any
+    exemptions or overrides.
+    """
+    
+    # Core verify status
+    verify_status: str = Field(
+        ..., 
+        description="Verification status: passed, failed, skipped, or quarantined"
+    )
+    
+    # Checksums
+    baseline_checksum: Optional[str] = Field(None, description="Checksum/hash of baseline output")
+    optimized_checksum: Optional[str] = Field(None, description="Checksum/hash of optimized output")
+    
+    # Comparison details
+    comparison_result: Optional[ComparisonResult] = Field(None, description="Detailed comparison results")
+    
+    # Timing and identification
+    timestamp: datetime = Field(..., description="When verification was performed")
+    signature_hash: str = Field(..., description="Hash of input signature for cache keying")
+    
+    # Workload tracking
+    workload_metrics: Optional[WorkloadMetrics] = Field(None, description="Baseline workload metrics")
+    workload_delta: Optional[Dict[str, float]] = Field(
+        None, 
+        description="Relative differences in workload metrics between baseline/optimized"
+    )
+    workload_ratio_justification: Optional[str] = Field(
+        None,
+        description="Justification for expected workload ratio difference"
+    )
+    
+    # Quarantine info
+    quarantine_reason: Optional[str] = Field(None, description="Reason for quarantine if quarantined")
+    
+    # Tolerance tracking
+    tolerance_used: Optional[ToleranceUsed] = Field(None, description="Tolerance used for comparison")
+    tolerance_override_justification: Optional[str] = Field(
+        None,
+        description="Justification when using looser tolerances than defaults"
+    )
+    
+    # Exemption declarations
+    jitter_exemption_reason: Optional[str] = Field(
+        None,
+        description="Reason jitter check was skipped"
+    )
+    
+    # Seed tracking
+    seed_info: Optional[Dict[str, int]] = Field(None, description="Seeds used in verify mode")
+    
+    # CUDA-specific
+    cuda_verify_mode: Optional[bool] = Field(None, description="Whether CUDA verify path was used")
+    cuda_binary_clean: Optional[bool] = Field(
+        None,
+        description="Whether perf binary has no VERIFY symbols"
+    )
+    
+    schemaVersion: str = Field(SCHEMA_VERSION, description="Schema version for forward compatibility")
+
+
 class RunManifest(BaseModel):
     """Complete run manifest capturing environment state.
     
@@ -369,6 +467,9 @@ class RunManifest(BaseModel):
     
     # Seed information for reproducibility
     seeds: Optional[SeedInfo] = Field(None, description="Random seed values used for reproducibility")
+    
+    # Verification results (if verify mode was run)
+    verify: Optional[VerifyManifestEntry] = Field(None, description="Verification results for this run")
     
     # Timestamps
     start_time: datetime = Field(..., description="Run start timestamp")

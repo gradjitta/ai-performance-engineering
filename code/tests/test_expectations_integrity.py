@@ -1262,6 +1262,104 @@ class TestSingleBestSelectionConsistency:
 # =============================================================================
 
 
+class TestCustomMetricsSeparation:
+    """Property 7: Custom Metrics Separation.
+
+    Validates: Requirements 6.1, 6.2, 6.4
+    For any benchmark run with custom metrics (e.g., scenario_total_phase_ms),
+    the best_speedup SHALL equal the timing ratio, and any custom speedup
+    SHALL be stored separately in custom_metrics.custom_speedup.
+    """
+
+    def test_custom_speedup_does_not_replace_timing_speedup(self, tmp_path):
+        """Custom speedup should be stored separately, not replace timing speedup."""
+        store = ExpectationsStore(tmp_path, "test_hw")
+
+        # Simulate a benchmark with custom scenario metrics
+        # Timing says 2x speedup, but scenario says 3x
+        metrics = {
+            "baseline_time_ms": 100.0,
+            "best_optimized_time_ms": 50.0,  # 2x timing speedup
+            "best_speedup": 2.0,
+            "best_optimized_speedup": 2.0,
+        }
+        metadata = {
+            "example": "test",
+            "type": "python",
+            "best_optimization": "opt1",
+        }
+
+        store.evaluate("test_entry", metrics, metadata)
+        store.save(force=True)
+
+        # The timing-based speedup should be preserved
+        stored_metrics = store._data["examples"]["test_entry"]["metrics"]
+        assert abs(stored_metrics["best_speedup"] - 2.0) < SPEEDUP_TOLERANCE
+
+    def test_entry_with_custom_metrics_preserves_timing_speedup(self, tmp_path):
+        """ExpectationEntry should compute speedup from timing, ignoring custom_metrics."""
+        # Even if custom_metrics has a different speedup value,
+        # best_speedup property should use timing
+        provenance = RunProvenance(
+            git_commit="abc123",
+            hardware_key="test_hw",
+            profile_name="test_profile",
+            timestamp="2025-01-01T00:00:00",
+            iterations=100,
+            warmup_iterations=10,
+        )
+
+        entry = ExpectationEntry(
+            example="test",
+            type="python",
+            baseline_time_ms=100.0,
+            best_optimized_time_ms=50.0,  # 2x speedup
+            provenance=provenance,
+            custom_metrics={"custom_speedup": 5.0},  # Different value
+        )
+
+        # best_speedup property should return timing-based value, not custom
+        assert abs(entry.best_speedup - 2.0) < SPEEDUP_TOLERANCE
+
+    def test_custom_metrics_roundtrip(self, tmp_path):
+        """Custom metrics should survive serialization without affecting timing speedup."""
+        store = ExpectationsStore(tmp_path, "test_hw")
+
+        provenance = RunProvenance(
+            git_commit="abc123",
+            hardware_key="test_hw",
+            profile_name="test_profile",
+            timestamp="2025-01-01T00:00:00",
+            iterations=100,
+            warmup_iterations=10,
+        )
+
+        entry = ExpectationEntry(
+            example="test",
+            type="python",
+            baseline_time_ms=100.0,
+            best_optimized_time_ms=25.0,  # 4x timing speedup
+            provenance=provenance,
+            custom_metrics={
+                "scenario_total_phase_ms": 20.0,
+                "custom_speedup": 5.0,  # Scenario says 5x
+            },
+        )
+
+        result = store.update_entry("test::python", entry)
+        store.save(force=True)
+
+        # Reload and verify
+        loaded_entry = store.get_entry("test::python")
+
+        # Timing speedup preserved
+        assert abs(loaded_entry.best_speedup - 4.0) < SPEEDUP_TOLERANCE
+
+        # Custom metrics preserved
+        assert loaded_entry.custom_metrics is not None
+        assert abs(loaded_entry.custom_metrics.get("custom_speedup", 0) - 5.0) < SPEEDUP_TOLERANCE
+
+
 class TestEdgeCases:
     """Tests for edge cases and boundary conditions."""
 

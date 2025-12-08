@@ -1620,6 +1620,77 @@ class BenchmarkHarness:
             schemaVersion="1.0",
         )
     
+    def verify(
+        self,
+        baseline: BaseBenchmark,
+        optimized: BaseBenchmark,
+        force_recache: bool = False,
+    ) -> "VerifyResult":
+        """Run verification on a baseline/optimized benchmark pair.
+        
+        This method verifies that baseline and optimized benchmarks:
+        1. Have equivalent input signatures (same workload)
+        2. Produce equivalent outputs (within tolerance)
+        3. Pass anti-hacking checks (fresh-input, jitter)
+        
+        Verification runs with deterministic seeds (seed=42) and caches
+        baseline golden outputs for subsequent comparisons.
+        
+        Args:
+            baseline: The baseline benchmark instance
+            optimized: The optimized benchmark instance  
+            force_recache: If True, regenerate baseline golden output
+            
+        Returns:
+            VerifyResult with verification outcome
+            
+        Example:
+            harness = BenchmarkHarness()
+            baseline = BaselineGemmBenchmark()
+            optimized = OptimizedGemmBenchmark()
+            
+            result = harness.verify(baseline, optimized)
+            if not result.passed:
+                print(f"Verification failed: {result.reason}")
+        """
+        from core.benchmark.verify_runner import VerifyRunner, VerifyConfig
+        from core.benchmark.verification import VerifyResult
+        
+        runner = VerifyRunner()
+        config = VerifyConfig(
+            seed=42,
+            force_recache=force_recache,
+            verbose=LOGGER_AVAILABLE,
+        )
+        
+        return runner.verify_pair(baseline, optimized, config)
+    
+    def gate_perf(
+        self,
+        benchmark_path: str,
+    ) -> Tuple[bool, Optional[str]]:
+        """Check if a benchmark is allowed to run performance measurement.
+        
+        Based on enforcement phase and quarantine status, determines
+        whether perf measurement should proceed.
+        
+        Args:
+            benchmark_path: Path to the benchmark file
+            
+        Returns:
+            Tuple of (allowed, reason_if_blocked)
+            
+        Example:
+            harness = BenchmarkHarness()
+            allowed, reason = harness.gate_perf("ch01/baseline_gemm.py")
+            if not allowed:
+                print(f"Perf blocked: {reason}")
+        """
+        from core.benchmark.verify_runner import VerifyRunner
+        
+        runner = VerifyRunner()
+        return runner.gate_perf(benchmark_path)
+    
     def _benchmark_with_subprocess(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> PydanticBenchmarkResult:
         """Run benchmark in subprocess for reliable timeout cancellation."""
         import json
