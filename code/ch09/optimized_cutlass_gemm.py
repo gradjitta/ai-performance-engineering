@@ -26,18 +26,15 @@ class OptimizedCutlassGemmBenchmark(CudaBinaryBenchmark):
             iterations=3,
             warmup=5,
             timeout_seconds=120,
+            workload_params={"type": "cutlass_gemm"},
         )
-
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return roofline metrics for cutlass_gemm."""
-        from core.benchmark.metrics import compute_roofline_metrics
-        return compute_roofline_metrics(
-            total_flops=self._total_flops,
-            total_bytes=self._total_bytes,
-            elapsed_ms=getattr(self, '_last_elapsed_ms', 1.0),
-            precision="fp16",
-        )
+        return None  # Metrics computed by CUDA binary
+
+
 
 def get_benchmark() -> OptimizedCutlassGemmBenchmark:
     """Factory for discover_benchmarks()."""

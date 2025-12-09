@@ -411,6 +411,7 @@ if TYPER_AVAILABLE:
         skip_input_verify: bool = Option(False, "--skip-input-verify", help="Skip input equivalence verification. WARNING: Without this check, benchmark comparisons may be invalid (different workloads).", is_flag=True),
         skip_output_verify: bool = Option(False, "--skip-output-verify", help="Skip output correctness verification. WARNING: Without this check, optimizations may produce incorrect results.", is_flag=True),
         skip_verify: bool = Option(False, "--skip-verify", help="Skip BOTH input and output verification. Equivalent to --skip-input-verify --skip-output-verify.", is_flag=True),
+        verify_phase: str = Option("gate", "--verify-phase", help="Verification enforcement phase: 'detect' (report only), 'quarantine' (exclude non-compliant from reports), 'gate' (default, fail on verification failure)"),
         precheck_only: bool = Option(False, "--precheck-only", help="Validate targets and print planned command without running."),
         dry_run: bool = Option(False, "--dry-run", help="Describe planned execution without running benchmarks."),
     ):
@@ -436,6 +437,10 @@ if TYPER_AVAILABLE:
         # Click/Typer shuffles positional args.
         combined_targets = list(dict.fromkeys(combined_targets))
         effective_timeout = timeout_seconds if timeout_seconds is not None else suite_timeout
+        # Set verification enforcement phase
+        if verify_phase:
+            os.environ["VERIFY_ENFORCEMENT_PHASE"] = verify_phase.lower()
+        
         if precheck_only or dry_run:
             plan = {
                 "precheck_only": precheck_only,
@@ -445,6 +450,7 @@ if TYPER_AVAILABLE:
                 "profile_type": profile_type,
                 "output_format": output_format,
                 "suite_timeout": effective_timeout,
+                "verify_phase": verify_phase,
             }
             typer.echo(json.dumps(plan, indent=2))
             raise typer.Exit(code=0)
@@ -489,6 +495,230 @@ if TYPER_AVAILABLE:
             use_llm_cache=not no_llm_cache,
             llm_explain=llm_explain,
         )
+
+    @app.command("verify")
+    def verify(
+        targets: Optional[List[str]] = Option(None, "--targets", "-t", help="Chapter(s) or chapter:example pairs to verify. Repeat the flag for multiple targets. Omit or use 'all' for every chapter."),
+        bench_root: Optional[Path] = Option(None, "--bench-root", "-r", help="Root directory to scan for benchmarks (defaults to repo root)."),
+        verify_phase: str = Option("gate", "--verify-phase", "-p", help="Verification enforcement phase: 'detect' (report only), 'quarantine' (exclude non-compliant), 'gate' (default, strict enforcement)"),
+        skip_jitter: bool = Option(False, "--skip-jitter", help="Skip jitter check (output changes when inputs are perturbed)", is_flag=True),
+        skip_fresh_input: bool = Option(False, "--skip-fresh-input", help="Skip fresh-input check (different seeds produce different outputs)", is_flag=True),
+        skip_workload: bool = Option(False, "--skip-workload", help="Skip workload invariant check (bytes/tokens/ops per iteration)", is_flag=True),
+        json_output: bool = Option(False, "--json", help="Output results as JSON", is_flag=True),
+        verbose: bool = Option(False, "--verbose", "-v", help="Verbose output with detailed comparison info", is_flag=True),
+        clear_cache: bool = Option(False, "--clear-cache", help="Clear golden output cache before verification", is_flag=True),
+    ):
+        """Verify benchmark pairs for correctness without measuring performance.
+        
+        Runs verification checks on baseline/optimized benchmark pairs:
+        - Input signature matching (same batch size, dtypes, shapes)
+        - Output correctness (optimized produces same outputs as baseline)
+        - Jitter check (outputs change when inputs are perturbed)
+        - Fresh-input check (different seeds produce different outputs)
+        - Workload invariant check (same bytes/tokens/ops per iteration)
+        
+        Examples:
+            aisp bench verify                     # Verify all chapters
+            aisp bench verify -t ch11            # Verify chapter 11
+            aisp bench verify -t ch11:streams    # Verify specific example
+            aisp bench verify --json             # JSON output for CI
+        """
+        from core.benchmark.verify_runner import VerifyRunner, VerifyConfig
+        from core.benchmark.verification import EnforcementPhase, get_enforcement_phase
+        from core.benchmark.quarantine import QuarantineManager
+        from core.discovery import discover_benchmarks
+        import importlib.util
+        
+        active_bench_root = Path(bench_root).resolve() if bench_root else repo_root
+        
+        # Set enforcement phase
+        os.environ["VERIFY_ENFORCEMENT_PHASE"] = verify_phase.lower()
+        phase = get_enforcement_phase()
+        
+        # Initialize verification components
+        cache_dir = active_bench_root / "artifacts" / "verify_cache"
+        quarantine_mgr = QuarantineManager(cache_dir=cache_dir)
+        
+        if clear_cache:
+            import shutil
+            golden_cache = cache_dir / "golden_outputs"
+            if golden_cache.exists():
+                shutil.rmtree(golden_cache)
+                typer.echo(f"🗑️  Cleared golden output cache: {golden_cache}")
+        
+        verify_config = VerifyConfig(
+            run_jitter_check=not skip_jitter,
+            run_fresh_input_check=not skip_fresh_input,
+            run_workload_check=not skip_workload,
+            seed=42,
+        )
+        verify_runner = VerifyRunner(
+            cache_dir=cache_dir / "golden_outputs",
+            quarantine_mgr=quarantine_mgr,
+            config=verify_config,
+        )
+        
+        # Resolve targets
+        effective_targets = targets if targets else ["all"]
+        chapters_dict = discover_all_chapters(active_bench_root)
+        resolved = resolve_target_chapters(effective_targets, chapters_dict)
+        
+        results = []
+        passed_count = 0
+        failed_count = 0
+        skipped_count = 0
+        
+        for chapter_slug_name, chapter_data in resolved.items():
+            chapter_dir = chapter_data.get("chapter_dir")
+            if not chapter_dir:
+                continue
+            
+            typer.echo(f"\n{'='*60}")
+            typer.echo(f"📋 Verifying {chapter_slug_name}")
+            typer.echo(f"{'='*60}")
+            
+            try:
+                pairs = discover_benchmarks(Path(chapter_dir))
+            except Exception as e:
+                typer.echo(f"  ⚠️  Could not find benchmark pairs: {e}")
+                skipped_count += 1
+                results.append({
+                    "chapter": chapter_slug_name,
+                    "status": "skipped",
+                    "reason": str(e),
+                })
+                continue
+            
+            if not pairs:
+                typer.echo(f"  ⏭️  No benchmark pairs found")
+                skipped_count += 1
+                results.append({
+                    "chapter": chapter_slug_name,
+                    "status": "skipped",
+                    "reason": "No benchmark pairs found",
+                })
+                continue
+            
+            def _load_benchmark_module(path: Path):
+                """Load a Python benchmark module by path."""
+                spec = importlib.util.spec_from_file_location(path.stem, path)
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"Could not load spec for {path}")
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                return mod
+            
+            for baseline_path, optimized_paths, example_name in pairs:
+                # For each baseline, verify against all optimized variants
+                for optimized_path in optimized_paths:
+                    pair_name = f"{example_name}/{optimized_path.stem.replace('optimized_', '')}"
+                    typer.echo(f"\n  🔍 {pair_name}:")
+                    typer.echo(f"      Baseline:  {baseline_path.name}")
+                    typer.echo(f"      Optimized: {optimized_path.name}")
+                    
+                    try:
+                        # Load benchmarks
+                        baseline_mod = _load_benchmark_module(baseline_path)
+                        optimized_mod = _load_benchmark_module(optimized_path)
+                        
+                        baseline_cls = getattr(baseline_mod, "Benchmark", None)
+                        optimized_cls = getattr(optimized_mod, "Benchmark", None)
+                        
+                        if not baseline_cls or not optimized_cls:
+                            typer.echo(f"      ❌ Missing Benchmark class")
+                            failed_count += 1
+                            results.append({
+                                "chapter": chapter_slug_name,
+                                "pair": pair_name,
+                                "status": "failed",
+                                "reason": "Missing Benchmark class",
+                            })
+                            continue
+                        
+                        # Instantiate and setup
+                        baseline = baseline_cls()
+                        optimized = optimized_cls()
+                        baseline.setup()
+                        optimized.setup()
+                        
+                        # Run verification
+                        result = verify_runner.verify_pair(baseline, optimized)
+                        
+                        baseline.teardown()
+                        optimized.teardown()
+                        
+                        if result.passed:
+                            typer.echo(f"      ✅ PASSED")
+                            passed_count += 1
+                            results.append({
+                                "chapter": chapter_slug_name,
+                                "pair": pair_name,
+                                "status": "passed",
+                            })
+                        else:
+                            typer.echo(f"      ❌ FAILED: {result.reason.value if result.reason else 'Unknown'}")
+                            if verbose and result.details:
+                                typer.echo(f"         Details: {result.details.message}")
+                            failed_count += 1
+                            results.append({
+                                "chapter": chapter_slug_name,
+                                "pair": pair_name,
+                                "status": "failed",
+                                "reason": result.reason.value if result.reason else "unknown",
+                                "details": result.details.message if result.details else None,
+                            })
+                            
+                            # Quarantine if in quarantine or gate phase
+                            if phase in (EnforcementPhase.QUARANTINE, EnforcementPhase.GATE) and result.reason:
+                                quarantine_mgr.quarantine(str(optimized_path), result.reason)
+                    
+                    except Exception as e:
+                        typer.echo(f"      ❌ ERROR: {e}")
+                        if verbose:
+                            import traceback
+                            typer.echo(f"         {traceback.format_exc()}")
+                        failed_count += 1
+                        results.append({
+                            "chapter": chapter_slug_name,
+                            "pair": pair_name,
+                            "status": "error",
+                            "reason": str(e),
+                        })
+        
+        # Summary
+        typer.echo(f"\n{'='*60}")
+        typer.echo(f"📊 VERIFICATION SUMMARY")
+        typer.echo(f"{'='*60}")
+        typer.echo(f"  ✅ Passed:  {passed_count}")
+        typer.echo(f"  ❌ Failed:  {failed_count}")
+        typer.echo(f"  ⏭️  Skipped: {skipped_count}")
+        typer.echo(f"  📈 Total:   {passed_count + failed_count + skipped_count}")
+        
+        if failed_count > 0:
+            typer.echo(f"\n  ⚠️  Phase: {phase.value}")
+            if phase == EnforcementPhase.GATE:
+                typer.echo(f"  🚫 Gate mode: non-compliant benchmarks will block performance measurement")
+            elif phase == EnforcementPhase.QUARANTINE:
+                typer.echo(f"  🏷️  Quarantine mode: non-compliant benchmarks excluded from reports")
+            else:
+                typer.echo(f"  ℹ️  Detect mode: issues reported but not enforced")
+        
+        if json_output:
+            output = {
+                "summary": {
+                    "passed": passed_count,
+                    "failed": failed_count,
+                    "skipped": skipped_count,
+                    "phase": phase.value,
+                },
+                "results": results,
+                "quarantine": {k: v.to_dict() for k, v in quarantine_mgr.get_all_records().items()} if hasattr(quarantine_mgr, 'get_all_records') else {},
+            }
+            typer.echo("\n" + json.dumps(output, indent=2, default=str))
+        
+        # Exit with error if failed and in gate mode
+        if failed_count > 0 and phase == EnforcementPhase.GATE:
+            raise typer.Exit(code=1)
 
     @app.command("list-targets")
     def list_targets(

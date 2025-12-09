@@ -23,9 +23,8 @@ class HBMBenchmarkBase(BaseBenchmark):
 
     def __init__(self) -> None:
         super().__init__()
-        # Allow minor numerical drift without failing verification.
-        self.skip_output_check = True
-        self.skip_input_check = True
+        # HBM benchmark - fixed dimensions to measure memory access patterns
+        self.jitter_exemption_reason = "HBM benchmark: fixed matrix dimensions to measure memory access patterns"
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA required for HBM benchmarks")
         self.device = torch.device("cuda")
@@ -100,8 +99,13 @@ class HBMBenchmarkBase(BaseBenchmark):
             return "Output buffer not initialized"
         return None
 
-    def skip_output_verification(self) -> bool:
-        return True
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"rows": self.rows, "cols": self.cols}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison - HBM kernel has numerical drift."""
+        return (1e-2, 5e-3)
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return HBM optimization metrics for memory bandwidth analysis."""

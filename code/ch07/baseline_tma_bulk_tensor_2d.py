@@ -26,18 +26,13 @@ class BaselineTMABulkTensor2D(CudaBinaryBenchmark):
             iterations=3,
             warmup=5,
             timeout_seconds=120,
+            workload_params={"type": "tma_bulk_tensor_2d"},
         )
-
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return memory access metrics for tma_bulk_tensor_2d."""
-        from core.benchmark.metrics import compute_memory_access_metrics
-        return compute_memory_access_metrics(
-            bytes_requested=self._bytes_requested,
-            bytes_actually_transferred=self._bytes_requested,  # Ideal case
-            num_transactions=max(1, self._bytes_requested // 128),
-            optimal_transactions=max(1, self._bytes_requested // 128),
-        )
+        """Return memory access metrics."""
+        return None
 
 def get_benchmark() -> BaselineTMABulkTensor2D:
     """Factory for discover_benchmarks()."""

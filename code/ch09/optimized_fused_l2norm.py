@@ -26,18 +26,15 @@ class OptimizedFusedL2NormBenchmark(CudaBinaryBenchmark):
             iterations=5,
             warmup=5,
             timeout_seconds=90,
+            workload_params={"type": "fused_l2norm"},
         )
-
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return roofline metrics for fused_l2norm."""
-        from core.benchmark.metrics import compute_roofline_metrics
-        return compute_roofline_metrics(
-            total_flops=self._total_flops,
-            total_bytes=self._total_bytes,
-            elapsed_ms=getattr(self, '_last_elapsed_ms', 1.0),
-            precision="fp16",
-        )
+        """Return roofline metrics."""
+        return None
+
+
 
 def get_benchmark() -> OptimizedFusedL2NormBenchmark:
     """Factory for discover_benchmarks()."""

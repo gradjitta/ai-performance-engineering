@@ -41,7 +41,9 @@ class OptimizedDSMEMClusterAtomicBenchmark(CudaBinaryBenchmark):
             iterations=3,
             warmup=5,
             timeout_seconds=120,
+            workload_params={"type": "dsmem_cluster_atomic"},
         )
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""

@@ -28,7 +28,9 @@ class OptimizedDoubleBufferedPipelineBenchmark(CudaBinaryBenchmark):
             timeout_seconds=180,
             requires_pipeline_api=True,
             time_regex=r"TIME_MS:\s*([0-9.]+)",
+            workload_params={"type": "double_buffered_pipeline"},
         )
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
 
     def get_custom_metrics(self) -> Optional[dict]:

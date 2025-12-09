@@ -31,8 +31,9 @@ class TMEMTripleOverlapBenchmark(CudaBinaryBenchmark):
             timeout_seconds=120,
             time_regex=r"(?:TMA|Baseline)\s+runtime:\s*([0-9.]+)\s*ms",
             requires_pipeline_api=True,
+            workload_params={"type": "tmem_triple_overlap"},
         )
-
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""

@@ -47,6 +47,7 @@ class OptimizedArithmeticIntensityBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self.jitter_exemption_reason = "Arithmetic intensity benchmark: fixed dimensions"
     
     def setup(self) -> None:
         """Setup: Initialize tensors for compute-bound operation."""
@@ -113,6 +114,20 @@ class OptimizedArithmeticIntensityBenchmark(BaseBenchmark):
         if self.A is None or self.B is None or self.C is None:
             return "Matrices not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.C is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.C
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"M": self.M, "K": self.K, "N": self.N}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-3, 1e-3)
 
 
 def get_benchmark() -> BaseBenchmark:

@@ -44,6 +44,8 @@ class BaselineTritonBenchmark(BaseBenchmark):
         self.input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.N = 1_000_000
+        # Triton benchmark - fixed N for kernel comparison
+        self.jitter_exemption_reason = "Triton kernel benchmark: fixed N for consistent comparison"
         tokens = self.N
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -88,6 +90,20 @@ class BaselineTritonBenchmark(BaseBenchmark):
         if self.output is None:
             return "Output tensor not initialized"
         return None
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N}
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-5, 1e-5)
 
 
 def get_benchmark() -> BaseBenchmark:

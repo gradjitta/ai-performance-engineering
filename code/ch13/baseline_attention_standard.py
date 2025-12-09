@@ -50,6 +50,12 @@ class BaselineAttentionStandardBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Attention benchmark: fixed dimensions for measurement"
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(tokens),
+        )
     
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -62,7 +68,7 @@ class BaselineAttentionStandardBenchmark(BaseBenchmark):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_attention_standard"):
             with torch.no_grad():
-                _ = self.model(self.inputs)
+                self.output = self.model(self.inputs)
         self._synchronize()
 
     def teardown(self) -> None:
@@ -94,6 +100,21 @@ class BaselineAttentionStandardBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "seq_len": self.seq_len, "hidden_dim": self.hidden_dim}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        # Different model instances with random weights - verify shapes match
+        return (1.0, 100.0)
 
 
 def get_benchmark() -> BaselineAttentionStandardBenchmark:

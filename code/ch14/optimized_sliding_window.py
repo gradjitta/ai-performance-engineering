@@ -101,6 +101,12 @@ class OptimizedSlidingWindowBenchmark(BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Sliding window benchmark: fixed dimensions for attention comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(tokens),
+        )
 
     def setup(self) -> None:
         """Setup: Initialize optimized attention model."""
@@ -124,8 +130,8 @@ class OptimizedSlidingWindowBenchmark(BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: Sliding window attention."""
         with torch.no_grad():
-            output = self.model(self.x)
-            self._last = float(output.sum())
+            self.output = self.model(self.x)
+            self._last = float(self.output.sum())
             self._synchronize()
 
     def teardown(self) -> None:
@@ -159,6 +165,20 @@ class OptimizedSlidingWindowBenchmark(BaseBenchmark):
         if self.model is None or self.x is None:
             return "Model not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output.float()
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "seq_len": self.seq_len, "embed_dim": self.embed_dim}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaseBenchmark:

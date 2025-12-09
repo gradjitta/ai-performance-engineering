@@ -29,7 +29,9 @@ class BaselineClusterGroupNoDSMEMBenchmark(CudaBinaryBenchmark):
             warmup=5,
             timeout_seconds=180,
             time_regex=r"TIME_MS:\s*([0-9.]+)",
+            workload_params={"type": "cluster_group_no_dsmem"},
         )
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""

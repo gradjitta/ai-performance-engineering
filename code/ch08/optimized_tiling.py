@@ -36,6 +36,13 @@ class OptimizedTilingBenchmark(TilingBenchmarkBase):
             optimized_ms=getattr(self, '_last_elapsed_ms', 1.0),
             name="tiling",
         )
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+
 
 def get_benchmark() -> TilingBenchmarkBase:
     """Factory function for harness discovery."""

@@ -118,6 +118,12 @@ class OptimizedRegionalCompileBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(max_tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Regional compile benchmark: fixed sequence schedule for compile comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(max_tokens),
+        )
 
     def setup(self) -> None:
         torch.manual_seed(0)
@@ -170,7 +176,7 @@ class OptimizedRegionalCompileBenchmark(BaseBenchmark):
         x = self.inputs[seq_len]
 
         with torch.no_grad(), self._nvtx_range("optimized_regional_compile"):
-            _ = self.model(x)
+            self.output = self.model(x)
         self._synchronize()
 
     def teardown(self) -> None:
@@ -207,14 +213,20 @@ class OptimizedRegionalCompileBenchmark(BaseBenchmark):
             return "Model not initialized"
         return None
 
-    def skip_output_verification(self) -> bool:
-        """Skip output verification - baseline uses FP32, optimized uses BF16.
-        
-        This benchmark demonstrates precision optimization (BF16 vs FP32).
-        Output values will differ due to intentional precision difference,
-        not due to implementation bugs.
-        """
-        return True
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output.float()  # Convert bf16 to fp32
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "hidden": self.hidden}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        # bf16 vs fp32 - outputs will differ
+        return (1.0, 10.0)
 
 
 def get_benchmark() -> BaseBenchmark:

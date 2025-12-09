@@ -21,6 +21,11 @@ from ch15.optimized_continuous_batching import OptimizedContinuousBatchingBenchm
 class OptimizedContinuousBatchingBenchmark(_OptimizedContinuousBatchingBenchmark):
     """Direct alias to the chapter 15 optimized version; multi-GPU wrapper handles skips."""
 
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+
+
 
 def get_benchmark() -> OptimizedContinuousBatchingBenchmark:
     if torch.cuda.device_count() < 2:

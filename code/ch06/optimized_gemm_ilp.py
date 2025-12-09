@@ -25,6 +25,8 @@ class OptimizedILPBenchmark(BaseBenchmark):
         self.N = 10_000_000
         self._extension = None
         self.repeats = 4  # Same as baseline for fair comparison
+        # ILP benchmark - fixed input size to measure instruction-level parallelism
+        self.jitter_exemption_reason = "ILP benchmark: fixed N to measure instruction parallelism impact"
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.repeats),
             tokens_per_iteration=float(self.N * self.repeats),
@@ -100,6 +102,21 @@ class OptimizedILPBenchmark(BaseBenchmark):
         if not torch.isfinite(self.output).all():
             return "Output contains non-finite values"
         return None
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N, "repeats": self.repeats}
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison - ILP reordering may affect precision."""
+        return (1e-2, 1e-2)
+
 
 
 def get_benchmark() -> BaseBenchmark:

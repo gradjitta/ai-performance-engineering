@@ -43,6 +43,8 @@ class OptimizedStreamsBenchmark(BaseBenchmark):
         self.stream_compute: Optional[torch.cuda.Stream] = None
         self.N = 5_000_000  # Elements per chunk - balanced for H2D/compute overlap
         self.num_chunks = 20  # More chunks to amortize pipeline startup
+        # Stream benchmark - fixed dimensions for overlap measurement
+        self.jitter_exemption_reason = "Stream benchmark: fixed N for consistent overlap measurement"
     
     def setup(self) -> None:
         """Setup: Initialize streams, pinned memory, and device buffers."""
@@ -166,6 +168,21 @@ class OptimizedStreamsBenchmark(BaseBenchmark):
             if not torch.isfinite(r).all():
                 return f"Result {i} contains non-finite values"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.results is None:
+            raise RuntimeError("Results not available - run benchmark first")
+        # Concatenate all results for comparison
+        return torch.cat(self.results, dim=0)
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N, "num_chunks": self.num_chunks}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-5, 1e-5)
 
 
 def get_benchmark() -> OptimizedStreamsBenchmark:

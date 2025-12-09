@@ -26,7 +26,9 @@ class OptimizedClusterGroupSingleCtaBenchmark(CudaBinaryBenchmark):
             iterations=3,
             warmup=5,
             timeout_seconds=60,
+            workload_params={"type": "cluster_group_single_cta"},
         )
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
 
     def get_custom_metrics(self) -> Optional[dict]:

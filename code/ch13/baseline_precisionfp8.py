@@ -72,6 +72,11 @@ class BaselinePrecisionFP8Benchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self.jitter_exemption_reason = "FP8 precision benchmark: fixed dimensions for precision comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(tokens),
+        )
     
     def setup(self) -> None:
         """Setup: Initialize FP32 model and data."""
@@ -147,8 +152,10 @@ class BaselinePrecisionFP8Benchmark(BaseBenchmark):
             return "Model not initialized"
         return None
 
-    def get_output_for_verification(self) -> Optional[torch.Tensor]:
-        """Expose baseline output for correctness checks."""
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
         return self.output
 
     def get_input_signature(self) -> dict:

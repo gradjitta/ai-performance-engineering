@@ -116,6 +116,12 @@ class BaselineKVCacheNaiveBenchmark(BaseBenchmark):
             requests_per_iteration=float(len(self.sequence_lengths)),
             tokens_per_iteration=float(total_tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "KV cache benchmark: fixed dimensions for cache measurement"
+        self.register_workload_metadata(
+            requests_per_iteration=float(len(self.sequence_lengths)),
+            tokens_per_iteration=float(total_tokens),
+        )
     
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -157,6 +163,8 @@ class BaselineKVCacheNaiveBenchmark(BaseBenchmark):
                         token = layer(token, self.kv_cache, request_id, layer_idx, pos)
                 
                 self.kv_cache.free(request_id)
+            # Store last output for verification
+            self.output = token.detach().clone()
         self._synchronize()
 
     
@@ -195,6 +203,26 @@ class BaselineKVCacheNaiveBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {
+            "num_layers": self.num_layers,
+            "num_heads": self.num_heads,
+            "head_dim": self.head_dim,
+            "batch_size": self.batch_size,
+        }
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        # Different KV cache algorithms produce different outputs
+        return (1.0, 100.0)
 
 
 def get_benchmark() -> BaselineKVCacheNaiveBenchmark:

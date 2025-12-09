@@ -48,6 +48,16 @@ from core.benchmark.quarantine import (
     check_benchmark_compliance,
     detect_skip_flags,
 )
+from core.harness.validity_checks import (
+    check_input_output_aliasing,
+    get_tensor_addresses,
+    DistributedVerifyResult,
+    gather_rank_outputs,
+    verify_distributed_outputs,
+    check_rank_execution,
+    GraphCaptureCheatDetector,
+    check_graph_capture_integrity,
+)
 
 
 # Default golden output cache directory
@@ -187,9 +197,102 @@ class VerifyConfig:
     tolerance_override: Optional[ToleranceSpec] = None
     skip_jitter_check: bool = False
     skip_fresh_input_check: bool = False
+    skip_timing_validation: bool = False  # Skip warmup/iteration count validation
+    skip_output_validation: bool = False  # Skip output tensor comparison
     workload_tolerance: float = 0.01  # 1% tolerance for workload metrics
     verbose: bool = False
     force_recache: bool = False  # Ignore existing cache
+
+
+@dataclass
+class TimingConfig:
+    """Timing configuration extracted from a benchmark or harness config.
+    
+    Used to validate that baseline and optimized benchmarks use identical
+    timing parameters, preventing timing manipulation attacks.
+    """
+    warmup_iterations: Optional[int] = None
+    measurement_iterations: Optional[int] = None
+    min_run_time_ms: Optional[float] = None
+    
+    @classmethod
+    def from_benchmark(cls, benchmark: Any) -> "TimingConfig":
+        """Extract timing config from a benchmark instance.
+        
+        Checks for timing config in multiple places:
+        1. benchmark.config (if BenchmarkConfig is used)
+        2. benchmark attributes
+        3. get_config() method
+        """
+        warmup = None
+        iterations = None
+        min_run_time = None
+        
+        # Try to get from benchmark.config
+        config = getattr(benchmark, "config", None)
+        if config:
+            warmup = getattr(config, "warmup", None) or getattr(config, "warmup_iterations", None)
+            iterations = getattr(config, "iterations", None)
+            min_run_time = getattr(config, "min_run_time_ms", None)
+        
+        # Try to get from benchmark attributes directly
+        if warmup is None:
+            warmup = getattr(benchmark, "warmup_iterations", None) or getattr(benchmark, "warmup", None)
+        if iterations is None:
+            iterations = getattr(benchmark, "iterations", None)
+        if min_run_time is None:
+            min_run_time = getattr(benchmark, "min_run_time_ms", None)
+        
+        # Try to get from get_config() method
+        if hasattr(benchmark, "get_config") and callable(benchmark.get_config):
+            try:
+                cfg = benchmark.get_config()
+                if isinstance(cfg, dict):
+                    if warmup is None:
+                        warmup = cfg.get("warmup") or cfg.get("warmup_iterations")
+                    if iterations is None:
+                        iterations = cfg.get("iterations")
+                    if min_run_time is None:
+                        min_run_time = cfg.get("min_run_time_ms")
+            except Exception:
+                pass
+        
+        return cls(
+            warmup_iterations=warmup,
+            measurement_iterations=iterations,
+            min_run_time_ms=min_run_time,
+        )
+    
+    def matches(self, other: "TimingConfig") -> Tuple[bool, Optional[str]]:
+        """Check if two timing configs match.
+        
+        Returns:
+            Tuple of (matches, mismatch_description)
+        """
+        mismatches = []
+        
+        # Only compare values that are set in BOTH configs
+        if self.warmup_iterations is not None and other.warmup_iterations is not None:
+            if self.warmup_iterations != other.warmup_iterations:
+                mismatches.append(
+                    f"warmup_iterations: {self.warmup_iterations} vs {other.warmup_iterations}"
+                )
+        
+        if self.measurement_iterations is not None and other.measurement_iterations is not None:
+            if self.measurement_iterations != other.measurement_iterations:
+                mismatches.append(
+                    f"measurement_iterations: {self.measurement_iterations} vs {other.measurement_iterations}"
+                )
+        
+        if self.min_run_time_ms is not None and other.min_run_time_ms is not None:
+            if abs(self.min_run_time_ms - other.min_run_time_ms) > 0.001:
+                mismatches.append(
+                    f"min_run_time_ms: {self.min_run_time_ms} vs {other.min_run_time_ms}"
+                )
+        
+        if mismatches:
+            return False, "; ".join(mismatches)
+        return True, None
     
 
 class VerifyRunner:
@@ -284,6 +387,88 @@ class VerifyRunner:
             )
         
         return outputs
+    
+    def _extract_inputs(self, benchmark: Any) -> Dict[str, torch.Tensor]:
+        """Extract input tensors from a benchmark.
+        
+        Supports two modes:
+        1. Explicit get_verify_inputs() method (recommended)
+        2. Auto-detection from common input attribute names
+        
+        Args:
+            benchmark: The benchmark instance
+            
+        Returns:
+            Dict mapping input names to tensors
+        """
+        inputs: Dict[str, torch.Tensor] = {}
+        
+        # Mode 1: Use get_verify_inputs() if available (recommended)
+        if hasattr(benchmark, "get_verify_inputs") and callable(benchmark.get_verify_inputs):
+            try:
+                inp = benchmark.get_verify_inputs()
+                if inp is not None:
+                    if isinstance(inp, torch.Tensor):
+                        inputs["input"] = inp
+                    elif isinstance(inp, dict):
+                        for k, v in inp.items():
+                            if isinstance(v, torch.Tensor):
+                                inputs[k] = v
+                    return inputs
+            except Exception:
+                pass  # Fall through to auto-detection
+        
+        # Mode 2: Auto-detect common input attributes
+        # This is a fallback for benchmarks that haven't implemented get_verify_inputs()
+        common_input_attrs = [
+            # Matrix/tensor inputs (common in GEMM benchmarks)
+            "A", "B", "x", "y", "input", "inputs", "X", "Y",
+            # Weight/model inputs
+            "weight", "weights", "W",
+            # Sequence inputs (LLM benchmarks)
+            "input_ids", "attention_mask", "hidden_states",
+            # Convolution inputs
+            "input_tensor", "kernel",
+        ]
+        
+        for attr in common_input_attrs:
+            if hasattr(benchmark, attr):
+                val = getattr(benchmark, attr)
+                if isinstance(val, torch.Tensor):
+                    inputs[attr] = val
+        
+        return inputs
+    
+    def _check_input_output_aliasing(
+        self,
+        benchmark: Any,
+    ) -> Tuple[bool, Optional[str]]:
+        """Check if any output tensor aliases an input tensor.
+        
+        This detects the "pre-filled output" cheat where the output buffer
+        already contains the result before benchmark_fn() runs.
+        
+        Args:
+            benchmark: The benchmark instance
+            
+        Returns:
+            Tuple of (no_aliasing, error_message_if_aliasing)
+        """
+        try:
+            inputs = self._extract_inputs(benchmark)
+            outputs = self._extract_output(benchmark)
+        except Exception as e:
+            # If we can't extract inputs/outputs, we can't check aliasing
+            # but this shouldn't block verification
+            return True, None
+        
+        if not inputs or not outputs:
+            # No tensors to compare
+            return True, None
+        
+        # Use the check from validity_checks module
+        no_aliasing, error_msg = check_input_output_aliasing(inputs, outputs)
+        return no_aliasing, error_msg
     
     def _extract_signature(self, benchmark: Any) -> Optional[InputSignature]:
         """Extract input signature from a benchmark.
@@ -844,6 +1029,28 @@ class VerifyRunner:
         except Exception as e:
             return VerifyResult.fail(f"Optimized execution failed: {e}\n{traceback.format_exc()}")
     
+    def _validate_timing_config(
+        self,
+        baseline: Any,
+        optimized: Any,
+    ) -> Tuple[bool, Optional[str]]:
+        """Validate that baseline and optimized use identical timing configuration.
+        
+        This prevents timing manipulation attacks where the optimized benchmark
+        uses different warmup/iteration counts to game the measurement.
+        
+        Args:
+            baseline: The baseline benchmark instance
+            optimized: The optimized benchmark instance
+            
+        Returns:
+            Tuple of (valid, error_message)
+        """
+        baseline_timing = TimingConfig.from_benchmark(baseline)
+        optimized_timing = TimingConfig.from_benchmark(optimized)
+        
+        return baseline_timing.matches(optimized_timing)
+    
     def verify_pair(
         self,
         baseline: Any,
@@ -852,8 +1059,10 @@ class VerifyRunner:
     ) -> VerifyResult:
         """Verify a baseline/optimized benchmark pair.
         
-        Convenience method that runs both baseline verification (with caching)
-        and optimized verification in sequence.
+        Performs the following checks:
+        1. Timing configuration validation (warmup/iterations must match)
+        2. Baseline verification with golden output caching
+        3. Optimized verification against baseline
         
         Args:
             baseline: The baseline benchmark instance
@@ -865,12 +1074,45 @@ class VerifyRunner:
         """
         config = config or VerifyConfig()
         
-        # First verify and cache baseline
+        # Step 0: Validate timing configuration matches
+        if not config.skip_timing_validation:
+            timing_valid, timing_error = self._validate_timing_config(baseline, optimized)
+            if not timing_valid:
+                return VerifyResult(
+                    passed=False,
+                    reason=QuarantineReason.TIMING_CONFIG_MISMATCH,
+                    details={"timing_mismatch": timing_error},
+                    timestamp=datetime.now(),
+                )
+        
+        # Step 0.5: Check for input-output aliasing (pre-filled results detection)
+        if not config.skip_output_validation:
+            # Check baseline
+            baseline_no_alias, baseline_alias_error = self._check_input_output_aliasing(baseline)
+            if not baseline_no_alias:
+                return VerifyResult(
+                    passed=False,
+                    reason=QuarantineReason.INPUT_OUTPUT_ALIASING,
+                    details={"aliasing_error": baseline_alias_error, "benchmark": "baseline"},
+                    timestamp=datetime.now(),
+                )
+            
+            # Check optimized
+            optimized_no_alias, optimized_alias_error = self._check_input_output_aliasing(optimized)
+            if not optimized_no_alias:
+                return VerifyResult(
+                    passed=False,
+                    reason=QuarantineReason.INPUT_OUTPUT_ALIASING,
+                    details={"aliasing_error": optimized_alias_error, "benchmark": "optimized"},
+                    timestamp=datetime.now(),
+                )
+        
+        # Step 1: Verify and cache baseline
         baseline_result = self.verify_baseline(baseline, config)
         if not baseline_result.passed:
             return baseline_result
         
-        # Then verify optimized against baseline
+        # Step 2: Verify optimized against baseline
         return self.verify_optimized(optimized, config)
     
     def gate_perf(
@@ -905,4 +1147,108 @@ class VerifyRunner:
                 return False, f"Benchmark quarantined ({reason}) - excluded from perf reports"
         
         return True, None
+    
+    def verify_distributed(
+        self,
+        benchmark: Any,
+        world_size: int,
+        rank: int,
+        config: Optional[VerifyConfig] = None,
+    ) -> VerifyResult:
+        """Verify a benchmark in a distributed setting.
+        
+        Performs verification on the local rank and gathers outputs from all
+        ranks to ensure consistency. This detects:
+        - Rank skipping (some ranks not executing work)
+        - Output inconsistency (ranks producing different results)
+        
+        Args:
+            benchmark: The benchmark instance
+            world_size: Total number of ranks
+            rank: Current rank (0 to world_size-1)
+            config: Optional verification configuration
+            
+        Returns:
+            VerifyResult with distributed verification outcome
+        """
+        config = config or VerifyConfig()
+        
+        # Step 1: Check rank execution
+        executed, exec_error = check_rank_execution(benchmark, world_size, rank)
+        if not executed:
+            return VerifyResult(
+                passed=False,
+                reason=QuarantineReason.DISTRIBUTED_VERIFY_FAIL,
+                details={"rank_error": exec_error, "rank": rank},
+                timestamp=datetime.now(),
+            )
+        
+        # Step 2: Run local verification
+        try:
+            outputs, metrics, seed_info = self._run_with_seed(benchmark, config.seed)
+        except Exception as e:
+            return VerifyResult.fail(f"Rank {rank} execution failed: {e}")
+        
+        # Step 3: Gather outputs from all ranks
+        rank_outputs = gather_rank_outputs(outputs, world_size, rank)
+        
+        # Step 4: Verify consistency (only rank 0 has all data in distributed case)
+        if rank == 0 or len(rank_outputs) == world_size:
+            dist_result = verify_distributed_outputs(rank_outputs, world_size)
+            
+            if not dist_result.all_ranks_executed:
+                return VerifyResult(
+                    passed=False,
+                    reason=QuarantineReason.DISTRIBUTED_VERIFY_FAIL,
+                    details={"error": dist_result.error_message},
+                    timestamp=datetime.now(),
+                )
+            
+            if not dist_result.outputs_consistent:
+                return VerifyResult(
+                    passed=False,
+                    reason=QuarantineReason.DISTRIBUTED_VERIFY_FAIL,
+                    details={
+                        "error": dist_result.error_message,
+                        "inconsistent_ranks": dist_result.inconsistent_ranks,
+                    },
+                    timestamp=datetime.now(),
+                )
+        
+        # Step 5: Extract signature for caching
+        signature = self._extract_signature(benchmark)
+        if signature is None:
+            return VerifyResult.fail("Distributed benchmark has no valid input signature")
+        
+        sig_hash = signature.hash()
+        
+        return VerifyResult.success(
+            signature_hash=sig_hash,
+            seed_info=seed_info,
+        )
+    
+    def check_graph_capture_cheat(
+        self,
+        capture_time_ms: float,
+        replay_times_ms: List[float],
+        memory_during_capture_mb: float = 0.0,
+    ) -> Tuple[bool, Optional[str]]:
+        """Check for CUDA graph capture cheating.
+        
+        Detects if work is being done during graph capture rather than replay.
+        This is a wrapper around the validity_checks function for convenience.
+        
+        Args:
+            capture_time_ms: Time to capture the graph
+            replay_times_ms: List of replay iteration times
+            memory_during_capture_mb: Memory allocated during capture
+            
+        Returns:
+            Tuple of (is_valid, error_message_if_cheating)
+        """
+        return check_graph_capture_integrity(
+            capture_time_ms, 
+            replay_times_ms,
+            memory_during_capture_mb,
+        )
 

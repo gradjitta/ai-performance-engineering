@@ -328,6 +328,7 @@ class QuarantineReason(Enum):
     JITTER_DIMENSION_UNAVAILABLE = "jitter_dimension_unavailable"
     FRESH_INPUT_FAIL = "fresh_input_fail"
     CACHED_OUTPUT_DETECTED = "cached_output_detected"
+    INPUT_OUTPUT_ALIASING = "input_output_aliasing"
     
     # CUDA verification errors
     CUDA_VERIFY_FAILED = "cuda_verify_failed"

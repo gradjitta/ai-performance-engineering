@@ -118,6 +118,12 @@ class OptimizedTrainingBenchmark(BaseBenchmark):
         )
         self._peak_memory_gb = 0.0
         self._optimization_goal = "memory"  # This is a memory optimization
+        self.output = None
+        self.jitter_exemption_reason = "Training benchmark: fixed dimensions for memory measurement"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(tokens),
+        )
     
     def get_optimization_goal(self) -> str:
         """This benchmark optimizes for memory, not speed."""
@@ -177,6 +183,8 @@ class OptimizedTrainingBenchmark(BaseBenchmark):
             
             # Optimizer step
             self.optimizer.step()
+            # Store output for verification
+            self.output = logits.detach().clone()
         
         # Track peak memory
         self._peak_memory_gb = max(
@@ -237,6 +245,25 @@ class OptimizedTrainingBenchmark(BaseBenchmark):
             return f"Model forward pass failed: {e}"
         
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {
+            "batch_size": self.batch_size,
+            "seq_len": self.seq_len,
+            "hidden_dim": self.hidden_dim,
+            "num_layers": self.num_layers,
+        }
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.5, 10.0)
 
 
 def get_benchmark() -> OptimizedTrainingBenchmark:

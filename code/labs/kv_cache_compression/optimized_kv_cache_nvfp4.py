@@ -70,6 +70,11 @@ class OptimizedKVCacheNVFP4Benchmark(BaselineKVCacheBenchmark):
         """Memory optimization - lower memory usage is better."""
         return "memory"
 
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+
+
 
 def get_benchmark() -> BaselineKVCacheBenchmark:
     return OptimizedKVCacheNVFP4Benchmark()

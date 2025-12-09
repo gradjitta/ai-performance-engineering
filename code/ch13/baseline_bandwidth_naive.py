@@ -43,6 +43,7 @@ class BaselineBandwidthNaiveBenchmark(BaseBenchmark):
             tokens_per_iteration=float(self.size),
             bytes_per_iteration=float(self.size * 4 * 3),  # read A/B, write C
         )
+        self.jitter_exemption_reason = "Bandwidth benchmark: fixed size for measurement"
     
     def setup(self) -> None:
         """Setup: Initialize large tensors."""
@@ -105,6 +106,20 @@ class BaselineBandwidthNaiveBenchmark(BaseBenchmark):
         if self.A is None:
             return "A not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.C is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.C
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"size": self.size}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-5, 1e-5)
 
 
 def get_benchmark() -> BaseBenchmark:

@@ -67,6 +67,11 @@ class BaselineCudaPythonBenchmark(BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self._flops = 0
+        self.jitter_exemption_reason = "CUDA Python benchmark: fixed dimensions for kernel comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.batch),
+            tokens_per_iteration=float(tokens),
+        )
     
     def setup(self) -> None:
         """Setup: Initialize tensors for operations."""
@@ -166,6 +171,20 @@ class BaselineCudaPythonBenchmark(BaseBenchmark):
         if torch.isnan(self.output).any():
             return "Output contains NaN"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch": self.batch, "seq_len": self.seq_len, "hidden": self.hidden}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

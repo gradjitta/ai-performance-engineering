@@ -30,6 +30,8 @@ class BaselineStreamsBenchmark(BaseBenchmark):
         self.results: Optional[List[torch.Tensor]] = None
         self.N = 5_000_000  # Elements per chunk - balanced for H2D/compute overlap
         self.num_chunks = 20  # More chunks to amortize pipeline startup
+        # Stream benchmark - fixed dimensions for overlap measurement
+        self.jitter_exemption_reason = "Stream benchmark: fixed N for consistent overlap measurement"
     
     def setup(self) -> None:
         """Setup: Initialize pinned host memory and device buffers."""
@@ -114,6 +116,21 @@ class BaselineStreamsBenchmark(BaseBenchmark):
             num_streams=1,  # Sequential uses default stream only
             num_operations=self.num_chunks * 2,  # transfer + compute per chunk
         )
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.results is None:
+            raise RuntimeError("Results not available - run benchmark first")
+        # Concatenate all results for comparison
+        return torch.cat(self.results, dim=0)
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N, "num_chunks": self.num_chunks}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-5, 1e-5)
 
 
 def get_benchmark() -> BaselineStreamsBenchmark:

@@ -24,8 +24,9 @@ class BaselineFlashAttnTmaMicroPipelineBenchmark(CudaBinaryBenchmark):
             run_args=(),
             # Require pipeline-capable/TMA GPUs to keep A/B runs aligned; SKIP otherwise.
             requires_pipeline_api=True,
+            workload_params={"type": "flash_attn_tma_micro_pipeline"},
         )
-
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""

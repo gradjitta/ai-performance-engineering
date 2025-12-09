@@ -175,15 +175,19 @@ class TestInputSignature:
             parameter_count=0,
             precision_flags=PrecisionFlags(),
         )
-        errors = sig.validate()
+        # In strict mode, empty shapes should fail
+        errors = sig.validate(strict=True)
         assert any("shapes" in e.lower() for e in errors)
+        # In non-strict mode (default), empty shapes is OK
+        errors_non_strict = sig.validate(strict=False)
+        assert not any("shapes" in e.lower() for e in errors_non_strict)
     
     def test_validate_invalid_batch_size(self):
         """Test validation catches invalid batch size."""
         sig = InputSignature(
             shapes={"input": (32, 256)},
             dtypes={"input": "float32"},
-            batch_size=0,  # Invalid!
+            batch_size=-1,  # Invalid (negative)!
             parameter_count=0,
             precision_flags=PrecisionFlags(),
         )
@@ -654,6 +658,13 @@ class MockBenchmark:
     def get_workload_metadata(self) -> Optional[Any]:
         """Return workload metadata."""
         return self._workload_metadata
+    
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification.
+        
+        MANDATORY: Explicitly implemented as required by strict mode.
+        """
+        return self.output
 
 
 class TestVerifyRunner:
@@ -903,6 +914,254 @@ class TestPropertyBased:
         tol = ToleranceSpec(rtol=rtol, atol=atol)
         # A tolerance should never be looser than itself
         assert not is_tolerance_looser(tol, tol)
+    
+    @given(
+        st.floats(min_value=1e-8, max_value=1.0, allow_nan=False, allow_infinity=False),
+        st.floats(min_value=1e-8, max_value=1.0, allow_nan=False, allow_infinity=False),
+        st.floats(min_value=1e-8, max_value=1.0, allow_nan=False, allow_infinity=False),
+        st.floats(min_value=1e-8, max_value=1.0, allow_nan=False, allow_infinity=False),
+    )
+    @settings(max_examples=20)
+    def test_tolerance_looser_consistent(self, rtol1, atol1, rtol2, atol2):
+        """Test that tolerance comparison is consistent with OR semantics.
+        
+        is_tolerance_looser uses OR logic: custom is looser if rtol > default.rtol OR atol > default.atol.
+        This means both tolerances can be "looser" than each other if they differ in different dimensions.
+        """
+        tol1 = ToleranceSpec(rtol=rtol1, atol=atol1)
+        tol2 = ToleranceSpec(rtol=rtol2, atol=atol2)
+        
+        # Test that the function is consistent: looser iff either rtol or atol is larger
+        expected_1_looser = rtol1 > rtol2 or atol1 > atol2
+        expected_2_looser = rtol2 > rtol1 or atol2 > atol1
+        
+        assert is_tolerance_looser(tol1, tol2) == expected_1_looser
+        assert is_tolerance_looser(tol2, tol1) == expected_2_looser
+    
+    @given(
+        st.integers(min_value=1, max_value=100),
+        st.integers(min_value=1, max_value=100),
+        st.integers(min_value=1, max_value=100),
+    )
+    @settings(max_examples=20)
+    def test_signature_different_shapes_different_hash(self, dim1, dim2, dim3):
+        """Test that different shapes produce different hashes."""
+        sig1 = InputSignature(
+            shapes={"x": (dim1, dim2)},
+            dtypes={"x": "float32"},
+            batch_size=dim1,
+            parameter_count=0,
+            precision_flags=PrecisionFlags(),
+        )
+        sig2 = InputSignature(
+            shapes={"x": (dim1, dim3)},
+            dtypes={"x": "float32"},
+            batch_size=dim1,
+            parameter_count=0,
+            precision_flags=PrecisionFlags(),
+        )
+        if dim2 != dim3:
+            assert sig1.hash() != sig2.hash()
+    
+    @given(st.integers(min_value=1, max_value=1000))
+    @settings(max_examples=20)
+    def test_signature_roundtrip_serialization(self, batch_size):
+        """Test that signature can be serialized and deserialized."""
+        original = InputSignature(
+            shapes={"x": (batch_size, 64), "y": (64, batch_size)},
+            dtypes={"x": "float32", "y": "float16"},
+            batch_size=batch_size,
+            parameter_count=batch_size * 64,
+            precision_flags=PrecisionFlags(fp16=True),
+        )
+        
+        # Serialize and deserialize
+        data = original.to_dict()
+        restored = InputSignature.from_dict(data)
+        
+        # Hashes should match
+        assert original.hash() == restored.hash()
+    
+    @given(
+        st.floats(min_value=0.0, max_value=1e6, allow_nan=False, allow_infinity=False),
+        st.floats(min_value=0.0, max_value=1e6, allow_nan=False, allow_infinity=False),
+    )
+    @settings(max_examples=20)
+    def test_workload_metrics_equality_within_tolerance(self, baseline_val, optimized_val):
+        """Test workload comparison respects tolerance."""
+        baseline_metrics = {"bytes_per_iteration": baseline_val}
+        optimized_metrics = {"bytes_per_iteration": optimized_val}
+        
+        # Default tolerance is 1% (0.01)
+        passed, diff = compare_workload_metrics(baseline_metrics, optimized_metrics)
+        
+        if baseline_val > 0:
+            ratio = optimized_val / baseline_val
+            if abs(ratio - 1.0) <= 0.01:
+                assert passed is True
+            else:
+                assert passed is False
+    
+    @given(st.integers(min_value=42, max_value=100))
+    @settings(max_examples=10)
+    def test_deterministic_seeds_are_reproducible(self, seed):
+        """Test that set_deterministic_seeds produces reproducible state."""
+        # Set seeds first time
+        set_deterministic_seeds(seed)
+        random1 = torch.rand(10)
+        
+        # Set seeds again with same value
+        set_deterministic_seeds(seed)
+        random2 = torch.rand(10)
+        
+        # Results should be identical
+        assert torch.allclose(random1, random2)
+    
+    @given(st.text(min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=('L', 'N'), min_codepoint=65)))
+    @settings(max_examples=10)
+    def test_quarantine_path_normalization(self, benchmark_path):
+        """Test quarantine manager handles various path formats."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manager = QuarantineManager(Path(tmp_dir) / "quarantine.json")
+            
+            # Quarantine and check
+            manager.quarantine(benchmark_path, QuarantineReason.OUTPUT_MISMATCH)
+            
+            # Should be quarantined regardless of path normalization
+            assert manager.is_quarantined(benchmark_path)
+            
+            # Clear and verify
+            manager.clear_quarantine(benchmark_path)
+            assert not manager.is_quarantined(benchmark_path)
+
+
+@pytest.mark.skipif(not HYPOTHESIS_AVAILABLE, reason="hypothesis not installed")
+class TestPropertyBasedVerifyRunner:
+    """Property-based tests specifically for VerifyRunner."""
+    
+    @given(st.integers(min_value=1, max_value=100))
+    @settings(max_examples=10)
+    def test_verify_pair_symmetry_of_output_comparison(self, tensor_size):
+        """Test that output comparison is symmetric."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            runner = VerifyRunner(cache_dir=Path(tmp_dir) / "cache")
+            
+            # Create identical outputs
+            output1 = torch.randn(tensor_size, tensor_size)
+            output2 = output1.clone()
+            
+            # Comparison should be symmetric
+            result1 = runner._compare_outputs(
+                {"output": output1}, {"output": output2}, ToleranceSpec()
+            )
+            result2 = runner._compare_outputs(
+                {"output": output2}, {"output": output1}, ToleranceSpec()
+            )
+            
+            assert result1.passed == result2.passed
+    
+    @given(st.floats(min_value=0.01, max_value=1.0, allow_nan=False, allow_infinity=False))
+    @settings(max_examples=10)
+    def test_output_comparison_respects_rtol(self, rtol):
+        """Test that output comparison respects relative tolerance."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            runner = VerifyRunner(cache_dir=Path(tmp_dir) / "cache")
+            
+            # Create outputs with relative difference
+            output1 = torch.tensor([1.0, 2.0, 3.0])
+            # Add relative error smaller than rtol
+            output2 = output1 * (1.0 + rtol * 0.5)
+            
+            tol = ToleranceSpec(rtol=rtol, atol=1e-8)
+            result = runner._compare_outputs({"output": output1}, {"output": output2}, tol)
+            
+            # Should pass with error less than rtol
+            assert result.passed is True
+    
+    @given(st.floats(min_value=0.001, max_value=1.0, allow_nan=False, allow_infinity=False))
+    @settings(max_examples=10)
+    def test_output_comparison_fails_beyond_tolerance(self, rtol):
+        """Test that output comparison fails beyond tolerance."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            runner = VerifyRunner(cache_dir=Path(tmp_dir) / "cache")
+            
+            # Create outputs with relative difference exceeding rtol
+            output1 = torch.tensor([1.0, 2.0, 3.0])
+            output2 = output1 * (1.0 + rtol * 2.0)  # 2x the tolerance
+            
+            tol = ToleranceSpec(rtol=rtol, atol=1e-8)
+            result = runner._compare_outputs({"output": output1}, {"output": output2}, tol)
+            
+            # Should fail with error exceeding rtol
+            assert result.passed is False
+
+
+@pytest.mark.skipif(not HYPOTHESIS_AVAILABLE, reason="hypothesis not installed")
+class TestPropertyBasedGoldenOutput:
+    """Property-based tests for GoldenOutput checksum consistency."""
+    
+    @given(st.integers(min_value=1, max_value=50))
+    @settings(max_examples=10)
+    def test_golden_output_checksum_deterministic(self, size):
+        """Test that GoldenOutput checksum is deterministic."""
+        outputs = {"output": torch.randn(size, size)}
+        
+        golden1 = GoldenOutput(
+            signature_hash="test_hash",
+            outputs=outputs,
+            workload_metrics={},
+            checksum="",
+            created_at=datetime.now(),
+            seed=42,
+        )
+        golden1.checksum = golden1.compute_checksum()
+        
+        golden2 = GoldenOutput(
+            signature_hash="test_hash",
+            outputs={k: v.clone() for k, v in outputs.items()},
+            workload_metrics={},
+            checksum="",
+            created_at=datetime.now(),
+            seed=42,
+        )
+        golden2.checksum = golden2.compute_checksum()
+        
+        assert golden1.checksum == golden2.checksum
+    
+    @given(st.integers(min_value=1, max_value=50))
+    @settings(max_examples=10)
+    def test_golden_output_checksum_sensitive_to_changes(self, size):
+        """Test that GoldenOutput checksum changes with different outputs."""
+        outputs1 = {"output": torch.randn(size, size)}
+        outputs2 = {"output": torch.randn(size, size)}
+        
+        golden1 = GoldenOutput(
+            signature_hash="hash1",
+            outputs=outputs1,
+            workload_metrics={},
+            checksum="",
+            created_at=datetime.now(),
+            seed=42,
+        )
+        golden1.checksum = golden1.compute_checksum()
+        
+        golden2 = GoldenOutput(
+            signature_hash="hash2",
+            outputs=outputs2,
+            workload_metrics={},
+            checksum="",
+            created_at=datetime.now(),
+            seed=42,
+        )
+        golden2.checksum = golden2.compute_checksum()
+        
+        # Different random outputs should produce different checksums
+        # (extremely unlikely to be the same)
+        assert golden1.checksum != golden2.checksum
 
 
 if __name__ == "__main__":

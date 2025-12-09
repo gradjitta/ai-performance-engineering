@@ -26,18 +26,13 @@ class BaselineTransposeBenchmark(CudaBinaryBenchmark):
             iterations=3,
             warmup=5,
             timeout_seconds=90,
+            workload_params={"type": "transpose"},
         )
-
+        self.register_workload_metadata(bytes_per_iteration=4096 * 4096 * 4 * 2)
 
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return memory access metrics for transpose."""
-        from core.benchmark.metrics import compute_memory_access_metrics
-        return compute_memory_access_metrics(
-            bytes_requested=self._bytes_requested,
-            bytes_actually_transferred=self._bytes_requested,  # Ideal case
-            num_transactions=max(1, self._bytes_requested // 128),
-            optimal_transactions=max(1, self._bytes_requested // 128),
-        )
+        """Return memory access metrics."""
+        return None
 
 def get_benchmark() -> BaselineTransposeBenchmark:
     """Factory for discover_benchmarks()."""

@@ -61,6 +61,10 @@ class OptimizedSDPAAttentionBenchmark(BaseBenchmark):
         self.query = None
         self.key = None
         self.value = None
+        self.output = None
+        
+        # SDPA benchmark - fixed dimensions for attention comparison
+        self.jitter_exemption_reason = "SDPA attention benchmark: fixed dimensions for roofline analysis"
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -90,7 +94,7 @@ class OptimizedSDPAAttentionBenchmark(BaseBenchmark):
                 #
                 # This single call fuses Q@K^T, scale, softmax, attn@V
                 # and uses tiled shared memory to avoid HBM writes of S×S matrix
-                output = F.scaled_dot_product_attention(
+                self.output = F.scaled_dot_product_attention(
                     self.query,
                     self.key, 
                     self.value,
@@ -100,7 +104,7 @@ class OptimizedSDPAAttentionBenchmark(BaseBenchmark):
                 )
                 
                 # Force materialization
-                _ = output.sum()
+                _ = self.output.sum()
         
         self._synchronize()
 
@@ -130,6 +134,22 @@ class OptimizedSDPAAttentionBenchmark(BaseBenchmark):
         if self.query is None:
             return "Query tensor not initialized"
         return None
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "num_heads": self.num_heads, 
+                "seq_len": self.seq_len, "head_dim": self.head_dim}
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-2, 1e-2)  # Allow for numerical differences in attention
+
 
 
 def get_benchmark() -> BaseBenchmark:

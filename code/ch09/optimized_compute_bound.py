@@ -57,6 +57,8 @@ class OptimizedComputeBoundBenchmark(BaseBenchmark):
         # Name avoids 'size=' substring to prevent naive regex false positives
         self.block_elems = 256
         self.repeats = 16
+        # Compute-bound benchmark - fixed dimensions for roofline analysis
+        self.jitter_exemption_reason = "Compute-bound benchmark: fixed dimensions for roofline analysis"
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.repeats),
             tokens_per_iteration=float(self.N * self.repeats),
@@ -178,6 +180,20 @@ class OptimizedComputeBoundBenchmark(BaseBenchmark):
         if not torch.isfinite(self.data).all():
             return "Data contains non-finite values"
         return None
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N, "repeats": self.repeats}
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-1, 1e-1)  # Wide tolerance - different compute patterns
 
 
 def get_benchmark() -> BaseBenchmark:

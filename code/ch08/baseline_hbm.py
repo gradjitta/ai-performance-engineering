@@ -24,6 +24,13 @@ class BaselineHBMBenchmark(HBMBenchmarkBase):
         self.matrix_col.copy_(self.host_col, non_blocking=False)
         self.extension.hbm_baseline(self.matrix_col, self.output)
 
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+
 
 def get_benchmark() -> HBMBenchmarkBase:
     return BaselineHBMBenchmark()

@@ -25,7 +25,7 @@ import time
 import traceback
 import warnings
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeoutError
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -146,6 +146,111 @@ except ImportError:
 
 _QUICK_WINS_CONFIGURED = False
 _SDPA_KERNEL_CONTEXT = None
+
+
+@contextmanager
+def lock_gpu_clocks(device: int = 0, sm_clock_mhz: Optional[int] = None, mem_clock_mhz: Optional[int] = None):
+    """Lock GPU clocks for consistent benchmarking.
+    
+    Based on Triton's set_gpu_clock context manager:
+    https://github.com/triton-lang/triton/blob/main/python/triton/testing.py
+    
+    Args:
+        device: GPU device index (default 0)
+        sm_clock_mhz: Target SM clock rate in MHz (None = auto-detect max)
+        mem_clock_mhz: Target memory clock rate in MHz (None = auto-detect max)
+    
+    Yields:
+        Tuple of (theoretical_tflops, theoretical_gbps) at the locked clocks
+    
+    Example:
+        with lock_gpu_clocks(device=0, sm_clock_mhz=1350, mem_clock_mhz=1215):
+            benchmark.run()
+    
+    Note:
+        - Requires nvidia-smi and sudo/root permissions
+        - Clocks are automatically reset when context exits
+        - Raises RuntimeError if nvidia-smi fails
+    """
+    try:
+        # Enable persistence mode
+        subprocess.check_output(["nvidia-smi", "-i", str(device), "-pm", "1"], stderr=subprocess.STDOUT)
+        
+        # Get max clocks if not specified
+        if sm_clock_mhz is None or mem_clock_mhz is None:
+            # Query supported clock rates
+            cmd = ["nvidia-smi", "-i", str(device), "--query-gpu=clocks.max.sm,clocks.max.memory", "--format=csv,noheader,nounits"]
+            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+            max_sm, max_mem = [int(x.strip()) for x in out.decode().split(',')]
+            sm_clock_mhz = sm_clock_mhz or max_sm
+            mem_clock_mhz = mem_clock_mhz or max_mem
+        
+        # Lock GPU clocks
+        subprocess.check_output([
+            "nvidia-smi", "-i", str(device),
+            f"--lock-gpu-clocks={sm_clock_mhz},{sm_clock_mhz}"
+        ], stderr=subprocess.STDOUT)
+        
+        # Lock memory clocks
+        subprocess.check_output([
+            "nvidia-smi", "-i", str(device),
+            f"--lock-memory-clocks={mem_clock_mhz},{mem_clock_mhz}"
+        ], stderr=subprocess.STDOUT)
+        
+        # Verify clocks are set
+        cmd = ["nvidia-smi", "-i", str(device), "--query-gpu=clocks.current.sm,clocks.current.memory", "--format=csv,noheader,nounits"]
+        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        cur_sm, cur_mem = [int(x.strip()) for x in out.decode().split(',')]
+        
+        if abs(cur_sm - sm_clock_mhz) > 50:  # Allow some tolerance
+            logger.warning(f"SM clock not locked: requested {sm_clock_mhz}MHz, got {cur_sm}MHz")
+        if abs(cur_mem - mem_clock_mhz) > 50:
+            logger.warning(f"Memory clock not locked: requested {mem_clock_mhz}MHz, got {cur_mem}MHz")
+        
+        # Calculate theoretical performance at these clocks
+        # Get number of SMs
+        cmd = ["nvidia-smi", "-i", str(device), "--query-gpu=gpu_name", "--format=csv,noheader"]
+        gpu_name = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode().strip()
+        
+        # Rough SM count estimation (could be improved with actual device query)
+        sm_count = 108  # Default A100 count
+        if "H100" in gpu_name or "H200" in gpu_name:
+            sm_count = 132
+        elif "A100" in gpu_name:
+            sm_count = 108
+        elif "4090" in gpu_name:
+            sm_count = 128
+        elif "3090" in gpu_name:
+            sm_count = 82
+        
+        # Theoretical FP16 tensor core TFLOPS: SMs * 4 subcores * 256 ops/clock * clock_rate
+        theoretical_tflops = 1e-6 * 2 * sm_count * 4 * 256 * sm_clock_mhz
+        
+        # Theoretical memory bandwidth GB/s (HBM2e/HBM3: 512-bit bus, double data rate)
+        theoretical_gbps = 640 * 2 * mem_clock_mhz * 1e-3  # Rough estimate
+        
+        logger.info(f"GPU clocks locked: SM={sm_clock_mhz}MHz, Mem={mem_clock_mhz}MHz")
+        logger.info(f"Theoretical peak: {theoretical_tflops:.1f} TFLOPS (FP16), {theoretical_gbps:.0f} GB/s")
+        
+        yield theoretical_tflops, theoretical_gbps
+        
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"Failed to lock GPU clocks: {e}. Continuing without clock locking.")
+        yield None, None
+        
+    except FileNotFoundError:
+        logger.warning("nvidia-smi not found. Continuing without clock locking.")
+        yield None, None
+        
+    finally:
+        # Reset clocks
+        try:
+            subprocess.check_output(["nvidia-smi", "-i", str(device), "-rgc"], stderr=subprocess.STDOUT)
+            subprocess.check_output(["nvidia-smi", "-i", str(device), "-rmc"], stderr=subprocess.STDOUT)
+            subprocess.check_output(["nvidia-smi", "-i", str(device), "-pm", "0"], stderr=subprocess.STDOUT)
+            logger.info("GPU clocks reset to default")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass  # Best effort cleanup
 
 
 def _configure_quick_wins() -> None:
@@ -342,6 +447,104 @@ class BenchmarkConfig:
     ncu_metric_set: str = field(default_factory=lambda: _get_default_value("ncu_metric_set", "auto"))
     pm_sampling_interval: Optional[int] = field(default_factory=lambda: _get_default_value("pm_sampling_interval", None))
 
+    # Triton-style best practices (based on triton/testing.py)
+    # See: https://github.com/triton-lang/triton/blob/main/python/triton/testing.py
+    clear_l2_cache: bool = field(default_factory=lambda: _get_default_value("clear_l2_cache", False))
+    """Clear L2 cache before each iteration to ensure fair memory-bound comparisons."""
+    
+    full_device_sync: bool = field(default_factory=lambda: _get_default_value("full_device_sync", True))
+    """Use torch.cuda.synchronize() instead of event.synchronize() for stream-safe timing.
+    Critical for protecting against multi-stream timing exploits (see Locus/KernelBench 2025)."""
+    
+    grad_to_none: Optional[List[str]] = field(default_factory=lambda: _get_default_value("grad_to_none", None))
+    """List of tensor attribute names to clear gradients for between iterations."""
+    
+    lock_gpu_clocks: bool = field(default_factory=lambda: _get_default_value("lock_gpu_clocks", False))
+    """Lock GPU clocks for consistent benchmarking (requires nvidia-smi permissions)."""
+    
+    gpu_sm_clock_mhz: Optional[int] = field(default_factory=lambda: _get_default_value("gpu_sm_clock_mhz", None))
+    """Target SM clock rate in MHz when lock_gpu_clocks=True."""
+    
+    gpu_mem_clock_mhz: Optional[int] = field(default_factory=lambda: _get_default_value("gpu_mem_clock_mhz", None))
+    """Target memory clock rate in MHz when lock_gpu_clocks=True."""
+    
+    isolate_warmup_cache: bool = field(default_factory=lambda: _get_default_value("isolate_warmup_cache", True))
+    """Clear L2 cache after warmup to prevent warmup from pre-populating caches for measurement.
+    This ensures measurement iterations start with a cold L2 cache (Triton best practice)."""
+    
+    cross_validate_timing: bool = field(default_factory=lambda: _get_default_value("cross_validate_timing", True))
+    """Cross-validate CUDA event timing against wall clock timing.
+    Warns if CUDA events report significantly less time than wall clock,
+    which could indicate timing manipulation or missing stream sync."""
+    
+    timing_cross_validation_threshold: float = field(default_factory=lambda: _get_default_value("timing_cross_validation_threshold", 0.5))
+    """Threshold for timing cross-validation. If CUDA timing / wall clock < this value,
+    a warning is issued. Default 0.5 means warn if CUDA reports < 50% of wall time."""
+    
+    enforce_config_immutability: bool = field(default_factory=lambda: _get_default_value("enforce_config_immutability", True))
+    """Enforce that critical timing config (warmup, iterations) cannot be modified by benchmarks.
+    If enabled, raises an error if these values change during benchmark execution."""
+    
+    # Adaptive iterations (Triton-style best practice)
+    adaptive_iterations: bool = field(default_factory=lambda: _get_default_value("adaptive_iterations", False))
+    """Enable adaptive iteration count to ensure statistically significant measurements.
+    When enabled, iterations will be dynamically adjusted to achieve min_total_duration_ms.
+    This is a Triton best practice for reliable benchmarking."""
+    
+    min_total_duration_ms: float = field(default_factory=lambda: _get_default_value("min_total_duration_ms", 100.0))
+    """Minimum total duration for all measurement iterations (in ms).
+    Only used when adaptive_iterations=True. Iterations continue until this duration is reached.
+    Default 100ms provides a good balance of speed and statistical significance."""
+    
+    max_adaptive_iterations: int = field(default_factory=lambda: _get_default_value("max_adaptive_iterations", 10000))
+    """Maximum iterations when using adaptive mode. Prevents runaway if kernels are very fast.
+    Default 10000 should handle even microsecond-level kernels."""
+    
+    # CUDA Graph mode (Triton-style best practice)
+    enable_cuda_graph: bool = field(default_factory=lambda: _get_default_value("enable_cuda_graph", False))
+    """Enable CUDA Graph capture and replay for benchmarking.
+    This can significantly reduce CPU overhead for repetitive kernel launches.
+    The benchmark function is captured once, then replayed for all iterations.
+    
+    Requirements:
+    - Benchmark must be deterministic (no data-dependent control flow)
+    - All allocations must happen outside the graph
+    - No CPU work inside benchmark_fn()
+    
+    Not compatible with:
+    - Dynamic shapes
+    - CPU-GPU synchronization inside benchmark_fn()
+    - Host-side callbacks
+    """
+    
+    cuda_graph_warmup_iters: int = field(default_factory=lambda: _get_default_value("cuda_graph_warmup_iters", 3))
+    """Number of warmup iterations before CUDA graph capture.
+    Graph capture requires a warm state for optimal performance."""
+    
+    # Additional Validity Protections (addressing remaining 49 issues)
+    reset_memory_pool: bool = field(default_factory=lambda: _get_default_value("reset_memory_pool", True))
+    """Reset CUDA memory pool before each benchmark to prevent memory reuse gaming."""
+    
+    disable_gc_during_timing: bool = field(default_factory=lambda: _get_default_value("disable_gc_during_timing", True))
+    """Disable Python garbage collection during timing to prevent GC interference."""
+    
+    check_input_output_aliasing: bool = field(default_factory=lambda: _get_default_value("check_input_output_aliasing", True))
+    """Verify output tensors don't alias input tensors (prevent pre-filled results)."""
+    
+    clear_compile_cache: bool = field(default_factory=lambda: _get_default_value("clear_compile_cache", False))
+    """Clear torch.compile cache before benchmark to ensure consistent compilation state."""
+    
+    detect_setup_precomputation: bool = field(default_factory=lambda: _get_default_value("detect_setup_precomputation", False))
+    """Hash inputs before/after setup() to detect pre-computation during setup."""
+    
+    monitor_gpu_state: bool = field(default_factory=lambda: _get_default_value("monitor_gpu_state", True))
+    """Monitor GPU temperature, frequency, and power during benchmark."""
+    
+    track_memory_allocations: bool = field(default_factory=lambda: _get_default_value("track_memory_allocations", True))
+    """Track memory allocations during benchmark to detect suspicious patterns."""
+    
+    force_tensor_evaluation: bool = field(default_factory=lambda: _get_default_value("force_tensor_evaluation", True))
+    """Force evaluation of lazy tensors by calling sync after operations."""
 
     # Legacy timeout field (deprecated, use measurement_timeout_seconds)
     timeout_seconds: int = field(default_factory=lambda: _get_default_value("timeout_seconds", 180))
@@ -477,6 +680,41 @@ class BenchmarkConfig:
             'proton': self.proton_timeout_seconds,
         }
         return timeouts.get(stage)
+    
+    def capture_timing_snapshot(self) -> Dict[str, Any]:
+        """Capture a snapshot of timing-critical configuration values.
+        
+        Used to detect if a benchmark modifies timing config during execution,
+        which would be a form of timing manipulation.
+        
+        Returns:
+            Dict of timing-critical field names to their values
+        """
+        return {
+            "warmup": self.warmup,
+            "iterations": self.iterations,
+            "min_run_time_ms": self.min_run_time_ms,
+        }
+    
+    def verify_timing_unchanged(self, snapshot: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+        """Verify timing-critical fields haven't changed since snapshot.
+        
+        Args:
+            snapshot: Dict from capture_timing_snapshot()
+            
+        Returns:
+            Tuple of (unchanged, error_message)
+        """
+        current = self.capture_timing_snapshot()
+        changes = []
+        for key, original_value in snapshot.items():
+            current_value = current.get(key)
+            if current_value != original_value:
+                changes.append(f"{key}: {original_value} -> {current_value}")
+        
+        if changes:
+            return False, f"Timing config modified during execution: {'; '.join(changes)}"
+        return True, None
 
 
 @dataclass
@@ -603,6 +841,28 @@ class BaseBenchmark:
             None if validation passes, or error message string if validation fails
         """
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return the output tensor for verification comparison.
+        
+        MANDATORY: Every benchmark MUST implement this method explicitly.
+        There are NO fallbacks or auto-detection.
+        
+        This method is used by the verification system to compare outputs
+        between baseline and optimized benchmarks.
+        
+        Returns:
+            Output tensor for verification
+            
+        Raises:
+            NotImplementedError: If subclass doesn't implement this method
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must implement get_verify_output() explicitly. "
+            "Return the output tensor that should be compared between baseline and optimized. "
+            "If this is a throughput-only benchmark with no output, implement "
+            "get_verify_output() to return a checksum tensor instead."
+        )
 
     def skip_input_verification(self) -> bool:
         """Return True to skip input equivalence verification for this benchmark.
@@ -2300,7 +2560,7 @@ class BenchmarkHarness:
                         def run_warmup():
                             try:
                                 start_stage('warmup')
-                                self._warmup(benchmark.benchmark_fn, config.warmup)
+                                self._warmup(benchmark.benchmark_fn, config.warmup, config)
                                 finish_stage('warmup')
                                 warmup_complete.set()
                             except Exception as e:
@@ -2338,7 +2598,7 @@ class BenchmarkHarness:
                         # No warmup timeout - just run it
                         if config.warmup > 0:
                             start_stage('warmup')
-                            self._warmup(benchmark.benchmark_fn, config.warmup)
+                            self._warmup(benchmark.benchmark_fn, config.warmup, config)
                             finish_stage('warmup')
                         else:
                             mark_stage('warmup', 'skipped')
@@ -2902,10 +3162,50 @@ class BenchmarkHarness:
         ttft_times_ms: List[float] = []
         tpot_times_ms: List[float] = []
 
+        # Capture timing config snapshot for immutability verification
+        # This protects against benchmarks modifying warmup/iterations during execution
+        timing_snapshot = config.capture_timing_snapshot() if getattr(config, 'enforce_config_immutability', True) else None
+
         # Some benchmarks (e.g., external CUDA binaries) report their own timing.
         benchmark_obj = getattr(fn, "__self__", None)
         use_reported_time = bool(getattr(benchmark_obj, "use_reported_time", False))
         range_name = getattr(config, "name", None) or getattr(fn, "__name__", "benchmark_fn")
+        
+        # ===== VALIDITY PROTECTIONS (Pre-benchmark) =====
+        # These checks address remaining benchmark validity issues
+        # See docs/remaining_protections.md for full list
+        
+        from core.harness.validity_checks import (
+            reset_cuda_memory_pool, capture_gpu_state, gc_disabled,
+            clear_compile_cache, force_tensor_evaluation, validate_environment,
+            MemoryAllocationTracker
+        )
+        
+        # 0. Validate environment and log device enumeration
+        env_valid, env_warnings = validate_environment()
+        if env_warnings:
+            for warning in env_warnings:
+                import warnings as warn_module
+                warn_module.warn(f"ENVIRONMENT WARNING: {warning}", RuntimeWarning)
+        
+        # 1. Reset memory pool to prevent memory reuse gaming
+        if getattr(config, 'reset_memory_pool', True) and self.device.type == "cuda":
+            reset_cuda_memory_pool(self.device)
+        
+        # 2. Clear torch.compile cache for consistent compilation state
+        if getattr(config, 'clear_compile_cache', False):
+            clear_compile_cache()
+        
+        # 3. Capture GPU state before benchmark (for consistency check)
+        gpu_state_before = None
+        if getattr(config, 'monitor_gpu_state', True) and self.device.type == "cuda":
+            gpu_state_before = capture_gpu_state(self.device.index or 0)
+        
+        # 4. Start memory allocation tracking
+        memory_tracker = None
+        if getattr(config, 'track_memory_allocations', True) and self.device.type == "cuda":
+            memory_tracker = MemoryAllocationTracker(self.device)
+            memory_tracker.start()
         
         is_cuda = self.device.type == "cuda"
         
@@ -2915,22 +3215,107 @@ class BenchmarkHarness:
             start_event = torch.cuda.Event(enable_timing=True)
             end_event = torch.cuda.Event(enable_timing=True)
             
+            # L2 cache clearing buffer (Triton best practice)
+            # See: https://github.com/triton-lang/triton/blob/main/python/triton/testing.py
+            # Buffer size is dynamically determined based on GPU architecture:
+            # - Blackwell (B100/B200): 96MB L2
+            # - Hopper (H100/H200): 50MB L2
+            # - Ampere (A100): 40MB L2
+            # See core/harness/l2_cache_utils.py for details
+            l2_cache_buffer = None
+            if getattr(config, 'clear_l2_cache', False):
+                from core.harness.l2_cache_utils import create_l2_flush_buffer
+                l2_cache_buffer = create_l2_flush_buffer(self.device)
+            
+            # Gradient clearing (Triton best practice)
+            grad_tensors = []
+            grad_names = getattr(config, 'grad_to_none', None)
+            if grad_names and benchmark_obj:
+                for name in grad_names:
+                    tensor = getattr(benchmark_obj, name, None)
+                    if tensor is not None and hasattr(tensor, 'grad'):
+                        grad_tensors.append(tensor)
+            
             # Synchronize once before starting to ensure clean state
             torch.cuda.synchronize(self.device)
             
+            # 4. Disable GC during timing to prevent GC interference
+            # This is wrapped around the timing loop, not the full benchmark
+            gc_context = gc_disabled() if getattr(config, 'disable_gc_during_timing', True) else nullcontext()
+            
             # Run benchmark iterations with accurate per-iteration timing
             # CUDA Events provide accurate timing with minimal overhead
-            for _ in range(config.iterations):
+            # 
+            # Cross-validation: Also track wall clock time to detect timing anomalies
+            # This protects against cases where CUDA event timing is manipulated
+            wall_clock_times_ms: List[float] = []
+            
+            # Adaptive iterations setup (Triton-style best practice)
+            # If enabled, dynamically adjust iterations to achieve target duration
+            use_adaptive = getattr(config, 'adaptive_iterations', False)
+            min_total_duration_ms = getattr(config, 'min_total_duration_ms', 100.0)
+            max_adaptive_iterations = getattr(config, 'max_adaptive_iterations', 10000)
+            target_iterations = config.iterations  # Fixed iterations (or initial if adaptive)
+            total_duration_ms = 0.0
+            iteration_count = 0
+            
+            # CUDA Graph mode setup (Triton-style best practice)
+            # Captures the benchmark function once, then replays for each iteration
+            # This reduces CPU overhead significantly for repetitive kernel launches
+            use_cuda_graph = getattr(config, 'enable_cuda_graph', False)
+            cuda_graph = None
+            cuda_graph_captured = False
+            
+            def _run_single_iteration():
+                """Helper to run a single benchmark iteration and return timing."""
+                nonlocal iteration_count, total_duration_ms, cuda_graph, cuda_graph_captured
+                
+                # Clear L2 cache before each iteration (Triton best practice)
+                # This ensures each iteration measures "cold cache" performance
+                if l2_cache_buffer is not None:
+                    l2_cache_buffer.zero_()
+                    torch.cuda.synchronize(self.device)
+                
+                # Clear gradients (Triton best practice)
+                for tensor in grad_tensors:
+                    tensor.grad = None
+                
+                # Start wall clock timer for cross-validation
+                wall_start = time.perf_counter()
+                
                 # Record start event (non-blocking)
                 start_event.record()
-                # Execute function under test with NVTX
-                with self._nvtx_range(range_name):
-                    result = fn()
+                
+                result = None
+                
+                # CUDA Graph mode (Triton-style best practice)
+                # If enabled and already captured, replay the graph instead of running fn()
+                if use_cuda_graph and cuda_graph_captured and cuda_graph is not None:
+                    # Replay captured graph (much faster than re-running fn())
+                    cuda_graph.replay()
+                else:
+                    # Execute function under test with NVTX
+                    with self._nvtx_range(range_name):
+                        result = fn()
+                
                 # Record end event (non-blocking)
                 end_event.record()
-                # Synchronize only the end event (not device-wide) for accurate timing
-                # This avoids blocking other CUDA streams and reduces overhead
-                end_event.synchronize()
+                
+                # CRITICAL: Full device sync vs event sync (Triton/Locus best practice)
+                # event.synchronize() only waits for operations on the stream where the event was recorded.
+                # torch.cuda.synchronize() waits for ALL streams on ALL devices.
+                # This is critical for protecting against multi-stream timing exploits.
+                # See: Locus/KernelBench 2025 - 32.8% of RL kernels exploited stream timing loopholes.
+                if getattr(config, 'full_device_sync', True):
+                    torch.cuda.synchronize()  # Wait for ALL streams (stream-safe)
+                else:
+                    end_event.synchronize()  # Only wait for this event's stream (faster but less safe)
+                
+                # Stop wall clock timer
+                wall_end = time.perf_counter()
+                wall_elapsed_ms = (wall_end - wall_start) * 1000
+                wall_clock_times_ms.append(wall_elapsed_ms)
+                
                 elapsed_ms = start_event.elapsed_time(end_event)
                 if use_reported_time:
                     reported = getattr(benchmark_obj, "last_time_ms", None)
@@ -2938,12 +3323,117 @@ class BenchmarkHarness:
                         elapsed_ms = reported
                 times_ms.append(elapsed_ms)
                 
-                # Check if function returned inference timing data
-                if isinstance(result, dict):
+                # Check if function returned inference timing data (only if not graph replay)
+                if result is not None and isinstance(result, dict):
                     if "ttft_times_ms" in result and isinstance(result["ttft_times_ms"], list):
                         ttft_times_ms.extend(result["ttft_times_ms"])
                     if "tpot_times_ms" in result and isinstance(result["tpot_times_ms"], list):
                         tpot_times_ms.extend(result["tpot_times_ms"])
+                
+                iteration_count += 1
+                total_duration_ms += elapsed_ms
+                return elapsed_ms, result
+            
+            def _capture_cuda_graph():
+                """Capture the benchmark function as a CUDA graph for fast replay."""
+                nonlocal cuda_graph, cuda_graph_captured
+                
+                try:
+                    # Warm up the stream with a few iterations before capture
+                    # This ensures CUDA kernels are compiled and warmed
+                    graph_warmup_iters = getattr(config, 'cuda_graph_warmup_iters', 3)
+                    for _ in range(graph_warmup_iters):
+                        fn()
+                        torch.cuda.synchronize(self.device)
+                    
+                    # Capture the CUDA graph
+                    # Note: The benchmark function must be deterministic and have no CPU work
+                    stream = torch.cuda.current_stream(self.device)
+                    cuda_graph = torch.cuda.CUDAGraph()
+                    
+                    # Warm up before capture (ensures allocations are complete)
+                    with torch.cuda.stream(stream):
+                        fn()
+                    torch.cuda.synchronize(self.device)
+                    
+                    # Capture the graph
+                    with torch.cuda.graph(cuda_graph, stream=stream):
+                        fn()
+                    
+                    cuda_graph_captured = True
+                except Exception as e:
+                    # CUDA graph capture failed - fall back to normal execution
+                    # This can happen if:
+                    # - The benchmark has dynamic control flow
+                    # - There are CPU-GPU syncs inside benchmark_fn()
+                    # - The benchmark does allocations inside the function
+                    import warnings
+                    warnings.warn(
+                        f"CUDA graph capture failed, falling back to normal execution: {e}. "
+                        "Ensure benchmark_fn() has no dynamic shapes, CPU work, or allocations.",
+                        RuntimeWarning,
+                    )
+                    cuda_graph = None
+                    cuda_graph_captured = False
+            
+            # Wrap timing loop with GC context to prevent GC interference
+            with gc_context:
+                # CUDA Graph capture (if enabled)
+                # Capture before starting timed iterations for graph replay mode
+                if use_cuda_graph:
+                    _capture_cuda_graph()
+                
+                if use_adaptive:
+                    # Adaptive iterations mode (Triton best practice)
+                    # Run initial batch to estimate per-iteration time
+                    initial_batch_size = min(5, target_iterations)  # At least 5 or requested iterations
+                    
+                    for _ in range(initial_batch_size):
+                        _run_single_iteration()
+                    
+                    # If we haven't reached target duration, calculate needed iterations
+                    if total_duration_ms < min_total_duration_ms:
+                        avg_time = total_duration_ms / initial_batch_size if initial_batch_size > 0 else 1.0
+                        remaining_duration = min_total_duration_ms - total_duration_ms
+                        additional_iterations = int(remaining_duration / avg_time) + 1
+                        
+                        # Cap at max_adaptive_iterations
+                        additional_iterations = min(additional_iterations, max_adaptive_iterations - initial_batch_size)
+                        
+                        # Run additional iterations
+                        for _ in range(max(0, additional_iterations)):
+                            _run_single_iteration()
+                            # Check if we've exceeded target duration
+                            if total_duration_ms >= min_total_duration_ms:
+                                break
+                else:
+                    # Fixed iterations mode (original behavior)
+                    for _ in range(config.iterations):
+                        _run_single_iteration()
+            
+            # Cross-validate CUDA event timing vs wall clock timing
+            # Flag anomalies where CUDA events report much less time than wall clock
+            # (this could indicate timing manipulation or missing stream sync)
+            timing_cross_validation_ratio = None
+            if getattr(config, 'cross_validate_timing', True) and wall_clock_times_ms and times_ms:
+                cuda_median = sorted(times_ms)[len(times_ms) // 2]
+                wall_median = sorted(wall_clock_times_ms)[len(wall_clock_times_ms) // 2]
+                
+                # Calculate the ratio for reporting
+                timing_cross_validation_ratio = cuda_median / wall_median if wall_median > 0 else 1.0
+                
+                # Configurable threshold (default 0.5 = warn if CUDA < 50% of wall)
+                threshold = getattr(config, 'timing_cross_validation_threshold', 0.5)
+                
+                if timing_cross_validation_ratio < threshold:
+                    import warnings
+                    warnings.warn(
+                        f"TIMING CROSS-VALIDATION WARNING: CUDA event timing ({cuda_median:.3f}ms) "
+                        f"is only {timing_cross_validation_ratio*100:.1f}% of wall clock timing ({wall_median:.3f}ms). "
+                        f"This may indicate timing manipulation or missing stream synchronization. "
+                        f"Enable full_device_sync=True to ensure all streams are properly timed.",
+                        RuntimeWarning,
+                    )
         else:
             # CPU: use high-resolution timer
             for _ in range(config.iterations):
@@ -2972,10 +3462,49 @@ class BenchmarkHarness:
                 "tpot_times_ms": tpot_times_ms,
             }
         
+        # Verify timing config wasn't modified during benchmark execution
+        # This protects against benchmarks manipulating warmup/iterations
+        if timing_snapshot is not None:
+            unchanged, error_msg = config.verify_timing_unchanged(timing_snapshot)
+            if not unchanged:
+                raise RuntimeError(
+                    f"TIMING CONFIG MANIPULATION DETECTED: {error_msg}. "
+                    "Benchmarks must not modify warmup/iterations during execution. "
+                    "Set enforce_config_immutability=False to disable this check (not recommended)."
+                )
+        
+        # ===== VALIDITY PROTECTIONS (Post-benchmark) =====
+        # Check GPU state consistency to detect throttling/thermal issues
+        if gpu_state_before is not None and getattr(config, 'monitor_gpu_state', True):
+            from core.harness.validity_checks import check_gpu_state_consistency
+            gpu_state_after = capture_gpu_state(self.device.index or 0)
+            is_consistent, gpu_warnings = check_gpu_state_consistency(gpu_state_before, gpu_state_after)
+            
+            if gpu_warnings:
+                for warning in gpu_warnings:
+                    import warnings as warn_module
+                    warn_module.warn(f"GPU STATE WARNING: {warning}", RuntimeWarning)
+        
+        # Check memory allocation patterns for suspicious behavior
+        if memory_tracker is not None:
+            memory_tracker.stop()
+            no_mem_issues, mem_warnings = memory_tracker.check_patterns()
+            
+            if mem_warnings:
+                for warning in mem_warnings:
+                    import warnings as warn_module
+                    warn_module.warn(f"MEMORY TRACKING WARNING: {warning}", RuntimeWarning)
+        
         return times_ms, inference_timing_data
     
-    def _warmup(self, fn: Callable, warmup_iterations: int) -> None:
-        """Perform warmup iterations."""
+    def _warmup(self, fn: Callable, warmup_iterations: int, config: Optional[BenchmarkConfig] = None) -> None:
+        """Perform warmup iterations.
+        
+        Args:
+            fn: The function to warm up
+            warmup_iterations: Number of warmup iterations
+            config: Optional benchmark config for isolation settings
+        """
         is_cuda = self.device.type == "cuda"
         range_name = getattr(fn, "__name__", "warmup")
         for _ in range(warmup_iterations):
@@ -2983,6 +3512,23 @@ class BenchmarkHarness:
                 fn()
         if is_cuda:
             torch.cuda.synchronize(self.device)
+            
+            # Warmup buffer isolation: Clear L2 cache after warmup (Triton best practice)
+            # This prevents warmup from pre-populating caches that artificially
+            # speed up measurement iterations.
+            # Buffer size is dynamically determined based on GPU architecture:
+            # - Blackwell (B100/B200): 96MB L2
+            # - Hopper (H100/H200): 50MB L2  
+            # - Ampere (A100): 40MB L2
+            # See core/harness/l2_cache_utils.py for details
+            isolate = getattr(config, 'isolate_warmup_cache', True) if config else True
+            if isolate:
+                from core.harness.l2_cache_utils import flush_l2_cache
+                flush_l2_cache(self.device)
+                # Force garbage collection
+                import gc
+                gc.collect()
+                torch.cuda.empty_cache()
     
     def _compute_percentiles(self, values: List[float], percentiles: List[float]) -> Dict[float, float]:
         """Compute percentiles for a list of values.

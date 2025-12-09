@@ -35,6 +35,7 @@ class BenchmarkInfo:
     has_get_input_signature: bool = False
     has_validate_result: bool = False
     has_get_workload_metadata: bool = False
+    has_get_verify_output: bool = False  # STRICT: Mandatory for verification
     has_skip_output_check: bool = False
     has_skip_input_check: bool = False
     has_skip_verification: bool = False
@@ -56,6 +57,8 @@ class ChapterReport:
     optimized_with_validate: int = 0
     baseline_with_workload: int = 0
     optimized_with_workload: int = 0
+    baseline_with_verify_output: int = 0  # STRICT: Mandatory for verification
+    optimized_with_verify_output: int = 0  # STRICT: Mandatory for verification
     benchmarks_with_skip_flags: List[str] = field(default_factory=list)
     benchmarks: List[BenchmarkInfo] = field(default_factory=list)
 
@@ -77,6 +80,23 @@ def analyze_benchmark_file(file_path: Path) -> BenchmarkInfo:
         info.errors.append(f"Parse error: {e}")
         return info
     
+    # Base classes that provide get_verify_output()
+    bases_with_verify_output = {
+        "CudaBinaryBenchmark", "OccupancyBinaryBenchmark",
+        "NvshmemIbgdaMicrobench",
+    }
+    
+    # Base classes that are benchmarks (inherit from BaseBenchmark)
+    known_benchmark_bases = {
+        "BaseBenchmark", "CudaBinaryBenchmark", "OccupancyBinaryBenchmark",
+        "AiOptimizationBenchmarkBase", "ThresholdBenchmarkBase", "TilingBenchmarkBase",
+        "HBMBenchmarkBase", "LoopUnrollingBenchmarkBase", "ThresholdBenchmarkBaseTMA",
+        "TilingBenchmarkBaseTCGen05", "BaselineMatmulTCGen05Benchmark",
+        "StridedStreamBaseline", "ConcurrentStreamOptimized", "StreamOrderedBase",
+        "TorchrunScriptBenchmark", "MoEJourneyBenchmark", "MoEBenchmarkBase",
+        "NvshmemIbgdaMicrobench", "BenchmarkBase",
+    }
+    
     # Find benchmark class and analyze its methods
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
@@ -86,10 +106,29 @@ def analyze_benchmark_file(file_path: Path) -> BenchmarkInfo:
                 for item in node.body
             )
             
-            if not has_benchmark_fn:
+            # Also check if it inherits from a known benchmark base
+            inherits_from_benchmark = False
+            inherits_from_verify_provider = False
+            for base in node.bases:
+                base_name = None
+                if isinstance(base, ast.Name):
+                    base_name = base.id
+                elif isinstance(base, ast.Attribute):
+                    base_name = base.attr
+                if base_name:
+                    if any(b in base_name for b in known_benchmark_bases):
+                        inherits_from_benchmark = True
+                    if any(b in base_name for b in bases_with_verify_output):
+                        inherits_from_verify_provider = True
+            
+            if not has_benchmark_fn and not inherits_from_benchmark:
                 continue
             
             info.benchmark_class = node.name
+            
+            # If inherits from a base that provides get_verify_output(), mark it
+            if inherits_from_verify_provider:
+                info.has_get_verify_output = True
             
             for item in node.body:
                 if isinstance(item, ast.FunctionDef):
@@ -99,6 +138,8 @@ def analyze_benchmark_file(file_path: Path) -> BenchmarkInfo:
                         info.has_validate_result = True
                     elif item.name == "get_workload_metadata":
                         info.has_get_workload_metadata = True
+                    elif item.name == "get_verify_output":
+                        info.has_get_verify_output = True
                     elif item.name == "skip_input_verification":
                         info.skip_input_verification = True
                     elif item.name == "skip_output_verification":
@@ -184,9 +225,11 @@ def generate_report(root_dir: Path, chapter: Optional[str] = None) -> Dict[str, 
             if info.has_get_input_signature:
                 report.baseline_with_signature += 1
             if info.has_validate_result:
-                report.optimized_with_validate += 1
+                report.baseline_with_validate += 1
             if info.has_get_workload_metadata:
                 report.baseline_with_workload += 1
+            if info.has_get_verify_output:
+                report.baseline_with_verify_output += 1
         elif is_optimized:
             report.total_optimized += 1
             if info.has_get_input_signature:
@@ -195,6 +238,8 @@ def generate_report(root_dir: Path, chapter: Optional[str] = None) -> Dict[str, 
                 report.optimized_with_validate += 1
             if info.has_get_workload_metadata:
                 report.optimized_with_workload += 1
+            if info.has_get_verify_output:
+                report.optimized_with_verify_output += 1
         
         # Track skip flags
         if any([
@@ -221,6 +266,7 @@ def print_summary(reports: Dict[str, ChapterReport]) -> None:
     total_with_signature = 0
     total_with_validate = 0
     total_with_workload = 0
+    total_with_verify_output = 0  # STRICT: Mandatory for verification
     all_skip_flags: List[str] = []
     
     for chapter_name in sorted(reports.keys()):
@@ -231,6 +277,7 @@ def print_summary(reports: Dict[str, ChapterReport]) -> None:
         total_with_signature += report.baseline_with_signature + report.optimized_with_signature
         total_with_validate += report.baseline_with_validate + report.optimized_with_validate
         total_with_workload += report.baseline_with_workload + report.optimized_with_workload
+        total_with_verify_output += report.baseline_with_verify_output + report.optimized_with_verify_output
         all_skip_flags.extend(report.benchmarks_with_skip_flags)
         
         chapter_total = report.total_baseline + report.total_optimized
@@ -257,6 +304,11 @@ def print_summary(reports: Dict[str, ChapterReport]) -> None:
         work_pct = (work_coverage / chapter_total * 100) if chapter_total > 0 else 0
         print(f"  get_workload_metadata(): {work_coverage}/{chapter_total} ({work_pct:.0f}%)")
         
+        # STRICT: Verify output coverage
+        verify_coverage = report.baseline_with_verify_output + report.optimized_with_verify_output
+        verify_pct = (verify_coverage / chapter_total * 100) if chapter_total > 0 else 0
+        print(f"  get_verify_output():   {verify_coverage}/{chapter_total} ({verify_pct:.0f}%) ** STRICT REQUIRED **")
+        
         # Skip flags
         if report.benchmarks_with_skip_flags:
             print(f"  Skip flags: {len(report.benchmarks_with_skip_flags)} files")
@@ -279,6 +331,14 @@ def print_summary(reports: Dict[str, ChapterReport]) -> None:
           f"({total_with_validate / grand_total * 100:.1f}%)")
     print(f"get_workload_metadata() coverage: {total_with_workload}/{grand_total} "
           f"({total_with_workload / grand_total * 100:.1f}%)")
+    print(f"get_verify_output() coverage: {total_with_verify_output}/{grand_total} "
+          f"({total_with_verify_output / grand_total * 100:.1f}%) ** STRICT REQUIRED **")
+    
+    # STRICT: Calculate failing benchmarks
+    missing_verify_output = grand_total - total_with_verify_output
+    if missing_verify_output > 0:
+        print(f"\n⚠️  STRICT MODE FAILURES: {missing_verify_output} benchmarks MISSING get_verify_output()")
+        print("    These benchmarks will FAIL verification until they implement get_verify_output()!")
     
     print(f"\nBenchmarks with skip flags: {len(all_skip_flags)}")
     if all_skip_flags:
@@ -336,4 +396,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
 

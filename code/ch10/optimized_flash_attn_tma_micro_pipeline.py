@@ -24,7 +24,9 @@ class OptimizedFlashAttnTmaMicroPipelineBenchmark(CudaBinaryBenchmark):
             run_args=(),
             requires_pipeline_api=True,
             require_tma_instructions=True,
+            workload_params={"type": "flash_attn_tma_micro_pipeline"},
         )
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
 
     def get_custom_metrics(self) -> Optional[dict]:

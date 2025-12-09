@@ -31,6 +31,8 @@ class OptimizedMemoryBoundBenchmark(BaseBenchmark):
         self.N = 16_777_216  # Same size as baseline (~64 MB)
         self.step_fn = None
         self._compiled = False
+        # Memory-bound benchmark - fixed dimensions for roofline analysis
+        self.jitter_exemption_reason = "Memory-bound benchmark: fixed dimensions for roofline analysis"
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(self.N),
@@ -98,6 +100,21 @@ class OptimizedMemoryBoundBenchmark(BaseBenchmark):
         if not torch.isfinite(self.data).all():
             return "Data contains non-finite values"
         return None
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N, "repeats": 64}  # Match baseline's repeats for signature
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.data is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.data
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-1, 1e-1)  # Wide tolerance - different memory patterns
+
 
 
 def get_benchmark() -> BaseBenchmark:

@@ -1,0 +1,50 @@
+{
+  "examples": {
+    "fp4_hardware_kernel_cuda": {
+      "example": "fp4_hardware_kernel",
+      "metadata": {
+        "best_optimization": "optimized_fp4_hardware_kernel",
+        "best_optimization_file": "optimized_fp4_hardware_kernel.cu",
+        "best_optimization_speedup": 4377.7785767113155,
+        "best_optimization_time_ms": 0.0064901333333333335,
+        "git_commit": "c0128fe94a287a5d65b3a121f4d33d00b2570fc5",
+        "updated_at": "2025-12-09T06:14:21.020448"
+      },
+      "metrics": {
+        "baseline_p75_ms": 28.4125,
+        "baseline_p90_ms": 28.4125,
+        "baseline_time_ms": 28.412366666666667,
+        "best_optimized_p75_ms": 0.00650976,
+        "best_optimized_p90_ms": 0.00650976,
+        "best_optimized_speedup": 4377.7785767113155,
+        "best_optimized_time_ms": 0.0064901333333333335,
+        "best_speedup": 4377.7785767113155
+      },
+      "type": "cuda"
+    },
+    "kv_prefetch_overlap_cuda": {
+      "example": "kv_prefetch_overlap",
+      "metadata": {
+        "best_optimization": "optimized_kv_prefetch_overlap",
+        "best_optimization_file": "optimized_kv_prefetch_overlap.cu",
+        "best_optimization_speedup": 3.6558402860548265,
+        "best_optimization_time_ms": 2.2373333333333334,
+        "git_commit": "c0128fe94a287a5d65b3a121f4d33d00b2570fc5",
+        "updated_at": "2025-12-09T06:14:05.681377"
+      },
+      "metrics": {
+        "baseline_p75_ms": 7.051,
+        "baseline_p90_ms": 7.051,
+        "baseline_time_ms": 8.179333333333332,
+        "best_optimized_p75_ms": 1.468,
+        "best_optimized_p90_ms": 1.468,
+        "best_optimized_speedup": 3.6558402860548265,
+        "best_optimized_time_ms": 2.2373333333333334,
+        "best_speedup": 3.6558402860548265
+      },
+      "type": "cuda"
+    }
+  },
+  "hardware_key": "b200",
+  "schema_version": 2
+}

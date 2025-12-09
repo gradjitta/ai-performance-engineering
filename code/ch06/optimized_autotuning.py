@@ -27,6 +27,8 @@ class OptimizedAutotuningBenchmark(BaseBenchmark):
         self.candidates = [1024, 2048, 4096, 8192]
         self.optimal_chunk: Optional[int] = None
         self.timer_results: List[Tuple[int, float]] = []
+        # Autotuning benchmark - fixed input size
+        self.jitter_exemption_reason = "Autotuning benchmark: fixed N to measure parameter tuning impact"
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(self.N),
@@ -110,6 +112,21 @@ class OptimizedAutotuningBenchmark(BaseBenchmark):
         if self.output is None:
             return "Output tensor not initialized"
         return None
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N, "block_size": 2048}  # Match baseline's block_size for signature
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-4, 1e-4)
+
 
 
 def get_benchmark() -> BaseBenchmark:

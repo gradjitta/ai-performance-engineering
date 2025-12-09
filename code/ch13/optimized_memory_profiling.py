@@ -51,6 +51,12 @@ class OptimizedMemoryProfilingBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Memory profiling benchmark: fixed dimensions for measurement"
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(tokens),
+        )
     
     def setup(self) -> None:
         if torch.cuda.is_available():
@@ -104,6 +110,9 @@ class OptimizedMemoryProfilingBenchmark(BaseBenchmark):
             self.model.zero_grad(set_to_none=True)
             self.graph.replay()
             self.peak_memory_mb = torch.cuda.max_memory_allocated() / (1024 ** 2)
+            # Store output for verification
+            with torch.no_grad():
+                self.output = self.model(self.inputs).detach().clone()
         self._synchronize()
 
     def teardown(self) -> None:
@@ -141,6 +150,21 @@ class OptimizedMemoryProfilingBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output.float()  # Convert to fp32 for comparison
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "hidden_dim": self.hidden_dim}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        # bf16 vs fp32 can have larger differences
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> OptimizedMemoryProfilingBenchmark:

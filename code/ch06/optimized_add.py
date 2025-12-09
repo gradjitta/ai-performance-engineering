@@ -18,6 +18,8 @@ class OptimizedAddParallelBenchmark(BaseBenchmark):
         self.B: Optional[torch.Tensor] = None
         self.C: Optional[torch.Tensor] = None
         self.N = 10_000  # Same as baseline for fair comparison
+        # Kernel launch overhead benchmark - fixed input size
+        self.jitter_exemption_reason = "Kernel launch overhead benchmark: fixed N to measure launch latency"
         tokens = self.N
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -79,6 +81,21 @@ class OptimizedAddParallelBenchmark(BaseBenchmark):
         if not torch.isfinite(self.C).all():
             return "Result tensor C contains non-finite values"
         return None
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N}
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.C is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.C
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-5, 1e-5)
+
 
 
 def get_benchmark() -> BaseBenchmark:

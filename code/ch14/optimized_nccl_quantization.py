@@ -38,6 +38,12 @@ class OptimizedNcclQuantizationBenchmark(BaseBenchmark):
             requests_per_iteration=float(self.num_chunks),
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "NCCL quantization benchmark: fixed dimensions for comm comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.num_chunks),
+            tokens_per_iteration=float(tokens),
+        )
     
     def setup(self) -> None:
         """Setup: Initialize quantized model for NCCL."""
@@ -67,6 +73,7 @@ class OptimizedNcclQuantizationBenchmark(BaseBenchmark):
                 quantized = torch.clamp(torch.round(self.tensor * scales), -127, 127).to(torch.int8)
                 dequant = quantized.float() / scales
                 self._last = float(dequant.sum())
+                self.output = dequant.clone()
             self.stream.synchronize()
         self._synchronize()
 
@@ -103,6 +110,21 @@ class OptimizedNcclQuantizationBenchmark(BaseBenchmark):
         if self.tensor is None:
             return "Tensor not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output.float()
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"num_chunks": self.num_chunks, "chunk_len": self.chunk_len}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.5, 5.0)
+
 
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""

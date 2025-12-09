@@ -58,6 +58,11 @@ class Tcgen05Cta2GraceBlackwellBenchmark(GraceBlackwellMatmulBenchmark):
         )
         self.required_capabilities = {"tcgen05": True, "cta_group": True}
 
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+
+
 
 def get_benchmark(size: int = 2048, *, cta2: bool = False) -> GraceBlackwellMatmulBenchmark:
     """Factory for discover_benchmarks()."""

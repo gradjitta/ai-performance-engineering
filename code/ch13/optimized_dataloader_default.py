@@ -65,6 +65,12 @@ class OptimizedDataloaderTunedBenchmark(BaseBenchmark):
             requests_per_iteration=float(self.dataset_size // self.batch_size),
             tokens_per_iteration=float(self.dataset_size * self.feature_dim),
         )
+        self.output = None
+        self.jitter_exemption_reason = "DataLoader benchmark: fixed dataset for loading comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.dataset_size // self.batch_size),
+            tokens_per_iteration=float(self.dataset_size * self.feature_dim),
+        )
     
     def setup(self) -> None:
         if torch.cuda.is_available():
@@ -108,6 +114,7 @@ class OptimizedDataloaderTunedBenchmark(BaseBenchmark):
             loss = self.criterion(outputs, labels)
             loss.backward()
             self.optimizer.step()
+            self.output = outputs.detach().clone()
         self._synchronize()
 
     def teardown(self) -> None:
@@ -153,6 +160,20 @@ class OptimizedDataloaderTunedBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "feature_dim": self.feature_dim}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> OptimizedDataloaderTunedBenchmark:

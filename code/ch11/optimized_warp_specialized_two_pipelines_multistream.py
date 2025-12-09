@@ -7,6 +7,8 @@ from pathlib import Path
 
 import torch
 
+from typing import Optional
+
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
 from core.utils.extension_loader_template import load_cuda_extension_v2
 from core.harness.hardware_capabilities import ensure_dsmem_supported  # noqa: E402
@@ -43,9 +45,11 @@ class OptimizedDualPipelineBenchmark(BaseBenchmark):
         self.tile_elems = 1024
         self.tiles = 128  # Same as baseline for fair comparison
         self.baseline_total_elements = self.tiles * self.tile_elems
+        # Warp specialization benchmark - fixed dimensions for pipeline analysis
+        self.jitter_exemption_reason = "Warp specialization benchmark: fixed tile dimensions"
 
     def setup(self) -> None:
-        torch.manual_seed(1337)
+        torch.manual_seed(42)  # Match baseline seed
         total_elems = self.tiles * self.tile_elems
         self.input_a = torch.randn(total_elems, device=self.device, dtype=torch.float32)
         self.input_b = torch.randn(total_elems, device=self.device, dtype=torch.float32)
@@ -99,6 +103,20 @@ class OptimizedDualPipelineBenchmark(BaseBenchmark):
         if not torch.isfinite(self.output).all():
             return "Output contains non-finite values"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"tiles": self.tiles, "tile_elems": self.tile_elems, "num_streams": self.num_streams}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-4, 1e-4)
 
 
 def get_benchmark() -> OptimizedDualPipelineBenchmark:

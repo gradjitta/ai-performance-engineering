@@ -28,8 +28,11 @@ class BaselineMemoryBoundBenchmark(BaseBenchmark):
     def __init__(self):
         super().__init__()
         self.tensor: Optional[torch.Tensor] = None
+        self.output: Optional[torch.Tensor] = None
         self.repeats = 64
         self.N = 16_777_216  # ~64 MB
+        # Memory-bound benchmark - fixed dimensions for roofline analysis
+        self.jitter_exemption_reason = "Memory-bound benchmark: fixed dimensions for roofline analysis"
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.repeats),
             tokens_per_iteration=float(self.N * self.repeats),
@@ -47,6 +50,7 @@ class BaselineMemoryBoundBenchmark(BaseBenchmark):
             t = self.tensor
             for _ in range(self.repeats):
                 t = t * 1.0001 + 0.0001
+            self.output = t
             torch.cuda.synchronize(self.device)
 
     def teardown(self) -> None:
@@ -73,6 +77,21 @@ class BaselineMemoryBoundBenchmark(BaseBenchmark):
         if self.tensor is None:
             return "Tensor not initialized"
         return None
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N, "repeats": self.repeats}
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-1, 1e-1)  # Wide tolerance - different memory patterns
+
 
 
 def get_benchmark() -> BaseBenchmark:

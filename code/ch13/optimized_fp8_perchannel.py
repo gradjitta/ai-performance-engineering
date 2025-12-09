@@ -106,6 +106,12 @@ class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "FP8 per-channel benchmark: fixed dimensions for precision comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(tokens),
+        )
 
     def setup(self) -> None:
         """Setup: Initialize per-channel FP8 model."""
@@ -148,6 +154,7 @@ class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
             error = (output - ref_output).abs().mean() / ref_output.abs().mean()
             self._error_sum = error.item()
             self._last = float(output.sum())
+            self.output = output.clone()
             self._synchronize()
 
     def teardown(self) -> None:
@@ -181,6 +188,20 @@ class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
         if self.model is None or self.x is None:
             return "Model not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "seq_len": self.seq_len, "in_features": self.in_features}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaseBenchmark:

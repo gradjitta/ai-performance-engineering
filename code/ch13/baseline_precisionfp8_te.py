@@ -93,6 +93,12 @@ class BaselineTEFP8Benchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "FP8 Transformer Engine benchmark: fixed dimensions for precision comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(tokens),
+        )
 
     def setup(self) -> None:
         self._tf32_state = configure_tf32(enable_matmul=False, enable_cudnn=False)
@@ -131,6 +137,9 @@ class BaselineTEFP8Benchmark(BaseBenchmark):
     def benchmark_fn(self) -> None:
         with self._nvtx_range("baseline_precisionfp8_te"):
             self._train_step()
+            # Store output for verification
+            with torch.no_grad():
+                self.output = self.model(self.inputs).detach().clone()
         self._synchronize()
 
     def teardown(self) -> None:
@@ -171,6 +180,10 @@ class BaselineTEFP8Benchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaseBenchmark:

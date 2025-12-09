@@ -4063,8 +4063,9 @@ def _verify_input_equivalence(
     
     if baseline_skip or optimized_skip:
         result['verification_type'] = 'skipped'
-        result['equivalent'] = True  # Assume OK if benchmark opts out
-        result['mismatches'].append(f"Input verification skipped by benchmark {'baseline' if baseline_skip else 'optimized'}")
+        result['equivalent'] = False  # STRICT: Skip flags are NON-COMPLIANT - must verify
+        result['quarantine_reason'] = 'skip_flag_present'
+        result['mismatches'].append(f"VERIFICATION REQUIRED: benchmark {'baseline' if baseline_skip else 'optimized'} has skip flag - remove flag and implement proper verification")
         return result
     
     # Get input signatures from both benchmarks
@@ -4086,11 +4087,12 @@ def _verify_input_equivalence(
     baseline_sig = result['baseline_signature']
     optimized_sig = result['optimized_signature']
     
-    # If neither has a signature, we can't verify - this should be a warning
+    # If neither has a signature, we can't verify - this is a FAILURE not a pass
     if not baseline_sig and not optimized_sig:
         result['verification_type'] = 'no_signature'
-        result['equivalent'] = True  # Can't verify, assume OK but note it
-        result['mismatches'].append("Neither benchmark provides input signature - verification not possible")
+        result['equivalent'] = False  # STRICT: Cannot verify without signature - FAIL
+        result['quarantine_reason'] = 'missing_input_signature'
+        result['mismatches'].append("VERIFICATION REQUIRED: Neither benchmark provides input signature - implement get_input_signature()")
         return result
     
     # Compare signatures - exclude keys that are expected to differ between baseline/optimized
@@ -4165,25 +4167,26 @@ def _verify_patched_benchmark(
         
         # Skip verification for CUDA files - they're not Python modules
         if orig_path.suffix == '.cu':
-            result['verification_type'] = 'skipped'
-            result['verified'] = True
-            result['details']['reason'] = 'CUDA files verified separately via executable comparison'
+            result['verification_type'] = 'cuda_binary'
+            result['verified'] = False  # STRICT: CUDA binaries need separate verification
+            result['details']['reason'] = 'CUDA files require CudaBinaryBenchmark.get_verify_output() for checksum verification'
+            result['quarantine_reason'] = 'cuda_no_verify_path'
             return result
         
         # Skip non-Python files
         if orig_path.suffix != '.py':
-            result['verification_type'] = 'skipped'
-            result['verified'] = True
-            result['details']['reason'] = f'Non-Python file ({orig_path.suffix})'
+            result['verification_type'] = 'unsupported_file_type'
+            result['verified'] = False  # STRICT: Cannot verify non-Python files without explicit handler
+            result['details']['reason'] = f'Non-Python file ({orig_path.suffix}) - implement get_verify_output() for this file type'
             return result
             
         # Use unique module names to avoid collisions
         orig_module_name = f"_verify_orig_{orig_path.stem}_{id(result)}"
         orig_spec = importlib.util.spec_from_file_location(orig_module_name, orig_path)
         if orig_spec is None or orig_spec.loader is None:
-            result['verification_type'] = 'skipped'
-            result['verified'] = True
-            result['details']['reason'] = f'Could not load module spec for {orig_path.name}'
+            result['verification_type'] = 'module_load_failed'
+            result['verified'] = False  # STRICT: Module load failure is verification failure
+            result['details']['reason'] = f'Could not load module spec for {orig_path.name} - fix module or implement get_verify_output()'
             return result
         orig_module = importlib.util.module_from_spec(orig_spec)
         # Register module BEFORE exec_module - required for dataclasses and self-referential imports
@@ -4202,17 +4205,17 @@ def _verify_patched_benchmark(
         
         # Skip non-Python files
         if patch_path.suffix != '.py':
-            result['verification_type'] = 'skipped'
-            result['verified'] = True
-            result['details']['reason'] = f'Non-Python file ({patch_path.suffix})'
+            result['verification_type'] = 'unsupported_file_type'
+            result['verified'] = False  # STRICT: Cannot verify non-Python files without explicit handler
+            result['details']['reason'] = f'Non-Python file ({patch_path.suffix}) - implement get_verify_output() for this file type'
             return result
             
         patch_module_name = f"_verify_patch_{patch_path.stem}_{id(result)}"
         patch_spec = importlib.util.spec_from_file_location(patch_module_name, patch_path)
         if patch_spec is None or patch_spec.loader is None:
-            result['verification_type'] = 'skipped'
-            result['verified'] = True
-            result['details']['reason'] = f'Could not load module spec for {patch_path.name}'
+            result['verification_type'] = 'module_load_failed'
+            result['verified'] = False  # STRICT: Module load failure is verification failure
+            result['details']['reason'] = f'Could not load module spec for {patch_path.name} - fix module or implement get_verify_output()'
             return result
         patch_module = importlib.util.module_from_spec(patch_spec)
         # Register module BEFORE exec_module - required for dataclasses and self-referential imports
@@ -4231,9 +4234,10 @@ def _verify_patched_benchmark(
             "SKIPPED:",         # Benchmark explicitly skipped
         ]
         if any(issue in error_str for issue in known_compat_issues):
-            result['verification_type'] = 'skipped'
-            result['verified'] = True
-            result['details']['reason'] = f'Module loading skipped due to known compatibility issue: {error_str[:100]}'
+            result['verification_type'] = 'compat_issue'
+            result['verified'] = False  # STRICT: Compat issues need resolution, not bypass
+            result['details']['reason'] = f'Known compatibility issue needs resolution: {error_str[:100]}'
+            result['details']['compat_issue'] = next(i for i in known_compat_issues if i in error_str)
             return result
         result['errors'].append(f"Failed to load modules: {e}")
         return result
@@ -4271,9 +4275,10 @@ def _verify_patched_benchmark(
             if not orig_skip:
                 orig_skip = getattr(orig_instance, 'skip_output_check', False)
             if orig_skip:
-                result['verification_type'] = 'skipped'
-                result['verified'] = True
-                result['details']['reason'] = 'Benchmark opts out of output verification'
+                result['verification_type'] = 'skip_flag_present'
+                result['verified'] = False  # STRICT: Skip flags are non-compliant
+                result['quarantine_reason'] = 'skip_flag_present'
+                result['details']['reason'] = 'VERIFICATION REQUIRED: Remove skip_output_check flag and implement get_verify_output()'
                 return result
     
     if not patch_class:
@@ -4283,9 +4288,10 @@ def _verify_patched_benchmark(
             if not patch_skip:
                 patch_skip = getattr(patch_instance, 'skip_output_check', False)
             if patch_skip:
-                result['verification_type'] = 'skipped'
-                result['verified'] = True
-                result['details']['reason'] = 'Benchmark opts out of output verification'
+                result['verification_type'] = 'skip_flag_present'
+                result['verified'] = False  # STRICT: Skip flags are non-compliant
+                result['quarantine_reason'] = 'skip_flag_present'
+                result['details']['reason'] = 'VERIFICATION REQUIRED: Remove skip_output_check flag and implement get_verify_output()'
                 return result
     
     if not orig_class and not orig_instance:
@@ -4347,9 +4353,10 @@ def _verify_patched_benchmark(
             orig_skip = getattr(orig_benchmark, 'skip_output_check', False)
         
         if orig_skip:
-            result['verification_type'] = 'skipped'
-            result['verified'] = True
-            result['details']['reason'] = 'Benchmark opts out of output verification'
+            result['verification_type'] = 'skip_flag_present'
+            result['verified'] = False  # STRICT: Skip flags are non-compliant
+            result['quarantine_reason'] = 'skip_flag_present'
+            result['details']['reason'] = 'VERIFICATION REQUIRED: Remove skip_output_check flag and implement get_verify_output()'
             return result
             
         orig_benchmark.setup()
@@ -4385,9 +4392,10 @@ def _verify_patched_benchmark(
             patch_skip = getattr(patch_benchmark, 'skip_output_check', False)
         
         if patch_skip:
-            result['verification_type'] = 'skipped'
-            result['verified'] = True
-            result['details']['reason'] = 'Benchmark opts out of output verification'
+            result['verification_type'] = 'skip_flag_present'
+            result['verified'] = False  # STRICT: Skip flags are non-compliant
+            result['quarantine_reason'] = 'skip_flag_present'
+            result['details']['reason'] = 'VERIFICATION REQUIRED: Remove skip_output_check flag and implement get_verify_output()'
             return result
             
         patch_benchmark.setup()
@@ -4402,9 +4410,12 @@ def _verify_patched_benchmark(
         
         # Compare outputs
         if orig_output is None or patch_output is None:
-            result['verification_type'] = 'skipped'
-            result['details']['reason'] = 'No output tensor found for comparison'
-            result['verified'] = True  # Can't verify, assume OK
+            result['verification_type'] = 'no_output'
+            which_missing = 'both' if (orig_output is None and patch_output is None) else ('original' if orig_output is None else 'patched')
+            result['details']['reason'] = f'VERIFICATION REQUIRED: No output tensor found ({which_missing}) - implement get_verify_output()'
+            result['details']['missing_output'] = which_missing
+            result['verified'] = False  # STRICT: Cannot verify without outputs - FAIL
+            result['quarantine_reason'] = 'missing_verify_output'
         elif isinstance(orig_output, torch.Tensor) and isinstance(patch_output, torch.Tensor):
             if orig_output.shape != patch_output.shape:
                 result['errors'].append(f"Shape mismatch: {orig_output.shape} vs {patch_output.shape}")
@@ -4442,11 +4453,11 @@ def _verify_patched_benchmark(
                         # Integer types: exact match
                         rtol, atol = 0, 0
                 else:
-                    result['details']['reason'] = 'Missing output from baseline; skipping verification'
-                    result['status'] = 'skipped'
-                    results['output_verification'].append(result)
-                    result['verified'] = True
-                    result['equivalent'] = True
+                    result['details']['reason'] = 'VERIFICATION REQUIRED: Missing output from baseline - implement get_verify_output()'
+                    result['status'] = 'failed'
+                    result['verified'] = False  # STRICT: Missing output is verification failure
+                    result['equivalent'] = False
+                    result['quarantine_reason'] = 'missing_verify_output'
                     return result
                 
                 result['details']['dtype'] = str(dtype) if dtype is not None else 'unknown'
@@ -4461,9 +4472,11 @@ def _verify_patched_benchmark(
                 else:
                     result['errors'].append(f"Output mismatch: max diff = {max_diff:.6f} (rtol={rtol}, atol={atol})")
         else:
-            result['verification_type'] = 'skipped'
-            result['details']['reason'] = 'Non-tensor outputs, cannot compare'
-            result['verified'] = True
+            result['verification_type'] = 'non_tensor_output'
+            orig_type = type(orig_output).__name__ if orig_output else 'None'
+            patch_type = type(patch_output).__name__ if patch_output else 'None'
+            result['details']['reason'] = f'VERIFICATION REQUIRED: Non-tensor outputs (orig={orig_type}, patch={patch_type}) - implement get_verify_output() to return tensor'
+            result['verified'] = False  # STRICT: Non-tensor outputs need explicit handling
         
         # Cleanup
         orig_benchmark.teardown()
@@ -4479,9 +4492,11 @@ def _verify_patched_benchmark(
             "SKIPPED:",         # Benchmark explicitly skipped
         ]
         if any(issue in error_str for issue in known_compat_issues):
-            result['verification_type'] = 'skipped'
-            result['verified'] = True
-            result['details']['reason'] = f'Verification skipped due to known compatibility issue: {error_str[:100]}'
+            result['verification_type'] = 'compat_issue'
+            result['verified'] = False  # STRICT: Compat issues need resolution
+            issue_type = next((i for i in known_compat_issues if i in error_str), 'unknown')
+            result['details']['reason'] = f'Compatibility issue needs resolution ({issue_type}): {error_str[:100]}'
+            result['details']['compat_issue'] = issue_type
         else:
             result['errors'].append(f"Verification error: {e}")
     

@@ -51,6 +51,12 @@ class OptimizedAutogradCompiledBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Autograd benchmark: fixed dimensions for gradient measurement"
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(tokens),
+        )
     
     def setup(self) -> None:
         """Setup training step, capture it with CUDA graphs."""
@@ -101,6 +107,9 @@ class OptimizedAutogradCompiledBenchmark(BaseBenchmark):
             self.static_input.copy_(current_input)
             self.static_target.copy_(current_target)
             self.graph.replay()
+            # Store output for verification (forward pass with current model weights)
+            with torch.no_grad():
+                self.output = self.model(current_input).detach().clone()
         self._synchronize()
 
     def _train_step(self, batch: torch.Tensor, target: torch.Tensor) -> None:
@@ -152,6 +161,20 @@ class OptimizedAutogradCompiledBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "hidden_dim": self.hidden_dim}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> OptimizedAutogradCompiledBenchmark:

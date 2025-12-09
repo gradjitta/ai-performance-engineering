@@ -173,3 +173,4 @@ inline bool compare_checksums(float baseline, float optimized,
 
 #endif  // CUDA_VERIFY_CUH
 
+

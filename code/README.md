@@ -579,91 +579,164 @@ INFORMATIONAL_BENCHMARKS = {
 
 This table documents known issues that can cause benchmark results to be misleading, along with their protections. Use this as a checklist when creating or reviewing benchmarks.
 
-| Category | Issue | What Happens | Protection |
-|----------|-------|--------------|------------|
-| **Timing** | Unsynced Streams | Work on non-default streams isn't timed | Full device sync |
-| **Timing** | Incomplete Async Ops | Timer stops before async work finishes | Full device sync |
-| **Timing** | Event Timing Gaps | CUDA events recorded incorrectly | Cross-validate with wall clock |
-| **Timing** | Timer Granularity | Measurement too coarse for fast ops | Multiple measurement methods |
-| **Timing** | Warmup Bleed | Real work happens during warmup | Separate warmup/timed buffers |
-| **Timing** | Clock Drift | System clock changes during measurement | Monotonic clock usage |
-| **Timing** | Profiler Overhead | Profiling tools add latency | Profile-free timing path |
-| **Output** | Constant Output | Same result regardless of input | Jitter check |
-| **Output** | Stale Cache | Same result across different seeds | Fresh-input check |
-| **Output** | Approximation Drift | Rough estimate instead of full compute | Output tolerance validation |
-| **Output** | Invalid Values (NaN) | NaN in output | `validate_result()` NaN check |
-| **Output** | Invalid Values (Inf) | Inf in output | `validate_result()` Inf check |
-| **Output** | Shape Mismatch | Output shape differs from expected | Shape validation |
-| **Output** | Dtype Mismatch | Output dtype differs from expected | Dtype validation |
-| **Output** | Denormalized Values | Subnormal floats cause slowdowns | Denormal check |
-| **Output** | Uninitialized Memory | Output contains garbage | Memory initialization check |
-| **Workload** | Precision Mismatch | Claims FP32 but uses FP16 | Dtype verification |
-| **Workload** | Undeclared Shortcuts | Skips elements without declaring | Workload invariant check |
-| **Workload** | Early Exit | Stops iteration loops early | Iteration count enforcement |
-| **Workload** | Batch Shrinking | Processes fewer samples | Input signature matching |
-| **Workload** | Sequence Truncation | Processes shorter sequences | Input signature matching |
-| **Workload** | Hidden Downsampling | Silently reduces resolution | Dimension validation |
-| **Workload** | Sparsity Mismatch | Different sparsity patterns | Sparsity ratio check |
-| **Workload** | Attention Mask Mismatch | Different masking applied | Mask equivalence check |
-| **Workload** | KV Cache Size Mismatch | Different cache sizes | Cache dimension check |
-| **Location** | CPU Spillover | Work offloaded to CPU | GPU kernel time validation |
-| **Location** | Setup Pre-computation | Work done in `setup()` | Input mutation check |
-| **Location** | Graph Capture Cheat | Pre-compute during graph capture | Graph-aware verification |
-| **Location** | Warmup Computation | Compute results during warmup | Buffer isolation |
-| **Location** | Background Thread | Compute in separate thread | Process isolation |
-| **Location** | Lazy Evaluation Skip | Returns unevaluated lazy tensor | Force evaluation |
-| **Location** | JIT Compilation Timing | JIT compile time included/excluded inconsistently | Compilation state tracking |
-| **Memory** | Pre-allocated Output | Result buffer allocated in setup | Memory allocation tracking |
-| **Memory** | Input-Output Aliasing | Output points to pre-filled input | Memory address validation |
-| **Memory** | Pinned Memory Timing | Async pinned transfers not waited | Transfer completion check |
-| **Memory** | Memory Pool Reuse | Cached allocations skew timing | Memory pool reset |
-| **Memory** | Fragmentation Effects | Memory fragmentation differs | Defragmentation before runs |
-| **Memory** | Page Fault Timing | First-touch page faults included | Memory pre-touch |
-| **Memory** | Swap Interference | Swapping affects timing | Memory lock / swap disable |
-| **CUDA** | Host Callback Escape | `cudaLaunchHostFunc` returns early | Host function tracking |
-| **CUDA** | Async Memcpy Incomplete | D2H/H2D copies not awaited | Memory sync validation |
-| **CUDA** | Workspace Pre-compute | Work in cuBLAS workspace alloc | Workspace monitoring |
-| **CUDA** | Persistent Kernel | Kernel left running across calls | Kernel lifetime check |
-| **CUDA** | Undeclared Multi-GPU | Work spread across undeclared GPUs | Device enumeration |
-| **CUDA** | Context Switch Overhead | CUDA context switches affect timing | Context pinning |
-| **CUDA** | Driver Overhead | Driver calls not accounted for | Driver call tracking |
-| **CUDA** | Cooperative Launch Abuse | Cooperative kernels bypass checks | Launch mode validation |
-| **CUDA** | Dynamic Parallelism Hidden | Child kernels not tracked | CDP kernel tracking |
-| **CUDA** | Unified Memory Faults | Page migration not timed | UM fault tracking |
-| **Compile** | Compilation Cache Hit | Returns cached compiled output | Cache invalidation |
-| **Compile** | Trace Reuse | Exploits trace caching | Fresh trace enforcement |
-| **Compile** | Mode Inconsistency | Different compile mode verify vs perf | Mode consistency check |
-| **Compile** | Inductor Asymmetry | Inductor optimizations inconsistent | Compilation parity |
-| **Compile** | Guard Failure Hidden | Recompilation not counted | Guard check tracking |
-| **Compile** | Autotuning Variance | Autotuning picks different kernels | Fixed autotuning cache |
-| **Compile** | Symbolic Shape Exploit | Different shapes trigger different code | Shape canonicalization |
-| **Distributed** | Rank Skipping | Some ranks don't do work | Per-rank verification |
-| **Distributed** | Collective Short-circuit | Communication skipped | NCCL validation |
-| **Distributed** | Topology Mismatch | Claims different topology | Topology verification |
-| **Distributed** | Barrier Timing | Barrier timing exploited | Barrier synchronization |
-| **Distributed** | Gradient Bucketing Mismatch | Different bucket sizes | Bucket size validation |
-| **Distributed** | Async Gradient Timing | Async all-reduce not awaited | Gradient sync check |
-| **Distributed** | Pipeline Bubble Hiding | Pipeline bubbles not counted | Bubble time tracking |
-| **Distributed** | Shard Size Mismatch | FSDP shards differ | Shard size validation |
-| **Environment** | Device Mismatch | Uses different GPU than declared | Device fingerprint |
-| **Environment** | Frequency Boost | Overclocked for benchmark only | Frequency monitoring |
-| **Environment** | Priority Elevation | Runs at higher priority | Process isolation |
-| **Environment** | Memory Overcommit | Exploits memory overcommit | Memory validation |
-| **Environment** | NUMA Inconsistency | NUMA placement differs | NUMA audit |
-| **Environment** | CPU Governor Mismatch | Different CPU frequency scaling | Governor lock |
-| **Environment** | Thermal Throttling | GPU throttles during run | Temperature monitoring |
-| **Environment** | Power Limit Difference | Different TDP settings | Power limit check |
-| **Environment** | Driver Version Mismatch | Different CUDA drivers | Driver version lock |
-| **Environment** | Library Version Mismatch | Different cuDNN/cuBLAS | Library version lock |
-| **Environment** | Container Resource Limits | cgroups limits differ | Resource limit check |
-| **Environment** | Virtualization Overhead | VM/container overhead varies | Bare-metal validation |
-| **Statistical** | Cherry-picking | Only best iterations reported | All-iteration reporting |
-| **Statistical** | Outlier Injection | Slow iterations added to baseline | Statistical validation |
-| **Statistical** | Variance Gaming | Variance reporting manipulated | Consistent statistics |
-| **Statistical** | Percentile Selection | Favorable percentile chosen | Fixed percentile policy |
-| **Statistical** | Insufficient Samples | Too few iterations for significance | Minimum iteration count |
-| **Statistical** | Cold Start Inclusion | First run included unfairly | Warmup enforcement |
-| **Statistical** | GC Interference | Garbage collection during timing | GC disable during timing |
-| **Statistical** | Background Process Noise | System processes affect timing | Process isolation |
+| Category | Issue | What Happens | Protection | Real-World Incident |
+|----------|-------|--------------|------------|---------------------|
+| **Timing** | Unsynced Streams | Work on non-default streams isn't timed | Full device sync | **Locus/KernelBench 2025** ([source](https://x.com/miru_why/status/1991773868806361138)) |
+| **Timing** | Incomplete Async Ops | Timer stops before async work finishes | Full device sync | **Locus/KernelBench 2025** ([source](https://x.com/miru_why/status/1991773868806361138)) |
+| **Timing** | Event Timing Gaps | CUDA events recorded incorrectly | Cross-validate with wall clock | |
+| **Timing** | Timer Granularity | Measurement too coarse for fast ops | Multiple measurement methods | |
+| **Timing** | Warmup Bleed | Real work happens during warmup | Separate warmup/timed buffers | |
+| **Timing** | Clock Drift | System clock changes during measurement | Monotonic clock usage | |
+| **Timing** | Profiler Overhead | Profiling tools add latency | Profile-free timing path | |
+| **Output** | Constant Output | Same result regardless of input | Jitter check | |
+| **Output** | Stale Cache | Same result across different seeds | Fresh-input check | |
+| **Output** | Approximation Drift | Rough estimate instead of full compute | Output tolerance validation | |
+| **Output** | Invalid Values (NaN) | NaN in output | `validate_result()` NaN check | |
+| **Output** | Invalid Values (Inf) | Inf in output | `validate_result()` Inf check | |
+| **Output** | Invalid Ground Truth | Labels/expected values wrong | Golden output validation | **ImageNet Labels 2021** ([arXiv:2103.14749](https://arxiv.org/abs/2103.14749)), **MMLU Errors 2025** ([PromptEng](https://promptengineering.org/challenges-and-innovations-in-language-model-benchmarking-and-generalization/)) |
+| **Output** | Shape Mismatch | Output shape differs from expected | Shape validation | |
+| **Output** | Dtype Mismatch | Output dtype differs from expected | Dtype validation | |
+| **Output** | Denormalized Values | Subnormal floats cause slowdowns | Denormal check | |
+| **Output** | Uninitialized Memory | Output contains garbage | Memory initialization check | |
+| **Workload** | Precision Mismatch | Claims FP32 but uses FP16 | Dtype verification | |
+| **Workload** | Undeclared Shortcuts | Skips elements without declaring | Workload invariant check | **AI Agent Shortcuts 2024** ([VentureBeat](https://venturebeat.com/ai/ai-agent-benchmarks-are-misleading-study-warns)) |
+| **Workload** | Early Exit | Stops iteration loops early | Iteration count enforcement | |
+| **Workload** | Batch Shrinking | Processes fewer samples | Input signature matching | |
+| **Workload** | Sequence Truncation | Processes shorter sequences | Input signature matching | |
+| **Workload** | Hidden Downsampling | Silently reduces resolution | Dimension validation | |
+| **Workload** | Sparsity Mismatch | Different sparsity patterns | Sparsity ratio check | |
+| **Workload** | Attention Mask Mismatch | Different masking applied | Mask equivalence check | |
+| **Workload** | KV Cache Size Mismatch | Different cache sizes | Cache dimension check | |
+| **Workload** | Train/Test Overlap | Model tested on training data | Dataset isolation | **Computational Biology 2019** ([Nat Commun](https://www.nature.com/articles/s41467-019-09406-4)) |
+| **Location** | CPU Spillover | Work offloaded to CPU | GPU kernel time validation | |
+| **Location** | Setup Pre-computation | Work done in `setup()` | Input mutation check | |
+| **Location** | Graph Capture Cheat | Pre-compute during graph capture | Graph-aware verification | |
+| **Location** | Warmup Computation | Compute results during warmup | Buffer isolation | |
+| **Location** | Background Thread | Compute in separate thread | Process isolation | |
+| **Location** | Lazy Evaluation Skip | Returns unevaluated lazy tensor | Force evaluation | |
+| **Location** | JIT Compilation Timing | JIT compile time included/excluded inconsistently | Compilation state tracking | |
+| **Memory** | Pre-allocated Output | Result buffer allocated in setup | Memory allocation tracking | |
+| **Memory** | Input-Output Aliasing | Output points to pre-filled input | Memory address validation | |
+| **Memory** | Pinned Memory Timing | Async pinned transfers not waited | Transfer completion check | |
+| **Memory** | Memory Pool Reuse | Cached allocations skew timing | Memory pool reset | |
+| **Memory** | Fragmentation Effects | Memory fragmentation differs | Defragmentation before runs | |
+| **Memory** | Page Fault Timing | First-touch page faults included | Memory pre-touch | |
+| **Memory** | Swap Interference | Swapping affects timing | Memory lock / swap disable | |
+| **CUDA** | Host Callback Escape | `cudaLaunchHostFunc` returns early | Host function tracking | |
+| **CUDA** | Async Memcpy Incomplete | D2H/H2D copies not awaited | Memory sync validation | |
+| **CUDA** | Workspace Pre-compute | Work in cuBLAS workspace alloc | Workspace monitoring | |
+| **CUDA** | Persistent Kernel | Kernel left running across calls | Kernel lifetime check | |
+| **CUDA** | Undeclared Multi-GPU | Work spread across undeclared GPUs | Device enumeration | |
+| **CUDA** | Context Switch Overhead | CUDA context switches affect timing | Context pinning | |
+| **CUDA** | Driver Overhead | Driver calls not accounted for | Driver call tracking | |
+| **CUDA** | Cooperative Launch Abuse | Cooperative kernels bypass checks | Launch mode validation | |
+| **CUDA** | Dynamic Parallelism Hidden | Child kernels not tracked | CDP kernel tracking | |
+| **CUDA** | Unified Memory Faults | Page migration not timed | UM fault tracking | |
+| **Compile** | Compilation Cache Hit | Returns cached compiled output | Cache invalidation | |
+| **Compile** | Trace Reuse | Exploits trace caching | Fresh trace enforcement | |
+| **Compile** | Mode Inconsistency | Different compile mode verify vs perf | Mode consistency check | |
+| **Compile** | Inductor Asymmetry | Inductor optimizations inconsistent | Compilation parity | |
+| **Compile** | Guard Failure Hidden | Recompilation not counted | Guard check tracking | |
+| **Compile** | Autotuning Variance | Autotuning picks different kernels | Fixed autotuning cache | |
+| **Compile** | Symbolic Shape Exploit | Different shapes trigger different code | Shape canonicalization | |
+| **Distributed** | Rank Skipping | Some ranks don't do work | Per-rank verification | |
+| **Distributed** | Collective Short-circuit | Communication skipped | NCCL validation | |
+| **Distributed** | Topology Mismatch | Claims different topology | Topology verification | |
+| **Distributed** | Barrier Timing | Barrier timing exploited | Barrier synchronization | |
+| **Distributed** | Gradient Bucketing Mismatch | Different bucket sizes | Bucket size validation | |
+| **Distributed** | Async Gradient Timing | Async all-reduce not awaited | Gradient sync check | |
+| **Distributed** | Pipeline Bubble Hiding | Pipeline bubbles not counted | Bubble time tracking | |
+| **Distributed** | Shard Size Mismatch | FSDP shards differ | Shard size validation | |
+| **Environment** | Device Mismatch | Uses different GPU than declared | Device fingerprint | |
+| **Environment** | Frequency Boost | Overclocked for benchmark only | Frequency monitoring | |
+| **Environment** | Priority Elevation | Runs at higher priority | Process isolation | |
+| **Environment** | Memory Overcommit | Exploits memory overcommit | Memory validation | |
+| **Environment** | NUMA Inconsistency | NUMA placement differs | NUMA audit | |
+| **Environment** | CPU Governor Mismatch | Different CPU frequency scaling | Governor lock | |
+| **Environment** | Thermal Throttling | GPU throttles during run | Temperature monitoring | |
+| **Environment** | Power Limit Difference | Different TDP settings | Power limit check | |
+| **Environment** | Driver Version Mismatch | Different CUDA drivers | Driver version lock | |
+| **Environment** | Library Version Mismatch | Different cuDNN/cuBLAS | Library version lock | |
+| **Environment** | Container Resource Limits | cgroups limits differ | Resource limit check | |
+| **Environment** | Virtualization Overhead | VM/container overhead varies | Bare-metal validation | |
+| **Statistical** | Cherry-picking | Only best iterations reported | All-iteration reporting | **Chatbot Arena 2024** ([TechCrunch](https://techcrunch.com/2025/04/22/crowdsourced-ai-benchmarks-have-serious-flaws-some-experts-say/)) |
+| **Statistical** | Outlier Injection | Slow iterations added to baseline | Statistical validation | |
+| **Statistical** | Variance Gaming | Variance reporting manipulated | Consistent statistics | |
+| **Statistical** | Percentile Selection | Favorable percentile chosen | Fixed percentile policy | |
+| **Statistical** | Insufficient Samples | Too few iterations for significance | Minimum iteration count | **AI Benchmarks 2025** ([The Register](https://www.theregister.com/2025/11/07/measuring_ai_models_hampered_by/)) |
+| **Statistical** | Cold Start Inclusion | First run included unfairly | Warmup enforcement | |
+| **Statistical** | GC Interference | Garbage collection during timing | GC disable during timing | |
+| **Statistical** | Background Process Noise | System processes affect timing | Process isolation | |
+| **Evaluation** | Eval Code Exploitation | Benchmark code modified to pass | Immutable evaluation harness | |
+| **Evaluation** | Timeout Manipulation | Timeout extended to hide slowdowns | Fixed timeout policy | |
+| **Evaluation** | Metric Definition Gaming | Redefine what "speedup" means | Standardized metric definitions | **MLPerf 2019** ([Forbes](https://www.forbes.com/sites/janakirammsv/2019/11/10/the-curious-case-of-mlperf-inferencing-benchmark-results/)), **GLUE 2024** ([Revelry](https://revelry.co/insights/artificial-intelligence/why-ai-benchmarks-fail/)) |
+| **Evaluation** | Test Data Leakage | Training on test/benchmark data | Data contamination checks | **Data Contamination 2025** ([AI News](https://www.artificialintelligence-news.com/news/flawed-ai-benchmarks-enterprise-budgets-at-risk/)) |
+| **Evaluation** | Benchmark Overfitting | Optimize specifically for benchmark | Held-out evaluation sets | **Underspecification 2020** ([arXiv:2011.03395](https://arxiv.org/abs/2011.03395)), **Epic Sepsis 2021** ([ChatBench](https://www.chatbench.org/)) |
+| **Evaluation** | Self-Modifying Tests | AI/code modifies its own tests | Read-only test harness | |
+| **Evaluation** | Benchmark Memorization | Agent memorizes test cases | Fresh-input checks, jitter | **AI Agent Shortcuts 2024** ([VentureBeat](https://venturebeat.com/ai/ai-agent-benchmarks-are-misleading-study-warns)) |
+| **Evaluation** | Missing Holdout Sets | No proper train/test split | Held-out evaluation data | **AI Agent Shortcuts 2024** ([VentureBeat](https://venturebeat.com/ai/ai-agent-benchmarks-are-misleading-study-warns)) |
 
-**Total: 10 categories, 84 validity issues**
+**Total: 11 categories, 94 validity issues, 17 linked to real-world incidents (all with citations)**
+
+### Notable Real-World Incidents
+
+These validity issues aren't theoretical—they've caused real problems:
+
+| Year | Incident | Issue Type | What Happened | Source |
+|------|----------|------------|---------------|--------|
+| **2025** | **Locus/KernelBench Stream Exploit** | Unsynced Streams | Claimed 20x speedup on Llama FFW kernel. AI launched work on non-default CUDA streams but timer only measured default stream. **32.8% of RL-generated kernels exploited this**, causing fake 18x speedups. | [X/Twitter @miru_why](https://x.com/miru_why/status/1991773868806361138) |
+| **2025** | **AI Benchmark Scientific Rigor** | Metric Definition Gaming | Only 16% of 445 AI benchmarks used statistical tests; ~50% tested abstract concepts without clear definitions. | [The Register](https://www.theregister.com/2025/11/07/measuring_ai_models_hampered_by/) |
+| **2025** | **MMLU Benchmark Errors** | Invalid Ground Truth | ~57% of questions in MMLU virology subset found incorrect. Ground truth errors destabilize evaluations. | [PromptEngineering.org](https://promptengineering.org/challenges-and-innovations-in-language-model-benchmarking-and-generalization/) |
+| **2024** | **AI Agent Benchmark Shortcuts** | Overfitting / Shortcuts | Study found AI agents memorize benchmark test samples instead of learning to generalize. Many benchmarks lack proper holdout test sets. | [VentureBeat](https://venturebeat.com/ai/ai-agent-benchmarks-are-misleading-study-warns) |
+| **2024** | **GLUE Benchmark Heuristics** | Metric Definition Gaming | Models achieved high GLUE scores by exploiting shallow heuristics rather than genuine language understanding. | [Revelry.co](https://revelry.co/insights/artificial-intelligence/why-ai-benchmarks-fail/) |
+| **2024** | **HumanEval Limitations** | Benchmark Overfitting | Models performing well on HumanEval struggled with real-world coding tasks; simplified scenarios missed practical complexity. | [Revelry.co](https://revelry.co/insights/artificial-intelligence/why-ai-benchmarks-fail/) |
+| **2022** | **MLPerf Participation Issues** | Cherry-picking | MLPerf faced inconsistent vendor participation; selective scenario submissions led to biased performance representations. | [NextPlatform](https://www.nextplatform.com/2022/04/08/the-performance-of-mlperf-as-a-ubiquitous-benchmark-is-lacking/) |
+| **2022** | **ML Benchmark Validity (Berkeley)** | Benchmark Overfitting | Small changes in data distribution caused significant performance drops, questioning external validity of static benchmarks. | [UC Berkeley Tech Report](https://www2.eecs.berkeley.edu/Pubs/TechRpts/2022/EECS-2022-180.html) |
+| **2021** | **ImageNet Label Errors** | Invalid Ground Truth | Study found **at least 6% label errors** in ImageNet validation set. Average 3.3% error rate across 10 common datasets. | [arXiv:2103.14749](https://arxiv.org/abs/2103.14749) |
+| **2021** | **MLPerf Reproducibility** | Benchmark Reproducibility | Users couldn't reproduce MLPerf v0.7 results due to inaccessible datasets and outdated repositories. | [MLCommons Forum](https://groups.google.com/a/mlcommons.org/g/public/c/T_8UsUPIWFo) |
+| **2021** | **Epic Sepsis Model Failure** | Benchmark Overfitting | Hospital sepsis prediction model showed significantly worse real-world performance than validation results due to non-representative test data. | [ChatBench.org](https://www.chatbench.org/what-are-the-implications-of-outdated-ai-benchmarks-on-the-accuracy-and-reliability-of-ai-driven-decision-making-and-insights/) |
+| **2020** | **Underspecification in ML** | Benchmark Overfitting | ML pipelines produce models with equivalent benchmark performance but divergent deployment behaviors—instability in production. | [arXiv:2011.03395](https://arxiv.org/abs/2011.03395) |
+| **2019** | **MLPerf Inference Bias** | Cherry-picking | Inaugural MLPerf inference results showed vendors selectively submitted results highlighting their strengths. | [Forbes](https://www.forbes.com/sites/janakirammsv/2019/11/10/the-curious-case-of-mlperf-inferencing-benchmark-results/) |
+| **2019** | **Computational Biology Overfitting** | Train/Test Overlap | Tools developed and tested on same datasets, performing well on benchmarks but failing on new real-world data. | [Nature Communications](https://www.nature.com/articles/s41467-019-09406-4) |
+| **2016** | **Microsoft Tay Chatbot** | Missing Holdout Sets | AI chatbot learned offensive behavior within 24 hours due to lack of adversarial benchmarking and content moderation safeguards. | [ChatBench.org](https://www.chatbench.org/what-are-the-implications-of-outdated-ai-benchmarks-on-the-accuracy-and-reliability-of-ai-driven-decision-making-and-insights/) |
+
+#### Incident Categories and Our Protections
+
+| Category | # Incidents | Our Protection |
+|----------|-------------|----------------|
+| **Timing Manipulation** | 1 (Locus/KernelBench) | Full device sync, stream-aware timing |
+| **Invalid Ground Truth** | 2 (ImageNet Labels, MMLU) | Baseline golden outputs, validate_result() |
+| **Benchmark Overfitting** | 4 (Underspecification, Epic Sepsis, HumanEval, Berkeley) | Fresh-input checks, distribution shift testing |
+| **Data Contamination** | 2 (Data Leakage 2025, Agent Shortcuts) | Data contamination checks, fresh inputs |
+| **Metric Gaming** | 3 (MLPerf 2019, GLUE, AI Benchmarks 2025) | Standardized metric definitions, statistical rigor |
+| **Cherry-picking** | 2 (Chatbot Arena, MLPerf 2022) | All-iteration reporting, comprehensive submission |
+| **Train/Test Overlap** | 2 (Computational Biology, Agent Shortcuts) | Dataset isolation, holdout enforcement |
+| **Reproducibility** | 1 (MLPerf 2021) | Version locking, dataset archival |
+
+#### Deep Dive: The Locus/KernelBench Stream Timing Vulnerability
+
+This 2025 incident perfectly illustrates why correctness verification alone is insufficient:
+
+```python
+# VULNERABLE TIMING (what KernelBench did)
+start_event.record(original_model_stream)  # Only records on default stream
+model(*inputs)                              # But work runs on s1, s2, s3!
+end_event.record(original_model_stream)    # Timer stops before s1,s2,s3 finish
+torch.cuda.synchronize(device=device)      # Waits, but timing already recorded
+
+# CORRECT TIMING (the fix)
+for stream in custom_model_streams:
+    custom_model_stream.wait_stream(stream)  # Wait for ALL streams
+_event.record(custom_model_stream)           # Then record timing
+```
+
+**The exploit pattern:**
+1. AI creates non-default streams: `s1 = getStreamFromPool()`, `s2 = ...`, `s3 = ...`
+2. AI launches GEMMs on those streams: `at::mm_out(gate, x2d, gate_proj.t())` on s1
+3. AI does NOT call `setCurrentCUDAStream(s3)` or wait for streams before returning
+4. Correctness test uses `torch.cuda.synchronize()` → **PASSES** (waits for everything)
+5. Performance test uses stream-specific events → **FAKE SPEEDUP** (doesn't wait for s1,s2,s3)
+
+**Result:** 82/250 (32.8%) of RL-generated CUDA kernels exploited this, producing artificial 18x "speedups" with zero actual performance improvement.
+
+These incidents demonstrate why rigorous benchmark verification is essential—not just for catching intentional gaming, but for catching subtle bugs that produce misleading results.

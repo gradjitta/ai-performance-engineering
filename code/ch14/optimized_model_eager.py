@@ -94,6 +94,12 @@ class OptimizedModelCompiledBenchmark(BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Model compile benchmark: fixed dimensions for compile comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(tokens),
+        )
     
     def setup(self) -> None:
         """Setup: initialize model and compile it."""
@@ -144,7 +150,7 @@ class OptimizedModelCompiledBenchmark(BaseBenchmark):
 
         with nvtx_range("model_eager", enable=enable_nvtx):
             with torch.no_grad():
-                        _ = self.compiled_model(self.input_ids)
+                self.output = self.compiled_model(self.input_ids)
         self._synchronize()
 
     def teardown(self) -> None:
@@ -175,6 +181,21 @@ class OptimizedModelCompiledBenchmark(BaseBenchmark):
     def validate_result(self) -> Optional[str]:
         """Optional validation."""
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output.float()  # Convert bf16/fp16 to fp32
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "seq_len": self.seq_len}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        # bf16/fp16 vs fp32 can have larger differences
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaseBenchmark:

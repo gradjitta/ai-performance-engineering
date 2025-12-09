@@ -50,6 +50,12 @@ class OptimizedPrecisionMixedBenchmark(BaseBenchmark):
             requests_per_iteration=float(self.micro_steps),
             tokens_per_iteration=float(tokens * self.micro_steps),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Precision benchmark: fixed dimensions for precision comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.micro_steps),
+            tokens_per_iteration=float(tokens * self.micro_steps),
+        )
     
     def setup(self) -> None:
         """Setup: Initialize model with mixed precision."""
@@ -93,6 +99,7 @@ class OptimizedPrecisionMixedBenchmark(BaseBenchmark):
                 
                 loss.backward()
                 self.optimizer.step()
+            self.output = outputs.detach().clone()
         self._synchronize()
 
     def teardown(self) -> None:
@@ -129,6 +136,21 @@ class OptimizedPrecisionMixedBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output.float()  # Convert to fp32 for comparison
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "hidden_dim": self.hidden_dim}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        # fp16 vs fp32 can have differences
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> OptimizedPrecisionMixedBenchmark:

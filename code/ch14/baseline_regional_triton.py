@@ -82,6 +82,12 @@ class BaselineRegionalTritonBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(max_tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Regional Triton benchmark: fixed sequence schedule for compile comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(max_tokens),
+        )
 
     def setup(self) -> None:
         torch.manual_seed(0)
@@ -125,7 +131,7 @@ class BaselineRegionalTritonBenchmark(BaseBenchmark):
             mode="default",
         )
         with torch.no_grad(), self._nvtx_range("baseline_regional_triton"):
-            _ = compiled_model(x)
+            self.output = compiled_model(x)
         self._synchronize()
 
     def teardown(self) -> None:
@@ -160,6 +166,20 @@ class BaselineRegionalTritonBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output.float()
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"hidden": self.hidden, "batch_size": self.batch_size}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaseBenchmark:

@@ -19,6 +19,8 @@ class OptimizedBankConflictsBenchmark(BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self.N = 8_000_000
         self._extension = None
+        # Bank conflicts benchmark - fixed input size to demonstrate shared memory patterns
+        self.jitter_exemption_reason = "Bank conflicts benchmark: fixed N to measure shared memory access patterns"
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(self.N),
@@ -86,6 +88,21 @@ class OptimizedBankConflictsBenchmark(BaseBenchmark):
         if not torch.isfinite(self.output).all():
             return "Output contains non-finite values"
         return None
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N}
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-4, 1e-4)
+
 
 
 def get_benchmark() -> BaseBenchmark:

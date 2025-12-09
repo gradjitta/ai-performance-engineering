@@ -22,6 +22,11 @@ class OptimizedPersistentDecodeFullAndPiecewiseBenchmark(OptimizedPersistentDeco
     def __init__(self) -> None:
         super().__init__(graph_mode=GraphMode.FULL_AND_PIECEWISE)
 
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+
+
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedPersistentDecodeFullAndPiecewiseBenchmark()

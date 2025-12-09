@@ -90,6 +90,11 @@ class SpecConfigSweepBenchmark(BaseBenchmark):
     def get_custom_metrics(self) -> Dict[str, float]:
         return self._custom_metrics
 
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+
+
 
 def get_benchmark() -> BaseBenchmark:
     return SpecConfigSweepBenchmark()

@@ -99,6 +99,13 @@ class BaselineWarpDivergenceILPBenchmark(BaseBenchmark):
             return "Output tensor not initialized"
         return None
 
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+
 
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""

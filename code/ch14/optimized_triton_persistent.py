@@ -57,6 +57,12 @@ class OptimizedTritonPersistentBenchmark(BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(self.batch_size * self.M * self.N),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Triton persistent benchmark: fixed dimensions for kernel comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(self.batch_size * self.M * self.N),
+        )
 
     def setup(self) -> None:
         """Setup: Initialize batched matrices."""
@@ -72,8 +78,8 @@ class OptimizedTritonPersistentBenchmark(BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         """Benchmark: Single fused kernel."""
-        output = matmul_batched_fused(self.a, self.b)
-        self._last = float(output.sum())
+        self.output = matmul_batched_fused(self.a, self.b)
+        self._last = float(self.output.sum())
         self._synchronize()
 
     def teardown(self) -> None:
@@ -107,6 +113,20 @@ class OptimizedTritonPersistentBenchmark(BaseBenchmark):
         if self.a is None or self.b is None:
             return "Matrices not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "M": self.M, "N": self.N, "K": self.K}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

@@ -19,6 +19,8 @@ class BaselineAdaptiveBenchmark(BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self.N = 4_000_000
         self.static_chunk = 2048
+        # Chunked processing benchmark - fixed input size
+        self.jitter_exemption_reason = "Chunked processing benchmark: fixed N to measure chunk strategy"
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(self.N),
@@ -77,6 +79,21 @@ class BaselineAdaptiveBenchmark(BaseBenchmark):
         if self.output is None:
             return "Output tensor not initialized"
         return None
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N, "static_chunk": self.static_chunk}
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-4, 1e-4)
+
 
 
 def get_benchmark() -> BaseBenchmark:

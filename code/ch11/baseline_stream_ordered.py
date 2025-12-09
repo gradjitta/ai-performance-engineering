@@ -24,6 +24,8 @@ class BaselineStreamOrderedBenchmark(BaseBenchmark):
         self.hidden_dim = 1024
         self.num_streams = 4
         self.num_requests = 32  # More requests to amortize overhead
+        # Stream benchmark - fixed dimensions for overlap measurement
+        self.jitter_exemption_reason = "Stream ordered benchmark: fixed dimensions for overlap measurement"
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -105,6 +107,21 @@ class BaselineStreamOrderedBenchmark(BaseBenchmark):
             if not torch.isfinite(out).all():
                 return "Output contains non-finite values"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.host_outputs is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        # Concatenate all outputs for comparison
+        return torch.cat(self.host_outputs, dim=0)
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "hidden_dim": self.hidden_dim, "num_requests": self.num_requests}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-2, 1e-2)
 
 
 def get_benchmark() -> BaselineStreamOrderedBenchmark:

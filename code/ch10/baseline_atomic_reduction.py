@@ -32,7 +32,9 @@ class BaselineAtomicReductionBenchmark(CudaBinaryBenchmark):
             iterations=3,
             warmup=5,
             timeout_seconds=120,
+            workload_params={"type": "atomic_reduction"},
         )
+        self.register_workload_metadata(bytes_per_iteration=64 * 1024 * 1024)
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics."""

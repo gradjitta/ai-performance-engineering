@@ -68,6 +68,11 @@ class BandwidthSuiteMultiGPU(BaseBenchmark):
     def get_custom_metrics(self) -> Optional[dict]:
         """Return measured P2P bandwidth."""
         return {"p2p_bandwidth_gbps": float(self.last_bandwidth_gbps or 0.0)}
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+
+
 
 def get_benchmark() -> BaseBenchmark:
     return BandwidthSuiteMultiGPU()

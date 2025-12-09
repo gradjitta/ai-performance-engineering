@@ -78,6 +78,12 @@ class OptimizedFlexAttentionBenchmark(BaseBenchmark):
             requests_per_iteration=float(self.batch),
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Flex attention benchmark: fixed dimensions for attention comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.batch),
+            tokens_per_iteration=float(tokens),
+        )
     
     def setup(self) -> None:
         """Setup: Initialize FlexAttention model."""
@@ -158,6 +164,20 @@ class OptimizedFlexAttentionBenchmark(BaseBenchmark):
         if self.model is None or self.graph_input is None:
             return "Model not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output.float()
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch": self.batch, "seq_len": self.seq_len, "embed_dim": self.embed_dim}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaseBenchmark:

@@ -27,6 +27,8 @@ class OptimizedStreamOrderedBenchmark(BaseBenchmark):
         self.num_requests = 32  # More requests to amortize overhead
         self.hidden_dim = 1024
         self.batch_size = 128
+        # Stream benchmark - fixed dimensions for overlap measurement
+        self.jitter_exemption_reason = "Stream ordered benchmark: fixed dimensions for overlap measurement"
     
     def setup(self) -> None:
         """Setup: initialize lightweight model and multi-stream buffers.
@@ -142,6 +144,21 @@ class OptimizedStreamOrderedBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.host_outputs is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        # Concatenate all outputs for comparison
+        return torch.cat(self.host_outputs, dim=0)
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "hidden_dim": self.hidden_dim, "num_requests": self.num_requests}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-2, 1e-2)
+
 
 def get_benchmark() -> OptimizedStreamOrderedBenchmark:
     """Factory function for harness discovery."""

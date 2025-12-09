@@ -105,6 +105,12 @@ class OptimizedTEFP8Benchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "FP8 Transformer Engine benchmark: fixed dimensions for precision comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(tokens),
+        )
 
     def setup(self) -> None:
         enable_tf32()
@@ -172,6 +178,9 @@ class OptimizedTEFP8Benchmark(BaseBenchmark):
             self.static_input.copy_(current_input)
             self.static_target.copy_(current_target)
             self.graph.replay()
+            # Store output for verification
+            with torch.no_grad():
+                self.output = self.model(current_input).detach().clone()
         self._synchronize()
 
     def teardown(self) -> None:
@@ -215,6 +224,10 @@ class OptimizedTEFP8Benchmark(BaseBenchmark):
         if self.graph is None:
             return "CUDA graph not initialized"
         return None
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaseBenchmark:

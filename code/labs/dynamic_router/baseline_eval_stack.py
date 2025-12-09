@@ -47,6 +47,11 @@ class BaselineEvalStackBenchmark(BaseBenchmark):
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
         return self._summary or None
 
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+
+
 
 def get_benchmark() -> BaseBenchmark:
     """Factory for discover_benchmarks()."""

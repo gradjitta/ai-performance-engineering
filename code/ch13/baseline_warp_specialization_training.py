@@ -27,6 +27,12 @@ class BaselineWarpSpecializationTrainingBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Warp specialization benchmark: fixed dimensions for kernel comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(tokens),
+        )
 
     def setup(self) -> None:
         """Allocate tensors and build a simple MLP to mimic training compute."""
@@ -49,8 +55,7 @@ class BaselineWarpSpecializationTrainingBenchmark(BaseBenchmark):
         with self._nvtx_range("baseline_warp_specialization_training"):
             with torch.no_grad():
                 fused = torch.relu(self.input * self.weight)
-                output = self.model(fused)
-                _ = output.sum()
+                self.output = self.model(fused)
         self._synchronize()
 
     def teardown(self) -> None:
@@ -87,6 +92,20 @@ class BaselineWarpSpecializationTrainingBenchmark(BaseBenchmark):
         if self.input is None or self.weight is None:
             return "Input tensors not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch": self.batch, "width": self.width}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaselineWarpSpecializationTrainingBenchmark:

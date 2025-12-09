@@ -1598,3 +1598,4 @@ class TestEdgeCases:
         # Metadata speedup should be derived from timing, not the passed value
         stored_meta = store._data["examples"]["test_entry"]["metadata"]
         assert abs(stored_meta["best_optimization_speedup"] - 4.0) < SPEEDUP_TOLERANCE
+

@@ -41,6 +41,12 @@ class BaselineFlexAttentionBenchmark(BaseBenchmark):
             requests_per_iteration=float(self.seq_len),
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Flex attention benchmark: fixed dimensions for attention comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.seq_len),
+            tokens_per_iteration=float(tokens),
+        )
 
     def setup(self) -> None:
         """Setup: materialize query/key/value tensors."""
@@ -77,6 +83,7 @@ class BaselineFlexAttentionBenchmark(BaseBenchmark):
                     outputs.append(torch.matmul(attn, vh))
             stacked = torch.stack(outputs, dim=1)
             self._last = float(stacked.sum())
+            self.output = stacked.clone()
             self._synchronize()
 
 
@@ -112,6 +119,20 @@ class BaselineFlexAttentionBenchmark(BaseBenchmark):
         if self.q is None or self.k is None or self.v is None:
             return "Tensors not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"seq_len": self.seq_len, "num_heads": self.num_heads, "head_dim": self.head_dim}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

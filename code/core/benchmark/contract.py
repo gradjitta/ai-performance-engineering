@@ -15,30 +15,39 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 class BenchmarkContract:
     """Defines the contract that all benchmarks must follow.
     
-    The contract includes required methods that must be implemented by all benchmarks,
-    and recommended methods that support verification enforcement.
+    The contract includes required methods that must be implemented by all benchmarks.
     
-    Verification Enforcement (phased rollout):
-    - Phase 1 (DETECT): get_input_signature and validate_result are recommended
-    - Phase 2 (QUARANTINE): Benchmarks without these methods are quarantined
-    - Phase 3 (GATE): These methods become required for CI to pass
+    Verification Enforcement:
+    - get_input_signature(): Returns workload description for equivalence checking
+    - validate_result(): Returns error message or None for output validation
+    - get_verify_output(): Returns output tensor(s) for correctness comparison
     
     See core.benchmark.verification for enforcement phase configuration.
     """
     
     # Required methods that must be implemented
+    # These are enforced based on the current EnforcementPhase (DETECT, QUARANTINE, GATE)
     REQUIRED_METHODS: Set[str] = {
         "setup",
         "benchmark_fn",
         "teardown",
     }
     
-    # Methods recommended for verification enforcement
-    # These will become required in Phase 3 (GATE)
+    # Verification methods - required for correctness validation
+    # Missing these methods will quarantine the benchmark in QUARANTINE/GATE phases
+    VERIFICATION_REQUIRED_METHODS: Set[str] = {
+        "get_input_signature",  # Returns workload description dict
+        "validate_result",  # Returns error message or None
+        "get_verify_output",  # Returns output tensor(s) for comparison
+    }
+    
+    # Optional methods that enhance verification but have sensible defaults
     RECOMMENDED_METHODS: Set[str] = {
         "get_config",
-        "validate_result",  # Returns error message or None
-        "get_input_signature",  # Returns workload description dict
+        "get_output_tolerance",  # Returns ToleranceSpec for custom tolerances
+        "get_equivalence_fn",  # Returns custom comparator function
+        "get_workload_metadata",  # Returns WorkloadMetadata for invariant checking
+        "get_verify_inputs",  # Returns input tensor(s) for aliasing detection
     }
     
     # Methods for verification skip control (use sparingly with justification)
@@ -75,6 +84,11 @@ class BenchmarkContract:
         for method_name in BenchmarkContract.REQUIRED_METHODS:
             if method_name not in method_names:
                 errors.append(f"Missing required method: {method_name}()")
+        
+        # Check verification required methods (warn in AST mode since we don't know enforcement phase)
+        for method_name in BenchmarkContract.VERIFICATION_REQUIRED_METHODS:
+            if method_name not in method_names:
+                warnings.append(f"Missing verification method: {method_name}()")
         
         # Check recommended methods
         for method_name in BenchmarkContract.RECOMMENDED_METHODS:
@@ -214,8 +228,8 @@ class BenchmarkContract:
         warnings: List[str] = []
         phase = get_enforcement_phase()
         
-        # Check verification methods
-        for method_name in ["get_input_signature", "validate_result"]:
+        # Check verification required methods
+        for method_name in BenchmarkContract.VERIFICATION_REQUIRED_METHODS:
             if not hasattr(benchmark, method_name):
                 msg = f"Missing verification method: {method_name}()"
                 if phase == EnforcementPhase.DETECT:

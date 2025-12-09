@@ -45,6 +45,11 @@ class BaselineCutlassBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(self.m * self.n),
         )
+        self.jitter_exemption_reason = "CUTLASS GEMM benchmark: fixed dimensions for kernel comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(self.m * self.n),
+        )
     
     def setup(self) -> None:
         """Setup: Initialize matrices."""
@@ -133,6 +138,16 @@ class BaselineCutlassBenchmark(BaseBenchmark):
         if self.A is None or self.B is None or self.C is None:
             return "Matrices not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.C is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.C
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

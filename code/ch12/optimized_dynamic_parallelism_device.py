@@ -21,15 +21,14 @@ class OptimizedDynamicParallelismDeviceBenchmark(CudaBinaryBenchmark):
             warmup=5,
             timeout_seconds=120,
             time_regex=r"Elapsed_ms:\s*([0-9.]+)",
+            workload_params={"type": "dynamic_parallelism_device"},
         )
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
     def get_custom_metrics(self) -> Optional[dict]:
-        from core.benchmark.metrics import compute_pipeline_metrics
+        """Return domain-specific metrics."""
+        return None
 
-        return compute_pipeline_metrics(
-            num_stages=getattr(self, "num_stages", 1),
-            stage_times_ms=[getattr(self, "_last_result", None).time_ms if getattr(self, "_last_result", None) else 0.0],
-        )
 
 
 def get_benchmark() -> CudaBinaryBenchmark:

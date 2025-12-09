@@ -26,18 +26,14 @@ class BaselineHBMCopyBenchmark(CudaBinaryBenchmark):
             iterations=3,
             warmup=5,
             timeout_seconds=90,
+            workload_params={"type": "hbm_copy"},
         )
-
+        # Register workload metadata for compliance
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return memory access metrics for hbmcopy."""
-        from core.benchmark.metrics import compute_memory_access_metrics
-        return compute_memory_access_metrics(
-            bytes_requested=self._bytes_requested,
-            bytes_actually_transferred=self._bytes_requested,  # Ideal case
-            num_transactions=max(1, self._bytes_requested // 128),
-            optimal_transactions=max(1, self._bytes_requested // 128),
-        )
+        """Return memory access metrics."""
+        return None  # Metrics computed by CUDA binary
 
 def get_benchmark() -> BaselineHBMCopyBenchmark:
     """Factory for discover_benchmarks()."""

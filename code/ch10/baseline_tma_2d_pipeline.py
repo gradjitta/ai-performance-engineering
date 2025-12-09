@@ -24,8 +24,9 @@ class BaselineTma2DPipelineBenchmark(CudaBinaryBenchmark):
             run_args=("--baseline-only",),
             # Fallback path does not require CUDA pipeline APIs.
             requires_pipeline_api=False,
+            workload_params={"type": "tma_2d_pipeline"},
         )
-
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""

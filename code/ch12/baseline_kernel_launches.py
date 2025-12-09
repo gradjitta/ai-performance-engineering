@@ -58,6 +58,8 @@ class BaselineKernelLaunchesBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        # Kernel launch benchmark - fixed dimensions for consistent overhead measurement
+        self.jitter_exemption_reason = "Kernel launch benchmark: fixed size for overhead measurement"
     
     def setup(self) -> None:
         """Setup: initialize tensor."""
@@ -118,6 +120,20 @@ class BaselineKernelLaunchesBenchmark(BaseBenchmark):
         if not torch.isfinite(self.output).all():
             return "Output contains non-finite values"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"size": self.size, "iterations": self.iterations}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-4, 1e-4)
 
 
 def get_benchmark() -> BaseBenchmark:

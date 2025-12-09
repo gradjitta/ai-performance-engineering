@@ -36,6 +36,8 @@ class StridedStreamBaseline(BaseBenchmark):
         self.host_in_chunks = None
         self.host_out_chunks = None
         self.device_chunks = None
+        # Stream benchmark - fixed dimensions for overlap measurement
+        self.jitter_exemption_reason = "Stream overlap benchmark: fixed N to measure copy/compute overlap"
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -101,6 +103,20 @@ class StridedStreamBaseline(BaseBenchmark):
             f"{self.label}.expected_overlap_pct": 0.0,
         }
 
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N, "num_segments": self.num_segments}
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.host_output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.host_output
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-5, 1e-5)
+
 
 class ConcurrentStreamOptimized(BaseBenchmark):
     """Optimized workload that splits data across multiple CUDA streams."""
@@ -124,6 +140,8 @@ class ConcurrentStreamOptimized(BaseBenchmark):
         self.host_in_chunks: List[torch.Tensor] | None = None
         self.host_out_chunks: List[torch.Tensor] | None = None
         self.device_chunks: List[torch.Tensor] | None = None
+        # Stream benchmark - fixed dimensions for overlap measurement
+        self.jitter_exemption_reason = "Stream overlap benchmark: fixed N to measure copy/compute overlap"
 
     def setup(self) -> None:
         if torch.cuda.is_available():
@@ -202,3 +220,17 @@ class ConcurrentStreamOptimized(BaseBenchmark):
             f"{self.label}.bytes_transferred": bytes_transferred,
             f"{self.label}.expected_overlap_pct": min(100.0, (self.num_streams - 1) / self.num_streams * 100),
         }
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N, "num_streams": self.num_streams}
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.host_output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.host_output
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (1e-5, 1e-5)

@@ -25,6 +25,12 @@ class OptimizedQuantizationBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Quantization benchmark: fixed dimensions for precision comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(tokens),
+        )
     
     def setup(self) -> None:
         if torch.cuda.is_available():
@@ -51,7 +57,7 @@ class OptimizedQuantizationBenchmark(BaseBenchmark):
             raise RuntimeError("Model/data not initialized")
         with self._nvtx_range("optimized_quantization"):
             with torch.no_grad():
-                _ = self.quantized_model(self.data)
+                self.output = self.quantized_model(self.data)
         self._synchronize()
     
     def teardown(self) -> None:
@@ -82,6 +88,21 @@ class OptimizedQuantizationBenchmark(BaseBenchmark):
         if self.quantized_model is None:
             return "Quantized model not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output.float()  # Convert to fp32 for comparison
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"N": self.N}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        # fp16 vs fp32 can have differences
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> OptimizedQuantizationBenchmark:

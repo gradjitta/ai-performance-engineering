@@ -26,7 +26,9 @@ class BaselineTMAMulticastBenchmark(CudaBinaryBenchmark):
             iterations=3,
             warmup=5,
             timeout_seconds=180,
+            workload_params={"type": "tma_multicast"},
         )
+        self.register_workload_metadata(bytes_per_iteration=1024 * 1024)
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
