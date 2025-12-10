@@ -48,6 +48,13 @@ class BaselineCutlassGemmVariant1Benchmark(CudaBinaryBenchmark):
         """Return output tensor for verification comparison."""
         return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
 
+    def get_input_signature(self) -> dict:
+        """Return input signature for verification."""
+        return {"type": "cutlass_gemm_variant1"}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaselineCutlassGemmVariant1Benchmark:

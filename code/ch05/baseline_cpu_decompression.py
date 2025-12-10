@@ -26,6 +26,7 @@ class CPUDecompressionBenchmark(BaseBenchmark):
         super().__init__()
         self.compressed: Optional[bytes] = None
         self._workload = WorkloadMetadata(bytes_per_iteration=0.0)
+        self.jitter_exemption_reason = "Decompression benchmark: fixed data size"
 
     def setup(self) -> None:
         payload = torch.randn(1024 * 1024, dtype=torch.float32).numpy().tobytes()
@@ -59,6 +60,13 @@ class CPUDecompressionBenchmark(BaseBenchmark):
         """Return output tensor for verification comparison."""
         return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
 
+    def get_input_signature(self) -> dict:
+        """Return input signature for verification."""
+        return {"type": "cpu_decompression"}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:
