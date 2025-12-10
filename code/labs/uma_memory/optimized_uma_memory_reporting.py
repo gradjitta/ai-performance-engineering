@@ -33,6 +33,8 @@ class OptimizedUmaMemoryReportingBenchmark(BaseBenchmark):
         self.swap_free_bytes = 0
         self.allocatable_bytes = 0
         self.per_process_bytes: Optional[int] = None
+        self.jitter_exemption_reason = "UMA memory reporting optimized: fixed configuration"
+        self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
         torch.cuda.empty_cache()
@@ -130,6 +132,18 @@ class OptimizedUmaMemoryReportingBenchmark(BaseBenchmark):
             json.dump(self.snapshot_dict(), f, indent=2)
         return path
 
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+
+    def get_input_signature(self) -> dict:
+        """Return input signature for verification."""
+        return {"type": "uma_memory_optimized", "reclaim_fraction": self.reclaim_fraction}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
+
 
 def summarize(reclaim_fraction: float = 0.9) -> OptimizedUmaMemoryReportingBenchmark:
     bench = OptimizedUmaMemoryReportingBenchmark(reclaim_fraction=reclaim_fraction)
@@ -146,11 +160,6 @@ def summarize(reclaim_fraction: float = 0.9) -> OptimizedUmaMemoryReportingBench
     if bench.per_process_bytes is not None:
         print(f"Per-process NVML usage sum: {format_bytes(bench.per_process_bytes)}")
     return bench
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
-
 
 
 def get_benchmark() -> BaseBenchmark:

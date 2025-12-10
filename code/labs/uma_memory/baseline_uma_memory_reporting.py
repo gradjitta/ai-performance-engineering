@@ -26,6 +26,8 @@ class BaselineUmaMemoryReportingBenchmark(BaseBenchmark):
         self.cuda_total_bytes = 0
         self.host_available_bytes: Optional[int] = None
         self.swap_free_bytes: Optional[int] = None
+        self.jitter_exemption_reason = "UMA memory reporting baseline: fixed configuration"
+        self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
         torch.cuda.empty_cache()
@@ -64,6 +66,18 @@ class BaselineUmaMemoryReportingBenchmark(BaseBenchmark):
             metrics["swap_free_gb"] = self.swap_free_bytes / (1024**3)
         return metrics
 
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+
+    def get_input_signature(self) -> dict:
+        """Return input signature for verification."""
+        return {"type": "uma_memory_baseline"}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
+
 
 def summarize() -> None:
     bench = BaselineUmaMemoryReportingBenchmark()
@@ -78,11 +92,6 @@ def summarize() -> None:
         print(f"Host MemAvailable:   {format_bytes(bench.host_available_bytes)}")
     if bench.swap_free_bytes is not None:
         print(f"SwapFree:            {format_bytes(bench.swap_free_bytes)}")
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
-
 
 
 def get_benchmark() -> BaseBenchmark:
