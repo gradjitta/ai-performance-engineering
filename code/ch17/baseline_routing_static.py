@@ -40,6 +40,12 @@ class BaselineRoutingStaticBenchmark(BaseBenchmark):
             requests_per_iteration=float(self.requests_per_iteration),
             tokens_per_iteration=float(tokens),
         )
+        self.result_output = None
+        self.jitter_exemption_reason = "Routing benchmark: fixed dimensions for comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.requests_per_iteration),
+            tokens_per_iteration=float(tokens),
+        )
 
     def setup(self) -> None:
         torch.backends.cudnn.benchmark = True
@@ -91,6 +97,20 @@ class BaselineRoutingStaticBenchmark(BaseBenchmark):
         if self.model is None or self.inputs is None:
             return "Model/input not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.result_output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.result_output.float()
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "hidden_dim": self.hidden_dim}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaselineRoutingStaticBenchmark:

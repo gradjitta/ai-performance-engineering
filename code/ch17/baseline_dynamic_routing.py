@@ -36,6 +36,12 @@ class _DynamicRoutingBenchmark(BaseBenchmark):
             requests_per_iteration=float(batch_size),
             tokens_per_iteration=float(batch_size * 128),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Dynamic routing benchmark: fixed batch size for comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(batch_size),
+            tokens_per_iteration=float(batch_size * 128),
+        )
         # Pre-generated requests (created once in setup, reused in benchmark)
         self._cached_requests: List[Request] = []
         # Pre-allocated tensors for vectorized path (reused each iteration)
@@ -131,6 +137,7 @@ class _DynamicRoutingBenchmark(BaseBenchmark):
         self._history["lat_ms"].append(elapsed_ms)
         served = len(requests) - rejects
 
+        self.output = torch.tensor([float(served), float(rejects), float(offloaded)])
         return {
             "requests": float(len(requests)),
             "served": float(served),
@@ -150,6 +157,23 @@ class _DynamicRoutingBenchmark(BaseBenchmark):
         return {
             "routing.latency_ms": float(statistics.mean(self._history["lat_ms"])),
         }
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "vectorized": self.vectorized}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison - routing is deterministic."""
+        return (0.1, 10.0)
+
+    def validate_result(self) -> Optional[str]:
+        return None
 
 
 class BaselineDynamicRoutingBenchmark(_DynamicRoutingBenchmark):

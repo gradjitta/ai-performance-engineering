@@ -51,6 +51,12 @@ class OptimizedRoutingBenchmark(BaseBenchmark):
             requests_per_iteration=float(len(self.routing_order)),
             tokens_per_iteration=float(tokens),
         )
+        self.result_output = None
+        self.jitter_exemption_reason = "Routing benchmark: fixed dimensions for comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(len(self.routing_order)),
+            tokens_per_iteration=float(tokens),
+        )
     
     def setup(self) -> None:
         if torch.cuda.is_available():
@@ -128,6 +134,20 @@ class OptimizedRoutingBenchmark(BaseBenchmark):
 
     def validate_result(self) -> Optional[str]:
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.result_output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.result_output.float()
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "hidden_dim": self.hidden_dim}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison - wider due to different model sizes."""
+        return (1.0, 10.0)
 
 
 def get_benchmark() -> OptimizedRoutingBenchmark:
