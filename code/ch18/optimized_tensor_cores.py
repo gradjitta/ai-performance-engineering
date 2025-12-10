@@ -69,7 +69,7 @@ class OptimizedTensorCoresBenchmark(BaseBenchmark):
         # Optimization: FP16/BF16 matmul with tensor cores
         # Tensor cores provide high throughput for these operations
         with self._nvtx_range("optimized_tensor_cores"):
-            _ = torch.matmul(self.A, self.B)
+            self.output = torch.matmul(self.A, self.B)
         self._synchronize()
     
     def teardown(self) -> None:

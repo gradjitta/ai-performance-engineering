@@ -65,7 +65,7 @@ class BaselineTensorCoresBenchmark(BaseBenchmark):
         # Baseline: FP32 matmul without tensor cores
         # Tensor cores accelerate FP16/BF16 operations
         with self._nvtx_range("baseline_tensor_cores"):
-            _ = torch.matmul(self.A, self.B)
+            self.output = torch.matmul(self.A, self.B)
         self._synchronize()
     
     def teardown(self) -> None:
