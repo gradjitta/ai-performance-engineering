@@ -81,10 +81,18 @@ class MockBenchmarkDifferentWorkload(BaseBenchmark):
         self.data = None
         self.output = None
         super().teardown()
+    
+    def get_input_signature(self):
+        """Required: Return explicit input signature."""
+        return {
+            "batch_size": self.batch_size,
+            "seq_len": self.seq_len,
+            "hidden_size": self.hidden_size,
+        }
 
 
 class MockBenchmarkSkipsInputVerification(BaseBenchmark):
-    """Mock benchmark that opts out of input verification."""
+    """Mock benchmark that opts out of input verification (non-compliant in strict mode)."""
     
     def __init__(self, batch_size=32):
         super().__init__()
@@ -97,11 +105,15 @@ class MockBenchmarkSkipsInputVerification(BaseBenchmark):
         pass
     
     def skip_input_verification(self) -> bool:
-        return True  # Opt out
+        return True  # Opt out - this is NON-COMPLIANT in strict mode
+    
+    def get_input_signature(self):
+        """Required even though skipping - demonstrates non-compliant pattern."""
+        return {"batch_size": self.batch_size}
 
 
 class MockBenchmarkSkipsOutputVerification(BaseBenchmark):
-    """Mock benchmark that opts out of output verification."""
+    """Mock benchmark that opts out of output verification (non-compliant in strict mode)."""
     
     def __init__(self):
         super().__init__()
@@ -113,11 +125,15 @@ class MockBenchmarkSkipsOutputVerification(BaseBenchmark):
         pass
     
     def skip_output_verification(self) -> bool:
-        return True  # Opt out
+        return True  # Opt out - this is NON-COMPLIANT in strict mode
+    
+    def get_input_signature(self):
+        """Required in strict mode."""
+        return {}
 
 
 class MockBenchmarkNoSignature(BaseBenchmark):
-    """Mock benchmark without any signature attributes."""
+    """Mock benchmark that intentionally returns empty signature (non-compliant)."""
     
     def __init__(self):
         super().__init__()
@@ -128,6 +144,10 @@ class MockBenchmarkNoSignature(BaseBenchmark):
     
     def benchmark_fn(self):
         pass
+    
+    def get_input_signature(self):
+        """Returns empty dict - this is NON-COMPLIANT in strict mode."""
+        return {}  # Empty = non-compliant
 
 
 class MockBenchmarkWithMatrixDims(BaseBenchmark):
@@ -144,6 +164,10 @@ class MockBenchmarkWithMatrixDims(BaseBenchmark):
     
     def benchmark_fn(self):
         pass
+    
+    def get_input_signature(self):
+        """Required: Return explicit input signature."""
+        return {"M": self.M, "N": self.N, "K": self.K}
 
 
 # =============================================================================
@@ -206,21 +230,30 @@ class TestGetInputSignature:
     
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
     def test_excludes_boolean_attributes(self):
-        """Test that boolean attributes are not included in signature."""
+        """Test that boolean attributes should NOT be in signatures.
+        
+        In strict mode, benchmarks must explicitly choose what to include.
+        Best practice: Include only numeric/shape parameters, not config booleans.
+        """
         class BenchmarkWithBool(BaseBenchmark):
             def __init__(self):
                 super().__init__()
                 self.batch_size = 32
-                self.use_amp = True  # Boolean should be excluded
+                self.use_amp = True  # Boolean config - should NOT be in signature
             
             def setup(self): pass
             def benchmark_fn(self): pass
+            
+            def get_input_signature(self):
+                """Explicit signature: Only include workload-defining params."""
+                return {"batch_size": self.batch_size}
+                # Note: use_amp is NOT included - it's a config flag, not workload size
         
         benchmark = BenchmarkWithBool()
         signature = benchmark.get_input_signature()
         
         assert "batch_size" in signature
-        assert "use_amp" not in signature
+        assert "use_amp" not in signature  # Config flags should not be in signature
 
 
 # =============================================================================

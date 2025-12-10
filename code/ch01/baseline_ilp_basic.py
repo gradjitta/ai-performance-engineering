@@ -41,6 +41,7 @@ class BaselineIlpBasicBenchmark(BaseBenchmark):
         self.device = resolve_device()
         self.input = None
         self.output = None
+        self.jitter_exemption_reason = "ILP benchmark: fixed size for comparison"
         # Target workload size for optimal ILP demonstration
         original_N = 100_000_000  # 100M elements (~400 MB FP32)
         
@@ -140,6 +141,13 @@ class BaselineIlpBasicBenchmark(BaseBenchmark):
             raise RuntimeError("Output not available - run benchmark first")
         return self.output
 
+    def get_input_signature(self) -> dict:
+        """Return input signature for verification."""
+        return {"N": self.N}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

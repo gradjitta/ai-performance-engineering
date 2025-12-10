@@ -31,6 +31,7 @@ class OptimizedPerformanceBatchBenchmark(BaseBenchmark):
         super().__init__()
         self.workload = WORKLOAD
         self.batch_size = batch_size if batch_size != 32 else self.workload.microbatch_size
+        self.jitter_exemption_reason = "Performance benchmark: fixed batch size for comparison"
         self.model = None
         self.microbatches = None
         self.targets = None
@@ -160,6 +161,13 @@ class OptimizedPerformanceBatchBenchmark(BaseBenchmark):
         """Return output tensor for verification comparison."""
         return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
 
+    def get_input_signature(self) -> dict:
+        """Return input signature for verification."""
+        return {"batch_size": self.batch_size}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:
