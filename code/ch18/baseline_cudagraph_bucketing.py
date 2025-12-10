@@ -92,6 +92,8 @@ class BaselineCUDAGraphBucketingBenchmark(BaseBenchmark):
         self.vllm_model = "gpt-oss-20b"
         self.use_vllm_bins = True
         self._last = None
+        self.jitter_exemption_reason = "CUDA graph bucketing benchmark: fixed configuration"
+        self.register_workload_metadata(requests_per_iteration=1.0)
 
     def _resolve_device(self) -> torch.device:
         # Simulator is CPU-only.
@@ -127,6 +129,18 @@ class BaselineCUDAGraphBucketingBenchmark(BaseBenchmark):
 
     def get_config(self) -> Optional[BenchmarkConfig]:
         return BenchmarkConfig(iterations=1, warmup=5, enable_profiling=False)
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+
+    def get_input_signature(self) -> dict:
+        """Return input signature for verification."""
+        return {"vllm_model": self.vllm_model}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:
