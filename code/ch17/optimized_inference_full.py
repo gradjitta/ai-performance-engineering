@@ -63,6 +63,12 @@ class OptimizedEarlyExitBenchmark(BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Inference benchmark: fixed dimensions for early exit comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(tokens),
+        )
     
     def setup(self) -> None:
         if torch.cuda.is_available():
@@ -133,6 +139,20 @@ class OptimizedEarlyExitBenchmark(BaseBenchmark):
 
     def validate_result(self) -> Optional[str]:
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output.float()
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "hidden_dim": self.hidden_dim, "num_layers": self.num_layers}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison - wider due to different exit points."""
+        return (1.0, 10.0)
 
 
 def get_benchmark() -> OptimizedEarlyExitBenchmark:

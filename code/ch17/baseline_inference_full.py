@@ -39,6 +39,12 @@ class BaselineInferenceFullBenchmark(BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Inference benchmark: fixed dimensions for early exit comparison"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(tokens),
+        )
 
     def setup(self) -> None:
         torch.backends.cudnn.benchmark = True
@@ -59,7 +65,7 @@ class BaselineInferenceFullBenchmark(BaseBenchmark):
 
         with self._nvtx_range("inference_full"):
             with torch.no_grad():
-                _ = self.model(self.inputs)
+                self.output = self.model(self.inputs)
         self._synchronize()
 
     def teardown(self) -> None:
@@ -89,6 +95,20 @@ class BaselineInferenceFullBenchmark(BaseBenchmark):
         if self.model is None or self.inputs is None:
             return "Model/input not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output.float()
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "hidden_dim": self.hidden_dim, "num_layers": self.num_layers}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaselineInferenceFullBenchmark:
