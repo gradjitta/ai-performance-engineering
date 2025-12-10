@@ -117,6 +117,8 @@ class TritonMatmulProtonBenchmark(BaseBenchmark):
             target_label=f"labs/occupancy_tuning:{schedule.name}",
             use_subprocess=True,
         )
+        self.jitter_exemption_reason = "Triton matmul benchmark: fixed dimensions for occupancy testing"
+        self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -207,6 +209,19 @@ class TritonMatmulProtonBenchmark(BaseBenchmark):
             f"triton.{self.schedule.name}.flops": flops,
             f"triton.{self.schedule.name}.arithmetic_intensity": arithmetic_intensity,
         }
+
+    def get_input_signature(self) -> dict:
+        """Return input signature for verification."""
+        return {
+            "M": self._size_m,
+            "N": self._size_n,
+            "K": self._size_k,
+            "schedule": self.schedule.name,
+        }
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 __all__ = [
