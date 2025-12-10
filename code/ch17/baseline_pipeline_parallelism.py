@@ -29,6 +29,12 @@ class BaselinePipelineParallelismBenchmark(BaseBenchmark):
             samples_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(tokens),
         )
+        self.output = None
+        self.jitter_exemption_reason = "Pipeline parallelism benchmark: fixed dimensions for comparison"
+        self.register_workload_metadata(
+            samples_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(tokens),
+        )
     
     def setup(self) -> None:
         """Setup: Initialize model with all layers on single GPU."""
@@ -79,6 +85,19 @@ class BaselinePipelineParallelismBenchmark(BaseBenchmark):
             return "Model not initialized"
         return None
 
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        if self.output is None:
+            raise RuntimeError("Output not available - run benchmark first")
+        return self.output
+
+    def get_input_signature(self) -> dict:
+        """Return workload signature for input verification."""
+        return {"batch_size": self.batch_size, "hidden_size": self.hidden_size}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
