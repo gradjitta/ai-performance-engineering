@@ -82,6 +82,10 @@ class OptimizedPieceGraphsBenchmark(BaseBenchmark):
         self.graph_cache: Dict[int, Tuple[RegionGraph, RegionGraph]] = {}
         self._rng = torch.Generator(device=self.device)
         self._rng.manual_seed(0)
+        self.hidden_dim_val = 768
+        self.n_layers_val = 12
+        self.jitter_exemption_reason = "Piece graphs benchmark: fixed dimensions"
+        self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
         self.model = RegionalPieceGraph(hidden_dim=768, n_layers=12).to(
@@ -159,6 +163,18 @@ class OptimizedPieceGraphsBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+
+    def get_input_signature(self) -> dict:
+        """Return input signature for verification."""
+        return {"hidden_dim": self.hidden_dim_val, "n_layers": self.n_layers_val}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(

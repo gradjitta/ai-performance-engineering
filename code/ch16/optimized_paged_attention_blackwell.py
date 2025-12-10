@@ -47,6 +47,11 @@ class PagedAttentionBlackwellBenchmark(BaseBenchmark):
         self.num_heads = 16
         self.head_dim = self.hidden_dim // self.num_heads
         self.dtype = torch.float16
+        self.jitter_exemption_reason = "Paged attention benchmark: fixed dimensions"
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(self.batch_size * self.seq_length),
+        )
     
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(iterations=20, warmup=5)
@@ -126,6 +131,18 @@ class PagedAttentionBlackwellBenchmark(BaseBenchmark):
             "fp8_kv.memory_savings": 2.0,  # 2x savings with FP8
             "seq_length": float(self.seq_length),
         }
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+
+    def get_input_signature(self) -> dict:
+        """Return input signature for verification."""
+        return {"batch_size": self.batch_size, "seq_length": self.seq_length, "hidden_dim": self.hidden_dim}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

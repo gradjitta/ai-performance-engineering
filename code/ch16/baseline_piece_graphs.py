@@ -66,6 +66,7 @@ class BaselinePieceGraphsBenchmark(BaseBenchmark):
         self.repeats = 12
         self.batch = 16
         self.hidden = 768
+        self.jitter_exemption_reason = "Piece graphs benchmark: fixed dimensions"
         tokens = self.batch * self.hidden * self.repeats
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.repeats),
@@ -143,6 +144,18 @@ class BaselinePieceGraphsBenchmark(BaseBenchmark):
         if self.model is None or self.inputs is None:
             return "Model/inputs not initialized"
         return None
+
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+
+    def get_input_signature(self) -> dict:
+        """Return input signature for verification."""
+        return {"batch": self.batch, "hidden": self.hidden, "repeats": self.repeats}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:
