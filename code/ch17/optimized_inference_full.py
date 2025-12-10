@@ -108,7 +108,7 @@ class OptimizedEarlyExitBenchmark(BaseBenchmark):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("inference_early_exit"):
             with torch.no_grad():
-                _ = self.model.forward_early_exit(self.x, exit_distribution=self.exit_distribution)
+                self.output = self.model.forward_early_exit(self.x, exit_distribution=self.exit_distribution)
         self._synchronize()
 
     def teardown(self) -> None:
