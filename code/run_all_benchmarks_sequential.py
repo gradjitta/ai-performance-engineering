@@ -423,9 +423,9 @@ def main():
     }
     
     with open(log_file_path, 'w') as log_file:
-        log_file.write("Sequential Benchmark Runner with Deep Profiling\n")
+        log_file.write("Sequential Benchmark Runner\n")
         log_file.write(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        log_file.write("Profile: deep_dive (always enabled)\n")
+        log_file.write(f"Profile: {args.profile}\n")
         if args.update_expectations:
             log_file.write("Mode: --update-expectations enabled\n")
         if args.accept_regressions:
