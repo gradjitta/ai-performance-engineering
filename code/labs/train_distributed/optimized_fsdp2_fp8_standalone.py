@@ -61,6 +61,8 @@ class OptimizedFSDP2FP8(BaseBenchmark):
         self.micro_batch_size = micro_batch_size
         self.use_fp8 = use_fp8 and TORCHAO_AVAILABLE
         self._last_metrics: Dict[str, float] = {}
+        self.jitter_exemption_reason = "FSDP2 FP8 standalone benchmark: multi-GPU"
+        self.register_workload_metadata(requests_per_iteration=float(batch_size))
 
         # Initialize distributed
         self._init_distributed()
@@ -251,6 +253,13 @@ def run_benchmark(
         """Return output tensor for verification comparison."""
         return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
 
+    def get_input_signature(self) -> dict:
+        """Return input signature for verification."""
+        return {"batch_size": self.batch_size, "seq_length": self.seq_length}
+
+    def get_output_tolerance(self) -> tuple:
+        """Return tolerance for numerical comparison."""
+        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:
