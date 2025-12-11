@@ -16,8 +16,6 @@ from ch04.optimized_continuous_batching import OptimizedContinuousBatchingBenchm
 
 
 def get_benchmark() -> OptimizedContinuousBatchingBenchmark:
-    if torch.cuda.device_count() < 2:
-        raise RuntimeError("SKIPPED: optimized_continuous_batching_multigpu requires >=2 GPUs")
     return OptimizedContinuousBatchingBenchmark()
 
 

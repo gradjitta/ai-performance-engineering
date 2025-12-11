@@ -23,6 +23,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkMode,
     WorkloadMetadata,
 )
+from ch04.verification_payload_mixin import VerificationPayloadMixin
 
 
 class SimpleNet(nn.Module):
@@ -43,7 +44,7 @@ class SimpleNet(nn.Module):
         return self.linear3(x)
 
 
-class BaselineDataParallelBenchmark(BaseBenchmark):
+class BaselineDataParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """DataParallel baseline - has GIL overhead and single-threaded execution."""
     
     def __init__(self):
@@ -76,6 +77,21 @@ class BaselineDataParallelBenchmark(BaseBenchmark):
         self.target = torch.randn(self.batch_size, 1)
         
         torch.cuda.synchronize(self.device)
+        # Verification payload: small probe on CPU to avoid extra allocs
+        probe = torch.randn(8, self.input_size)
+        output = torch.zeros(8, 1, device=self.device, dtype=torch.float32)
+        self._set_verification_payload(
+            inputs={"probe": probe},
+            output=output,
+            batch_size=probe.shape[0],
+            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+        )
     
     def benchmark_fn(self) -> None:
         """Benchmark: DataParallel training step."""
@@ -138,19 +154,8 @@ class BaselineDataParallelBenchmark(BaseBenchmark):
             return f"Model forward pass failed: {e}"
         return None
 
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {
-            "batch_size": self.batch_size,
-            "input_size": self.input_size,
-            "hidden_size": self.hidden_size,
-        }
-
     def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is not None:
-            return self.output.detach().clone()
-        return torch.tensor([0.0], dtype=torch.float32, device=self.device)
+        return super().get_verify_output()
     
     def get_output_tolerance(self) -> tuple:
         """Return custom tolerance for training output comparison."""

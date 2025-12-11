@@ -36,8 +36,6 @@ class FP8PerChannelLinear(nn.Module):
     
     def __init__(self, in_features: int, out_features: int, bias: bool = True):
         super().__init__()
-        self.output = None
-        self._verify_input = None
         self.in_features = in_features
         self.out_features = out_features
         self.fp8_max = 448.0  # E4M3 max value
@@ -102,9 +100,14 @@ class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
         self.dtype = torch.float32
         self._last = 0.0
         self._error_sum = 0.0
+        self.output = None
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(tokens),
+        )
+        self.register_workload_metadata(
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(tokens),
         )
@@ -112,6 +115,7 @@ class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup: Initialize per-channel FP8 model."""
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         # Create model with per-channel FP8
         self.model = FP8PerChannelLinear(
@@ -150,11 +154,8 @@ class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
             error = (output - ref_output).abs().mean() / ref_output.abs().mean()
             self._error_sum = error.item()
             self._last = float(output.sum())
+            self.output = output.detach().clone()
             self._synchronize()
-        # Capture output AFTER benchmark for verification
-        if self._verify_input is not None and self.model is not None:
-            with torch.no_grad():
-                self.output = self.model(self._verify_input).float().clone()
 
     def teardown(self) -> None:
         """Teardown: Clean up resources."""

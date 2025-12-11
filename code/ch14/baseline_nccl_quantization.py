@@ -44,6 +44,7 @@ class BaselineNCCLQuantizationBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup: initialize synthetic gradients."""
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         self.tensor = torch.randn(self.num_chunks, self.chunk_len, device=self.device, dtype=torch.float32)
         torch.cuda.synchronize(self.device)
 
@@ -69,6 +70,7 @@ class BaselineNCCLQuantizationBenchmark(BaseBenchmark):
                 total += float(dq.sum())
                 self.tensor[idx].copy_(dq.to(self.device))
             self._last = total
+            self.output = self.tensor.detach().clone()
         self._synchronize()
 
 

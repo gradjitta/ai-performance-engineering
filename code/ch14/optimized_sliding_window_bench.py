@@ -100,6 +100,7 @@ class OptimizedSlidingWindowBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup: Initialize Flash Attention model."""
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         self.model = FlashAttentionModule(
             self.embed_dim, self.num_heads
@@ -121,11 +122,8 @@ class OptimizedSlidingWindowBenchmark(BaseBenchmark):
         with torch.no_grad():
             output = self.model(self.x)
             self._last = float(output.sum())
+            self.output = output.detach().clone()
             self._synchronize()
-        # Capture output AFTER benchmark for verification
-        if self._verify_input is not None and self.model is not None:
-            with torch.no_grad():
-                self.output = self.model(self._verify_input).float().clone()
 
     def teardown(self) -> None:
         """Teardown: Clean up resources."""

@@ -48,6 +48,7 @@ class BaselineExpertParallelismBenchmark(BaseBenchmark):
     
     def setup(self) -> None:
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         self.experts = nn.ModuleList([
             ExpertLayer(256).to(self.device) for _ in range(self.num_experts)
         ])
@@ -73,6 +74,7 @@ class BaselineExpertParallelismBenchmark(BaseBenchmark):
                         expert_input = self.input_data[expert_mask]
                         expert_output = self.experts[expert_id](expert_input)
                         output[expert_mask] += expert_output
+                self.output = output.detach().clone()
         self._synchronize()
     
     def teardown(self) -> None:

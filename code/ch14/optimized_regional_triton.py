@@ -224,7 +224,8 @@ class OptimizedRegionalTritonBenchmark(BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(0)
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         self.model = TinyTransformerBlock(
             hidden=self.hidden,
             num_heads=self.num_heads,
@@ -257,7 +258,8 @@ class OptimizedRegionalTritonBenchmark(BaseBenchmark):
         seq_len = self._next_sequence_length()
         x = self.inputs[seq_len]
         with torch.no_grad(), self._nvtx_range("optimized_regional_triton"):
-            _ = self.model(x)
+            out = self.model(x)
+            self.output = out.detach().float().clone()
         self._synchronize()
 
     def teardown(self) -> None:

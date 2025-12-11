@@ -80,6 +80,8 @@ class BaselineInferenceMonolithicBenchmark(BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: initialize model and data."""
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         self.model = SimpleLLM(hidden_dim=1024, num_layers=12).to(self.device).to(torch.bfloat16).eval()
         self.prompt = torch.randint(0, 10000, (1, 256), device=self.device)
         
@@ -105,6 +107,7 @@ class BaselineInferenceMonolithicBenchmark(BaseBenchmark):
                 
                 num_tokens = 16
                 tpot_times_ms = []
+                decoded_tokens = []
                 
                 for i in range(num_tokens):
                     token_start = self._record_start()
@@ -114,11 +117,12 @@ class BaselineInferenceMonolithicBenchmark(BaseBenchmark):
                         token_output = self.model.decode(token_output[:, -1:, :], num_tokens=1)
                     torch.cuda.synchronize(self.device)
                     tpot_times_ms.append(self._record_stop(token_start))
+                    decoded_tokens.append(token_output)
                 
                 self._history["ttft"].append(ttft_ms)
                 self._history["tpot"].extend(tpot_times_ms)
-                # Capture output for verification
-                self.output = token_output.detach()
+                # Capture the full decoded sequence for verification
+                self.output = torch.cat(decoded_tokens, dim=1).detach().clone()
                 return {
                     "ttft_times_ms": [ttft_ms],
                     "tpot_times_ms": tpot_times_ms,

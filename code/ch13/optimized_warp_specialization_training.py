@@ -42,6 +42,7 @@ class OptimizedWarpSpecializationTrainingBenchmark(BaseBenchmark):
             torch.backends.cudnn.deterministic = False
             enable_tf32()
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         # Use FP16 for tensor core acceleration
         self.model = nn.Sequential(
@@ -63,7 +64,7 @@ class OptimizedWarpSpecializationTrainingBenchmark(BaseBenchmark):
             with torch.no_grad():
                 # FP16 operations for tensor core acceleration
                 fused = torch.relu(self.input * self.weight)
-                self.output = self.model(fused)
+                self.output = self.model(fused).detach().float().clone()
         self._synchronize()
     
     def teardown(self) -> None:
@@ -76,7 +77,7 @@ class OptimizedWarpSpecializationTrainingBenchmark(BaseBenchmark):
         return BenchmarkConfig(
             iterations=50,
             warmup=5,
-            use_subprocess=False,
+            use_subprocess=True,
         )
     
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
@@ -100,7 +101,7 @@ class OptimizedWarpSpecializationTrainingBenchmark(BaseBenchmark):
         """Return output tensor for verification comparison."""
         if self.output is None:
             raise RuntimeError("Output not available - run benchmark first")
-        return self.output.float()  # Convert fp16 to fp32
+        return self.output
 
     def get_input_signature(self) -> dict:
         """Return workload signature for input verification."""

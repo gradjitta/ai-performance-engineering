@@ -83,6 +83,7 @@ class BaselineFSDP2FP32CommBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup model with standard FP32 communication."""
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         # Build model
         layers = nn.ModuleList([
@@ -134,7 +135,7 @@ class BaselineFSDP2FP32CommBenchmark(BaseBenchmark):
             # Optimizer step
             self.optimizer.step()
             
-            self._last = float(loss)
+            self._last = float(loss.detach())
             
             # Capture verification output after training step
             with torch.no_grad():

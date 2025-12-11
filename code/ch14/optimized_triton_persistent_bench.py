@@ -136,6 +136,7 @@ class OptimizedTritonPersistentBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup: Initialize matrices."""
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         # Get actual SM count
         props = torch.cuda.get_device_properties(self.device)
@@ -152,7 +153,7 @@ class OptimizedTritonPersistentBenchmark(BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: Persistent GEMM."""
         self.output = matmul_persistent(self.a, self.b, self.num_sms)
-        self._last = float(output.sum())
+        self._last = float(self.output.sum())
         self._synchronize()
 
     def teardown(self) -> None:

@@ -135,6 +135,7 @@ class OptimizedFSDP2FP8CommBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup model with simulated FP8 communication."""
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         # Build model
         layers = nn.ModuleList([
@@ -187,9 +188,8 @@ class OptimizedFSDP2FP8CommBenchmark(BaseBenchmark):
             self.optimizer.zero_grad(set_to_none=True)
             
             # Forward - same as baseline (use autocast for proper gradient dtypes)
-            with torch.amp.autocast('cuda', dtype=torch.bfloat16):
-                output = self.model(self.x)
-                loss = output.sum()
+            output = self.model(self.x)
+            loss = output.sum()
             
             # Backward - gradients will match model dtype with autocast
             loss.backward()
@@ -201,7 +201,7 @@ class OptimizedFSDP2FP8CommBenchmark(BaseBenchmark):
             # Optimizer step
             self.optimizer.step()
             
-            self._last = float(loss)
+            self._last = float(loss.detach())
             
             # Capture verification output after training step
             with torch.no_grad():

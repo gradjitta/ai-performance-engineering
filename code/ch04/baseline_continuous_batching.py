@@ -21,15 +21,15 @@ from ch15.baseline_continuous_batching import BaselineContinuousBatchingBenchmar
 class BaselineContinuousBatchingBenchmark(_BaselineContinuousBatchingBenchmark):
     """Direct alias to the chapter 15 baseline; skips when GPUs < 2 in the wrapper."""
 
+    def setup(self) -> None:
+        if torch.cuda.device_count() < 2:
+            raise RuntimeError("SKIPPED: requires >=2 GPUs")
+        super().setup()
+
     def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+        return super().get_verify_output()
 
 
 
 def get_benchmark() -> BaselineContinuousBatchingBenchmark:
-    # Single-GPU runs are handled by the *multigpu wrapper raising SKIPPED",
-    # but keep a safety check here to avoid accidental execution.
-    if torch.cuda.device_count() < 2:
-        raise RuntimeError("SKIPPED: baseline_continuous_batching requires >=2 GPUs")
     return BaselineContinuousBatchingBenchmark()

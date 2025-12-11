@@ -69,11 +69,12 @@ class OptimizedFlexAttentionBenchmark(BaseBenchmark):
         self.model = None
         self.embed_dim = 1024
         self.seq_len = 1024
-        self.batch = 4
+        self.batch = 1
         self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
         self.num_heads = 16
         self._last = 0.0
-        tokens = self.batch * self.seq_len
+        self.repeat_passes = 1
+        tokens = self.seq_len * self.num_heads * self.repeat_passes
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch),
             tokens_per_iteration=float(tokens),
@@ -92,11 +93,9 @@ class OptimizedFlexAttentionBenchmark(BaseBenchmark):
             torch.backends.cudnn.benchmark = True
             torch.backends.cudnn.deterministic = False
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         block = FlexAttentionBlock(self.embed_dim, self.num_heads, self.dtype).to(self.device)
         block = block.eval()
-        compile_fn = getattr(torch, "compile", None)
-        if callable(compile_fn):
-                block = compile_fn(block, mode="reduce-overhead", dynamic=False)
         self.model = block
 
         self.graph_input = torch.randn(
@@ -127,6 +126,7 @@ class OptimizedFlexAttentionBenchmark(BaseBenchmark):
                 raise RuntimeError("Model not initialized")
             out = self.model(self.graph_input)
             self._last = float(out.sum())
+            self.output = out.detach().clone()
             self._synchronize()
 
     

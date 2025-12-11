@@ -72,8 +72,9 @@ class BaselineRegionalCompilationBenchmark(BaseBenchmark):
         super().__init__()
         self.model: Optional[DummyTransformer] = None
         self.inputs: Optional[torch.Tensor] = None
+        self._verify_input: Optional[torch.Tensor] = None
         # Use a mid-sized config so the full-graph compilation cost is noticeable.
-        self.choice = MODEL_CANDIDATES[4]  # 6B-style config (24x4096)
+        self.choice = MODEL_CANDIDATES[-1]  # 1B-style config (4x1024)
         tokens = self.choice["seq_len"] * self.choice["d_model"]
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -81,12 +82,20 @@ class BaselineRegionalCompilationBenchmark(BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(0)
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         n_layers = self.choice["n_layers"]
         d_model = self.choice["d_model"]
         d_ff = self.choice["d_ff"]
-        self.model = DummyTransformer(n_layers, d_model, d_ff).to(self.device).eval()
+        self.model = DummyTransformer(n_layers, d_model, d_ff).to(self.device, dtype=torch.bfloat16).eval()
         self.inputs = torch.randn(
+            1,
+            self.choice["seq_len"],
+            d_model,
+            device=self.device,
+            dtype=torch.bfloat16,
+        )
+        self._verify_input = torch.randn(
             1,
             self.choice["seq_len"],
             d_model,
@@ -114,20 +123,16 @@ class BaselineRegionalCompilationBenchmark(BaseBenchmark):
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
+        if self.model is None or self.inputs is None:
+            raise RuntimeError("Model/inputs not initialized")
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
         with nvtx_range("baseline_regional_compilation", enable=enable_nvtx):
-            try:
-                with error_on_graph_break(True):
-                    compiled = torch.compile(self.model, mode="max-autotune")  # type: ignore[attr-defined]
-                _ = compiled(self.inputs)  # type: ignore[misc]
-            except Exception:
-                # Show the pitfall rather than failing the harness run
-                pass
+            with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+                self.output = self.model(self.inputs).float().clone()
             torch.cuda.synchronize(self.device)
-        # Capture output AFTER benchmark for verification
-        if self._verify_input is not None and self.model is not None:
-            with torch.no_grad():
+        if self._verify_input is not None:
+            with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                 self.output = self.model(self._verify_input).float().clone()
 
     def teardown(self) -> None:

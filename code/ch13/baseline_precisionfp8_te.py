@@ -103,6 +103,7 @@ class BaselineTEFP8Benchmark(BaseBenchmark):
         self._tf32_state = configure_tf32(enable_matmul=False, enable_cudnn=False)
 
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         model = TEFP16MLP(hidden_dim=self.hidden_dim).to(self.device).train().half()
         self.model = model
         self.inputs = torch.randn(

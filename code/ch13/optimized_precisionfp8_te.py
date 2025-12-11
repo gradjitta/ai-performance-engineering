@@ -53,15 +53,17 @@ except ImportError as exc:  # pragma: no cover
 
 
 class TEFP8MLP(nn.Module):
-    """Single TELinear block that approximates the fused MLP in FP8."""
+    """Two-layer MLP using Transformer Engine Linear layers with FP8."""
 
     def __init__(self, hidden_dim: int = 1024):
         super().__init__()
-        self.proj = TELinear(hidden_dim, hidden_dim, bias=True)
+        self.fc1 = TELinear(hidden_dim, hidden_dim * 2, bias=True)
+        self.fc2 = TELinear(hidden_dim * 2, hidden_dim, bias=True)
         self.activation = nn.GELU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.activation(self.proj(x))
+        x = self.activation(self.fc1(x))
+        return self.fc2(x)
 
 
 class OptimizedTEFP8Benchmark(BaseBenchmark):
@@ -95,7 +97,6 @@ class OptimizedTEFP8Benchmark(BaseBenchmark):
         self.compute_dtype = torch.float16
         self.input_pool: List[torch.Tensor] = []
         self.target_pool: List[torch.Tensor] = []
-        self.pool_index = 0
         self.static_input: Optional[torch.Tensor] = None
         self.static_target: Optional[torch.Tensor] = None
         self.graph: Optional[torch.cuda.CUDAGraph] = None
@@ -115,21 +116,20 @@ class OptimizedTEFP8Benchmark(BaseBenchmark):
         enable_tf32()
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.deterministic = False
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
 
         model = TEFP8MLP(hidden_dim=self.hidden_dim).to(self.device, dtype=self.compute_dtype).train()
         self.model = model
-        torch.manual_seed(42)
-        self.input_pool = [
-            torch.randn(
-                self.batch_size,
-                self.hidden_dim,
-                device=self.device,
-                dtype=self.compute_dtype,
-            )
-            for _ in range(8)
-        ]
-        self.target_pool = [torch.randn_like(t) for t in self.input_pool]
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01, foreach=True)
+        fixed_input = torch.randn(
+            self.batch_size,
+            self.hidden_dim,
+            device=self.device,
+            dtype=self.compute_dtype,
+        )
+        self.input_pool = [fixed_input]
+        self.target_pool = [torch.randn_like(fixed_input)]
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01, foreach=False)
         self.criterion = nn.MSELoss()
 
         # Warmup to initialize optimizer state.
@@ -169,9 +169,8 @@ class OptimizedTEFP8Benchmark(BaseBenchmark):
         if self.graph is None or self.static_input is None or self.static_target is None:
             raise RuntimeError("CUDA graph not initialized")
 
-        current_input = self.input_pool[self.pool_index]
-        current_target = self.target_pool[self.pool_index]
-        self.pool_index = (self.pool_index + 1) % len(self.input_pool)
+        current_input = self.input_pool[0]
+        current_target = self.target_pool[0]
 
         with self._nvtx_range("optimized_precisionfp8_te"):
             self.static_input.copy_(current_input)

@@ -84,9 +84,7 @@ class WideExpertParallelBenchmark(BaseBenchmark):
 
     def benchmark_fn(self) -> Optional[dict]:
         if self.model is None or self.inputs is None:
-            if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
+            raise RuntimeError("Model or inputs not initialized")
 
         enable_nvtx = get_nvtx_enabled(self.get_config())
         start = self._record_start()
@@ -122,7 +120,10 @@ class WideExpertParallelBenchmark(BaseBenchmark):
 
     def get_input_signature(self) -> dict:
         """Return input signature for verification."""
-        return {"type": "wide_expert_parallel"}
+        seq_len = self.inputs.shape[1] if self.inputs is not None else 16
+        hidden = self.inputs.shape[2] if self.inputs is not None else 1024
+        batch = self.inputs.shape[0] if self.inputs is not None else 64
+        return {"type": "wide_expert_parallel", "shapes": {"tokens": (batch, seq_len, hidden)}}
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""

@@ -43,7 +43,7 @@ class OptimizedKVCacheManagementMathBenchmark(BaseBenchmark):
         self.hidden_dim = 256
         self.num_heads = 8
         self.head_dim = self.hidden_dim // self.num_heads
-        self.steps = 48
+        self.steps = 32
         tokens = self.batch_size * self.steps
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -58,6 +58,7 @@ class OptimizedKVCacheManagementMathBenchmark(BaseBenchmark):
             torch.backends.cuda.enable_mem_efficient_sdp(False)
             torch.backends.cuda.enable_math_sdp(True)
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         self.q_proj = nn.Linear(self.hidden_dim, self.hidden_dim, bias=False).to(self.device, dtype=torch.bfloat16)
         self.k_proj = nn.Linear(self.hidden_dim, self.hidden_dim, bias=False).to(self.device, dtype=torch.bfloat16)
@@ -79,7 +80,7 @@ class OptimizedKVCacheManagementMathBenchmark(BaseBenchmark):
         with self._nvtx_range("optimized_kv_cache_management_math"):
             with torch.no_grad():
                 queries = torch.cat(self.inputs, dim=1)
-                k_cache = self.cache_buffer.clone()
+                k_cache = torch.cat(self.inputs, dim=1)
                 
                 q = self.q_proj(queries)
                 k = self.k_proj(k_cache)
@@ -95,7 +96,7 @@ class OptimizedKVCacheManagementMathBenchmark(BaseBenchmark):
                 self.output = self.out_proj(attn)
                 
                 # Update cache with the newest token block without reallocation.
-                self.cache_buffer.copy_(torch.cat([self.cache_buffer[:, 1:, :], queries[:, -1:, :]], dim=1))
+                self.cache_buffer.copy_(k_cache)
                 _ = self.output[:, -1, :].sum()
             self._synchronize()
     

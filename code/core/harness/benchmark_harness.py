@@ -784,6 +784,7 @@ class BaseBenchmark:
         self.device = self._resolve_device()
         self._config = None  # Cache for get_config()
         self._workload_metadata: Optional[WorkloadMetadata] = None
+        self._workload_registered: bool = False
     
     def _resolve_device(self) -> torch.device:
         """Resolve CUDA device, failing fast if CUDA is not available.
@@ -998,6 +999,8 @@ class BaseBenchmark:
             custom_unit_name=custom_unit_name,
             goodput=goodput,
         )
+        # Mark explicit registration for compliance/audit tooling.
+        self._workload_registered = True
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         """Return workload metadata if registered."""

@@ -36,6 +36,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
     WorkloadMetadata,
 )
 from core.utils.compile_utils import enable_tf32
+from ch04.verification_payload_mixin import VerificationPayloadMixin
 
 
 class SimpleNet(nn.Module):
@@ -54,7 +55,7 @@ class SimpleNet(nn.Module):
         return self.linear3(x)
 
 
-class OptimizedDdpBenchmark(BaseBenchmark):
+class OptimizedDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized: Direct GPU execution without DataParallel wrapper.
     
     Key optimizations vs DataParallel baseline:
@@ -100,6 +101,20 @@ class OptimizedDdpBenchmark(BaseBenchmark):
         self.targets.append(cpu_target.to(self.device))
         
         torch.cuda.synchronize(self.device)
+        probe = torch.randn(8, self.input_size, device=self.device)
+        output = torch.zeros(8, 1, device=self.device, dtype=torch.float32)
+        self._set_verification_payload(
+            inputs={"probe": probe},
+            output=output,
+            batch_size=probe.shape[0],
+            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+        )
 
     def benchmark_fn(self) -> None:
         from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
@@ -162,9 +177,7 @@ class OptimizedDdpBenchmark(BaseBenchmark):
 
     def get_verify_output(self) -> torch.Tensor:
         """Return output tensor for verification comparison."""
-        if self.output is not None:
-            return self.output.detach().clone()
-        return torch.tensor([0.0], dtype=torch.float32, device=self.device)
+        return super().get_verify_output()
     
     def get_output_tolerance(self) -> tuple:
         """Return custom tolerance for training output comparison."""

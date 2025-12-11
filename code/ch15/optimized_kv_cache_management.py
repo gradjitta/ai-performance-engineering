@@ -61,6 +61,7 @@ class OptimizedKVCacheManagementBenchmark(BaseBenchmark):
             torch.backends.cuda.enable_mem_efficient_sdp(False)
             torch.backends.cuda.enable_math_sdp(False)
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         self.q_proj = nn.Linear(self.hidden_dim, self.hidden_dim, bias=False).to(self.device, dtype=torch.bfloat16)
         self.k_proj = nn.Linear(self.hidden_dim, self.hidden_dim, bias=False).to(self.device, dtype=torch.bfloat16)
@@ -91,7 +92,7 @@ class OptimizedKVCacheManagementBenchmark(BaseBenchmark):
         with self._nvtx_range("optimized_kv_cache_management"):
             with torch.no_grad():
                 queries = torch.cat(self.inputs, dim=1)
-                k_cache = self.cache_buffer.clone()
+                k_cache = torch.cat(self.inputs, dim=1)
                 
                 q = self.q_proj(queries)
                 k = self.k_proj(k_cache)
@@ -106,8 +107,8 @@ class OptimizedKVCacheManagementBenchmark(BaseBenchmark):
                 output = self.out_proj(attn)
                 
                 # Update cache with the newest token block without reallocation.
-                self.cache_buffer.copy_(torch.cat([self.cache_buffer[:, 1:, :], queries[:, -1:, :]], dim=1))
-                self.output = output.clone()
+                self.cache_buffer.copy_(k_cache)
+                self.output = output.detach().clone()
             self._synchronize()
     
     def teardown(self) -> None:

@@ -326,15 +326,23 @@ class VLLMMoEInferenceBenchmark(BaseBenchmark):
             batch_size=env_override_int("OPT_MOE_BATCH", 1),
             context_window=env_override_int("OPT_MOE_CONTEXT", 512),
             decode_tokens=env_override_int("OPT_MOE_DECODE", 32),
-            router_noise=env_override_float("OPT_MOE_ROUTER_NOISE", 0.05),
+            router_noise=env_override_float("OPT_MOE_ROUTER_NOISE", 0.0),
             dtype=torch.bfloat16,
         )
 
     # --------------------------------------------------------------------- setup
     def setup(self) -> None:
-        torch.manual_seed(21)
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         cfg = self.config
         self.model = SimpleMoEGPT(cfg, device=self.device).eval()
+
+        self.prompts = torch.randint(
+            0,
+            cfg.vocab_size,
+            (cfg.batch_size, cfg.context_window),
+            device=self.device,
+        )
 
         draft_cfg = MoeInferenceConfig(
             vocab_size=cfg.vocab_size,
@@ -359,13 +367,6 @@ class VLLMMoEInferenceBenchmark(BaseBenchmark):
         elif DEFAULT_SPEC_CONFIG.exists():
             config_path = DEFAULT_SPEC_CONFIG
         self.spec_config = SpeculatorConfig.load(config_path)
-
-        self.prompts = torch.randint(
-            0,
-            cfg.vocab_size,
-            (cfg.batch_size, cfg.context_window),
-            device=self.device,
-        )
         self.paged_cache = PagedKVCache(
             batch_size=cfg.batch_size,
             max_tokens=cfg.context_window + cfg.decode_tokens,
@@ -379,6 +380,8 @@ class VLLMMoEInferenceBenchmark(BaseBenchmark):
             draft_model=self.draft_model,
             config=self.spec_config,
         )
+        # Force eager path so verification can capture decode tokens deterministically.
+        self.graph_mode = GraphMode.EAGER
         self._refresh_router_metrics()
         torch.cuda.synchronize(self.device)
         if torch.cuda.is_available() and hasattr(torch.cuda, "reset_peak_memory_stats"):
@@ -563,7 +566,7 @@ class VLLMMoEInferenceBenchmark(BaseBenchmark):
         tpot_times.extend([per_token_ms] * self.config.decode_tokens)
         return ttft_times, tpot_times, "piecewise_graph"
 
-    def _run_eager_path(self) -> Tuple[List[float], List[float], str, float, float]:
+    def _run_eager_path(self) -> Tuple[List[float], List[float], str, float, float, torch.Tensor]:
         if any(obj is None for obj in (self.model, self.prompts, self.paged_cache, self.spec_decoder)):
             raise RuntimeError("Benchmark not initialized")
 
@@ -587,14 +590,14 @@ class VLLMMoEInferenceBenchmark(BaseBenchmark):
         next_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
         with torch.no_grad(), self._nvtx_range("speculative_decode"):
             chunk_used = spec.current_chunk_size()
-            _, decode_times = spec.decode(
+            tokens, decode_times = spec.decode(
                 next_tokens,
                 cfg.decode_tokens,
                 paged_cache,
                 base_position=cfg.context_window,
             )
             tpot_times.extend(decode_times)
-        return ttft_times, tpot_times, "eager", spec.acceptance_rate(), float(chunk_used)
+        return ttft_times, tpot_times, "eager", spec.acceptance_rate(), float(chunk_used), tokens
 
     # --------------------------------------------------------------- benchmark_fn
     def benchmark_fn(self) -> Dict[str, List[float]]:
@@ -635,10 +638,11 @@ class VLLMMoEInferenceBenchmark(BaseBenchmark):
         spec_accept_used: Optional[float] = None
         spec_chunk_used: Optional[float] = None
 
+        tokens: Optional[torch.Tensor] = None
         # Select execution mode based on requested graph mode and capture viability.
         with self._nvtx_range("graph_mode_select"):
             if self.graph_mode == GraphMode.EAGER:
-                ttft_times, tpot_times, graph_path, spec_accept_used, spec_chunk_used = self._run_eager_path()
+                ttft_times, tpot_times, graph_path, spec_accept_used, spec_chunk_used, tokens = self._run_eager_path()
             elif self.graph_mode == GraphMode.FULL and self._can_use_full_graph():
                 ttft_times, tpot_times, graph_path = self._replay_full_graph()
                 spec_accept_used = self._captured_full_spec_accept
@@ -658,7 +662,7 @@ class VLLMMoEInferenceBenchmark(BaseBenchmark):
                     spec_accept_used = self._captured_piecewise_spec_accept
                     spec_chunk_used = self._captured_piecewise_spec_chunk
             else:
-                ttft_times, tpot_times, graph_path, spec_accept_used, spec_chunk_used = self._run_eager_path()
+                ttft_times, tpot_times, graph_path, spec_accept_used, spec_chunk_used, tokens = self._run_eager_path()
 
         telemetry_after = query_gpu_telemetry(logical_index)
 
@@ -695,6 +699,8 @@ class VLLMMoEInferenceBenchmark(BaseBenchmark):
             if peak_bytes:
                 self._history["memory_gb"].append(peak_bytes / (1024 ** 3))
 
+        if tokens is not None:
+            self.output = tokens.detach().float().clone()
         self._iteration += 1
         self._refresh_router_metrics()
         return {
@@ -785,13 +791,9 @@ class VLLMMoEInferenceBenchmark(BaseBenchmark):
 
     def get_verify_output(self) -> torch.Tensor:
         """Return output tensor for verification comparison."""
-        # Convert timing metrics to tensor for verification
-        import torch
-        if not self._history.get("ttft"):
+        if self.output is None:
             raise RuntimeError("benchmark_fn() must be called before verification")
-        ttft = self._history.get("ttft", [0.0])
-        tpot = self._history.get("tpot", [0.0])
-        return torch.tensor([sum(ttft)/len(ttft) if ttft else 0.0, sum(tpot)/len(tpot) if tpot else 0.0], dtype=torch.float32)
+        return self.output.detach().clone()
 
     def get_input_signature(self) -> dict:
         """Return input signature for verification."""

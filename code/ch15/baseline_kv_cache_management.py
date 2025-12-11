@@ -15,7 +15,10 @@ class BaselineKVCacheManagementBenchmark(BaseBenchmark):
     
     def __init__(self):
         super().__init__()
-        self.model: Optional[nn.MultiheadAttention] = None
+        self.q_proj: Optional[nn.Linear] = None
+        self.k_proj: Optional[nn.Linear] = None
+        self.v_proj: Optional[nn.Linear] = None
+        self.out_proj: Optional[nn.Linear] = None
         self.inputs: Optional[list[torch.Tensor]] = None
         self.hidden_dim = 256
         self.num_heads = 8
@@ -35,31 +38,52 @@ class BaselineKVCacheManagementBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Initialize model without KV cache management."""
         torch.manual_seed(42)
-        self.model = nn.MultiheadAttention(
-            embed_dim=self.hidden_dim,
-            num_heads=self.num_heads,
-            batch_first=True,
-        ).to(self.device).eval()
+        torch.cuda.manual_seed_all(42)
+        self.q_proj = nn.Linear(self.hidden_dim, self.hidden_dim, bias=False).to(self.device, dtype=torch.bfloat16)
+        self.k_proj = nn.Linear(self.hidden_dim, self.hidden_dim, bias=False).to(self.device, dtype=torch.bfloat16)
+        self.v_proj = nn.Linear(self.hidden_dim, self.hidden_dim, bias=False).to(self.device, dtype=torch.bfloat16)
+        self.out_proj = nn.Linear(self.hidden_dim, self.hidden_dim, bias=False).to(self.device, dtype=torch.bfloat16)
+        for module in (self.q_proj, self.k_proj, self.v_proj, self.out_proj):
+            module.eval()
         
         self.inputs = [
-            torch.randn(self.batch_size, 1, self.hidden_dim, device=self.device)
+            torch.randn(self.batch_size, 1, self.hidden_dim, device=self.device, dtype=torch.bfloat16)
             for _ in range(self.steps)
         ]
         self._synchronize()
     
     def benchmark_fn(self) -> None:
         """Benchmark: KV cache without management."""
-        assert self.model is not None and self.inputs is not None
+        assert self.q_proj is not None and self.k_proj is not None and self.v_proj is not None and self.out_proj is not None
+        assert self.inputs is not None
         with self._nvtx_range("baseline_kv_cache_management"):
             with torch.no_grad():
-                for step, query in enumerate(self.inputs):
-                    all_inputs = torch.cat(self.inputs[: step + 1], dim=1)
-                    output, _ = self.model(query, all_inputs, all_inputs)
-                    _ = output.sum()
+                queries = torch.cat(self.inputs, dim=1)
+                all_inputs = torch.cat(self.inputs, dim=1)
+
+                q = self.q_proj(queries)
+                k = self.k_proj(all_inputs)
+                v = self.v_proj(all_inputs)
+
+                head_dim = self.hidden_dim // self.num_heads
+                q = q.view(self.batch_size, -1, self.num_heads, head_dim).transpose(1, 2)
+                k = k.view(self.batch_size, -1, self.num_heads, head_dim).transpose(1, 2)
+                v = v.view(self.batch_size, -1, self.num_heads, head_dim).transpose(1, 2)
+
+                attn = torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=True)
+                attn = attn.transpose(1, 2).contiguous().view(self.batch_size, -1, self.hidden_dim)
+                output = self.out_proj(attn)
+                self.output = output.detach().clone()
+                _ = output[:, -1, :].sum()
             self._synchronize()
+        if self.output is None:
+            raise RuntimeError("No output computed during benchmark")
     
     def teardown(self) -> None:
-        self.model = None
+        self.q_proj = None
+        self.k_proj = None
+        self.v_proj = None
+        self.out_proj = None
         self.inputs = None
         torch.cuda.empty_cache()
     
@@ -85,8 +109,8 @@ class BaselineKVCacheManagementBenchmark(BaseBenchmark):
         )
 
     def validate_result(self) -> Optional[str]:
-        if self.model is None:
-            return "Model not initialized"
+        if any(layer is None for layer in (self.q_proj, self.k_proj, self.v_proj, self.out_proj)):
+            return "Projection layers not initialized"
         if self.inputs is None:
             return "Inputs not initialized"
         return None
@@ -95,7 +119,7 @@ class BaselineKVCacheManagementBenchmark(BaseBenchmark):
         """Return output tensor for verification comparison."""
         if self.output is None:
             raise RuntimeError("Output not available - run benchmark first")
-        return self.output
+        return self.output.detach().clone()
 
     def get_input_signature(self) -> dict:
         """Return workload signature for input verification."""

@@ -34,6 +34,7 @@ class OptimizedIlpBasicBenchmark(BaseBenchmark):
         super().__init__()
         self.input = None
         self.output = None
+        self.parameter_count = 0
         # Target workload size for optimal ILP demonstration
         original_N = 100_000_000  # 100M elements (~400 MB FP32)
         
@@ -86,6 +87,7 @@ class OptimizedIlpBasicBenchmark(BaseBenchmark):
         
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.output = torch.empty(self.N, device=self.device, dtype=torch.float32)
+        self.parameter_count = 0
         
         # Pre-compute verification output (algebraically equivalent to baseline)
         # Baseline: ((input * 2 + 1) * 3) - 5 = input * 6 - 2
@@ -171,9 +173,33 @@ class OptimizedIlpBasicBenchmark(BaseBenchmark):
         sample_size = min(1024, self.output.numel())
         return self.output.reshape(-1)[:sample_size].detach().clone()
 
+    def get_verify_inputs(self) -> dict:
+        if self.input is None:
+            raise RuntimeError("setup() must be called before get_verify_inputs()")
+        return {"input": self.input}
+
     def get_input_signature(self) -> dict:
         """Return input signature for verification."""
-        return {"N": self.N}
+        if self.input is None or self.output is None:
+            raise RuntimeError("setup() must be called before get_input_signature()")
+        return {
+            "shapes": {
+                "input": tuple(self.input.shape),
+                "output": tuple(self.output.shape),
+            },
+            "dtypes": {
+                "input": str(self.input.dtype),
+                "output": str(self.output.dtype),
+            },
+            "batch_size": int(self.N),
+            "parameter_count": int(self.parameter_count),
+            "precision_flags": {
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+        }
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""

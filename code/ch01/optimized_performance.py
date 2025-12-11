@@ -38,6 +38,8 @@ class OptimizedPerformanceBatchBenchmark(BaseBenchmark):
         self.fusion = 4
         self._verify_input = None
         self._verify_output = None
+        self.parameter_count = 0
+        self._workload_registered = False
         tokens = self.batch_size * self.workload.performance_microbatches * 256
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.workload.performance_microbatches),
@@ -71,6 +73,7 @@ class OptimizedPerformanceBatchBenchmark(BaseBenchmark):
         
         # Match baseline: use eval() mode (baseline has this even though it does backward pass)
         self.model.eval()
+        self.parameter_count = sum(p.numel() for p in self.model.parameters())
         microbatches = [
             torch.randn(self.batch_size, 256, device=self.device, dtype=dtype).contiguous()
             for _ in range(self.workload.performance_microbatches)
@@ -106,6 +109,9 @@ class OptimizedPerformanceBatchBenchmark(BaseBenchmark):
             target = torch.cat(self.targets[start : start + self.fusion], dim=0)
             self._fused_batches.append(batch)
             self._fused_targets.append(target)
+        samples = float(self.batch_size * self.workload.performance_microbatches)
+        self.register_workload_metadata(samples_per_iteration=samples)
+        self._workload_registered = True
     
     def benchmark_fn(self) -> None:
         """Function to benchmark."""
@@ -177,10 +183,30 @@ class OptimizedPerformanceBatchBenchmark(BaseBenchmark):
             raise RuntimeError("setup() must be called before verification")
         return self._verify_output
 
+    def get_verify_inputs(self) -> dict:
+        if self._verify_input is None:
+            raise RuntimeError("setup() must be called before get_verify_inputs()")
+        return {"verify_input": self._verify_input}
+
     def get_input_signature(self) -> dict:
         """Return input signature for verification."""
+        if self._verify_input is None:
+            raise RuntimeError("setup() must be called before get_input_signature()")
         return {
+            "shapes": {
+                "verify_input": tuple(self._verify_input.shape),
+            },
+            "dtypes": {
+                "verify_input": str(self._verify_input.dtype),
+            },
             "batch_size": self.batch_size,
+            "parameter_count": int(self.parameter_count),
+            "precision_flags": {
+                "fp16": True if self.device.type == "cuda" else False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
             "num_microbatches": self.workload.performance_microbatches,
             "input_dim": 256,
             "output_dim": 10,

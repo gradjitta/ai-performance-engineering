@@ -6,6 +6,7 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
+import copy
 
 from core.utils.compile_utils import enable_tf32
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
@@ -43,9 +44,7 @@ class OptimizedAutogradCompiledBenchmark(BaseBenchmark):
         self.capture_stream: Optional[torch.cuda.Stream] = None
         self.static_input: Optional[torch.Tensor] = None
         self.static_target: Optional[torch.Tensor] = None
-        self.input_pool: list[torch.Tensor] = []
-        self.target_pool: list[torch.Tensor] = []
-        self.pool_index = 0
+        self.output_buffer: Optional[torch.Tensor] = None
         tokens = self.batch_size * self.hidden_dim
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -64,57 +63,55 @@ class OptimizedAutogradCompiledBenchmark(BaseBenchmark):
             torch.backends.cudnn.deterministic = False
             enable_tf32()
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         self.model = SimpleModel(hidden_dim=self.hidden_dim).to(self.device).half().train()
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01, foreach=True)
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01)
         self.criterion = nn.MSELoss()
 
-        self.input_pool = [
-            torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float16)
-            for _ in range(8)
-        ]
-        self.target_pool = [torch.randn_like(inp) for inp in self.input_pool]
-        self.inputs = self.input_pool[0]
-        self.targets = self.target_pool[0]
+        self.inputs = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float16)
+        self.targets = torch.randn_like(self.inputs)
+        self.output_buffer = torch.empty_like(self.inputs)
 
-        for idx in range(3):
-            self._train_step(self.input_pool[idx], self.target_pool[idx])
+        for _ in range(3):
+            self._train_step(self.inputs, self.targets)
         self._synchronize()
 
-        self.static_input = self.input_pool[0].clone()
-        self.static_target = self.target_pool[0].clone()
+        self.static_input = self.inputs.clone()
+        self.static_target = self.targets.clone()
         self.graph = torch.cuda.CUDAGraph()
         self.capture_stream = torch.cuda.Stream()
+        saved_model_state = copy.deepcopy(self.model.state_dict())
+        saved_opt_state = copy.deepcopy(self.optimizer.state_dict())
         with torch.cuda.stream(self.capture_stream):
-            for _ in range(2):
-                self._train_step(self.static_input, self.static_target)
-            torch.cuda.synchronize()
             with torch.cuda.graph(self.graph, stream=self.capture_stream):
-                self._train_step(self.static_input, self.static_target)
+                self._train_step(self.static_input, self.static_target, capture_output=True)
         self.capture_stream.synchronize()
+        # Restore model/optimizer to post-setup state so capture does not advance training
+        self.model.load_state_dict(saved_model_state)
+        self.optimizer.load_state_dict(saved_opt_state)
+        self.output_buffer.zero_()
     
     def benchmark_fn(self) -> None:
         """Function to benchmark - compiled autograd."""
         if self.graph is None or self.static_input is None or self.static_target is None:
             raise RuntimeError("CUDA graph not initialized")
 
-        current_input = self.input_pool[self.pool_index]
-        current_target = self.target_pool[self.pool_index]
-        self.pool_index = (self.pool_index + 1) % len(self.input_pool)
-
         with self._nvtx_range("autograd_standard"):
-            self.static_input.copy_(current_input)
-            self.static_target.copy_(current_target)
+            self.static_input.copy_(self.inputs)
+            self.static_target.copy_(self.targets)
             self.graph.replay()
-            # Store output for verification (forward pass with current model weights)
-            with torch.no_grad():
-                self.output = self.model(current_input).detach().clone()
+            if self.output_buffer is None:
+                raise RuntimeError("Output buffer not initialized")
+            self.output = self.output_buffer.detach().clone()
         self._synchronize()
 
-    def _train_step(self, batch: torch.Tensor, target: torch.Tensor) -> None:
+    def _train_step(self, batch: torch.Tensor, target: torch.Tensor, capture_output: bool = False) -> None:
         assert self.model is not None and self.optimizer is not None and self.criterion is not None
         self.optimizer.zero_grad(set_to_none=True)
         outputs = self.model(batch)
+        if capture_output and self.output_buffer is not None:
+            self.output_buffer.copy_(outputs)
         loss = self.criterion(outputs, target)
         loss.backward()
         self.optimizer.step()
@@ -130,8 +127,7 @@ class OptimizedAutogradCompiledBenchmark(BaseBenchmark):
         self.static_input = None
         self.static_target = None
         self.capture_stream = None
-        self.input_pool = []
-        self.target_pool = []
+        self.output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:

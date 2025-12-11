@@ -15,10 +15,15 @@ import torch
 from ch04.optimized_nvlink import OptimizedNVLinkBenchmark
 
 
+class MultiGPUOptimizedNVLinkBenchmark(OptimizedNVLinkBenchmark):
+    def setup(self) -> None:  # type: ignore[override]
+        if torch.cuda.device_count() < 2:
+            raise RuntimeError("SKIPPED: requires >=2 GPUs")
+        super().setup()
+
+
 def get_benchmark() -> OptimizedNVLinkBenchmark:
-    if torch.cuda.device_count() < 2:
-        raise RuntimeError("SKIPPED: optimized_nvlink_multigpu requires >=2 GPUs")
-    return OptimizedNVLinkBenchmark()
+    return MultiGPUOptimizedNVLinkBenchmark()
 
 
 if __name__ == "__main__":

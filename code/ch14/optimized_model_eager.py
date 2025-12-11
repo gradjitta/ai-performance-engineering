@@ -108,6 +108,8 @@ class OptimizedModelCompiledBenchmark(BaseBenchmark):
             torch.backends.cudnn.benchmark = True
             torch.backends.cudnn.deterministic = False
             enable_tf32()  # Enable TF32 for speedup
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         # Use BF16 for tensor core acceleration (key optimization over baseline FP32)
         dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
@@ -163,9 +165,9 @@ class OptimizedModelCompiledBenchmark(BaseBenchmark):
         return BenchmarkConfig(
             iterations=50,
             warmup=10,
-            setup_timeout_seconds=180,  # torch.compile compilation can take 60-120 seconds
-            measurement_timeout_seconds=180,  # torch.compile may need compilation during warmup/measurement
-            use_subprocess=False,  # Disable subprocess to avoid pydantic import issues with torch.compile
+            setup_timeout_seconds=1200,  # torch.compile compilation can be lengthy
+            measurement_timeout_seconds=1200,
+            use_subprocess=True,
         )
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""

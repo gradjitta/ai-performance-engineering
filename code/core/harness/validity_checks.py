@@ -669,13 +669,14 @@ class StreamAuditor:
         try:
             self._orig_stream_cls = torch.cuda.Stream
             auditor = self
+            orig_stream_cls = self._orig_stream_cls
             
-            class _AuditedStream(torch.cuda.Stream):  # type: ignore[misc]
-                def __init__(self, *args, **kwargs):
-                    super().__init__(*args, **kwargs)
-                    auditor.record_stream_event(self, operation="stream_create")
+            def _audited_stream(*args, **kwargs):  # type: ignore[override]
+                stream = orig_stream_cls(*args, **kwargs)
+                auditor.record_stream_event(stream, operation="stream_create")
+                return stream
             
-            torch.cuda.Stream = _AuditedStream  # type: ignore[assignment]
+            torch.cuda.Stream = _audited_stream  # type: ignore[assignment]
         except Exception:
             self._orig_stream_cls = None
         

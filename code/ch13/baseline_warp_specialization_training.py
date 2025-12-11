@@ -36,6 +36,7 @@ class BaselineWarpSpecializationTrainingBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Allocate tensors and build a simple MLP to mimic training compute."""
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         self.model = nn.Sequential(
             nn.Linear(self.width, 4096),
             nn.GELU(),
@@ -54,7 +55,7 @@ class BaselineWarpSpecializationTrainingBenchmark(BaseBenchmark):
         with self._nvtx_range("baseline_warp_specialization_training"):
             with torch.no_grad():
                 fused = torch.relu(self.input * self.weight)
-                self.output = self.model(fused)
+                self.output = self.model(fused).detach().clone()
         self._synchronize()
 
     def teardown(self) -> None:
@@ -69,7 +70,7 @@ class BaselineWarpSpecializationTrainingBenchmark(BaseBenchmark):
         return BenchmarkConfig(
             iterations=50,
             warmup=5,
-            use_subprocess=False,
+            use_subprocess=True,
         )
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
@@ -96,7 +97,7 @@ class BaselineWarpSpecializationTrainingBenchmark(BaseBenchmark):
         """Return output tensor for verification comparison."""
         if self.output is None:
             raise RuntimeError("Output not available - run benchmark first")
-        return self.output
+        return self.output.detach().clone()
 
     def get_input_signature(self) -> dict:
         """Return workload signature for input verification."""

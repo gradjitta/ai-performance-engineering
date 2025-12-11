@@ -78,6 +78,8 @@ class BaselineModelEagerBenchmark(BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: initialize model and data."""
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         self.model = SimpleTransformer().to(self.device).eval()
         self.input_ids = torch.randint(0, self.vocab_size, (self.batch_size, self.seq_len), device=self.device)
         

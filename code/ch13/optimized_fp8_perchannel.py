@@ -115,6 +115,7 @@ class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup: Initialize per-channel FP8 model."""
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         # Create model with per-channel FP8
         self.model = FP8PerChannelLinear(
@@ -153,7 +154,7 @@ class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
             error = (output - ref_output).abs().mean() / ref_output.abs().mean()
             self._error_sum = error.item()
             self._last = float(output.sum())
-            self.output = output.clone()
+            self.output = output.detach().clone()
             self._synchronize()
 
     def teardown(self) -> None:

@@ -44,6 +44,7 @@ class OptimizedGuidedDecodingMathBenchmark(BaseBenchmark):
         self.batch_size = 4
         self.seq_len = 10
         self.hidden_dim = 256
+        self.parameter_count = 0
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -70,6 +71,7 @@ class OptimizedGuidedDecodingMathBenchmark(BaseBenchmark):
             nn.TransformerDecoderLayer(d_model=self.hidden_dim, nhead=8, batch_first=True),
             num_layers=1,
         ).to(self.device).eval()
+        self.parameter_count = sum(p.numel() for p in self.model.parameters())
 
         # Compilation helps lift perf above baseline on sm_100.
         if self.device.type == "cuda":
@@ -136,14 +138,39 @@ class OptimizedGuidedDecodingMathBenchmark(BaseBenchmark):
             return "Model not initialized"
         return None
 
+    def get_verify_inputs(self) -> dict:
+        if self.embedded_input is None or self.memory is None:
+            raise RuntimeError("setup() must be called before get_verify_inputs()")
+        return {
+            "embedded_input": self.embedded_input,
+            "memory": self.memory,
+        }
+
     def get_input_signature(self) -> dict:
         """Return workload signature for input verification."""
+        if self.embedded_input is None or self.memory is None:
+            raise RuntimeError("setup() must be called before get_input_signature()")
         return {
+            "shapes": {
+                "embedded_input": tuple(self.embedded_input.shape),
+                "memory": tuple(self.memory.shape),
+            },
+            "dtypes": {
+                "embedded_input": str(self.embedded_input.dtype),
+                "memory": str(self.memory.dtype),
+            },
             "batch_size": self.batch_size,
-            "seq_len": self.seq_len,
-            "hidden_dim": self.hidden_dim,
+            "parameter_count": int(self.parameter_count),
+            "precision_flags": {
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
             "num_layers": 1,
             "nhead": 8,
+            "hidden_dim": self.hidden_dim,
+            "seq_len": self.seq_len,
         }
 
     def get_verify_output(self) -> torch.Tensor:

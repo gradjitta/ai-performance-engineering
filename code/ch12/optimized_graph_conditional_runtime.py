@@ -86,6 +86,7 @@ class OptimizedGraphBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup CUDA graph with static buffers."""
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         dtype = torch.float16
         if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
@@ -103,21 +104,18 @@ class OptimizedGraphBenchmark(BaseBenchmark):
         # Warmup before capture (required for some ops)
         torch.cuda.synchronize()
         with torch.cuda.stream(self._graph_stream):
-            self._compute_ops()
+            for _ in range(5):
+                self._compute_ops()
         torch.cuda.synchronize()
         
-        # Reset data for graph capture
-        self.data.fill_(1.0)
-        
-        # Capture the execution graph
+        # Capture the execution graph while preserving baseline state
+        initial_state = self.data.detach().clone()
         self._graph = CUDAGraph()
         with torch.cuda.stream(self._graph_stream):
             with torch.cuda.graph(self._graph, stream=self._graph_stream):
                 self._compute_ops()
-        
-        # Warmup graph replay
-        for _ in range(5):
-            self._graph.replay()
+        # Restore data so post-capture state matches the baseline setup
+        self.data.copy_(initial_state)
         
         torch.cuda.synchronize()
     

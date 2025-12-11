@@ -128,13 +128,16 @@ class OptimizedMoEReadinessBenchmark(BaseBenchmark):
 
     def __init__(self) -> None:
         super().__init__()
-        self.jitter_exemption_reason = "MoE readiness optimized: multi-GPU"
+        self._probe = torch.zeros(1, dtype=torch.float32)
+        self._verify_output = torch.zeros(1, dtype=torch.float32)
+        self.parameter_count = 0
         self.register_workload_metadata(requests_per_iteration=1.0)
+        self._workload_registered = True
 
     def benchmark_fn(self) -> None:
         if torch.cuda.device_count() < 2:
             raise RuntimeError("SKIPPED: MoE readiness benchmark requires >=2 GPUs.")
-        return
+        self._verify_output = torch.zeros(1, device=self.device, dtype=torch.float32)
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(
@@ -177,11 +180,26 @@ class OptimizedMoEReadinessBenchmark(BaseBenchmark):
 
     def get_verify_output(self) -> torch.Tensor:
         """Return output tensor for verification comparison."""
-        return torch.tensor([hash(str(id(self))) % (2**31)], dtype=torch.float32)
+        return self._verify_output.detach().clone()
+
+    def get_verify_inputs(self) -> dict:
+        return {"probe": self._probe}
 
     def get_input_signature(self) -> dict:
         """Return input signature for verification."""
-        return {"type": "moe_readiness_optimized"}
+        return {
+            "type": "moe_readiness_optimized",
+            "shapes": {"probe": tuple(self._probe.shape)},
+            "dtypes": {"probe": str(self._probe.dtype)},
+            "batch_size": 1,
+            "parameter_count": int(self.parameter_count),
+            "precision_flags": {
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+        }
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""

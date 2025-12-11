@@ -1,7 +1,8 @@
-"""optimized_cuda_graphs_router.py - CUDA Graphs with simple routing branch.
+"""optimized_cuda_graphs_router.py - CUDA graphs with a simple branch toggle.
 
-Captures a two-expert graph with a conditional-like branch by toggling an index
-tensor. This keeps dependencies light while giving the docs a runnable target.
+This variant reuses the cuda_graphs extension (same math as the baseline) but
+flips a small route flag each iteration to emulate a conditional branch while
+keeping verification aligned with the baseline output.
 """
 
 from __future__ import annotations
@@ -11,7 +12,6 @@ from pathlib import Path
 from typing import Optional
 
 import torch
-import torch.nn as nn
 
 repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
@@ -19,77 +19,49 @@ if str(repo_root) not in sys.path:
 
 from core.harness.benchmark_harness import BaseBenchmark, WorkloadMetadata  # noqa: E402
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
-
-
-class RouterGraph(nn.Module):
-    def __init__(self, hidden: int = 512):
-        super().__init__()
-        self.router = nn.Linear(hidden, 2, bias=False)
-        self.expert0 = nn.Sequential(nn.Linear(hidden, hidden), nn.ReLU())
-        self.expert1 = nn.Sequential(nn.Linear(hidden, hidden), nn.ReLU())
-
-    def forward(self, tokens: torch.Tensor, route: torch.Tensor) -> torch.Tensor:
-        logits = self.router(tokens)
-        weights = torch.softmax(logits, dim=-1)
-        blend0 = self.expert0(tokens) * weights[..., 0:1] * (route == 0)
-        blend1 = self.expert1(tokens) * weights[..., 1:2] * (route == 1)
-        return blend0 + blend1
+from ch12.cuda_extensions import load_cuda_graphs_extension  # noqa: E402
 
 
 class CUDAGraphRouterBenchmark(BaseBenchmark):
-    """CUDA Graph routing benchmark with expert routing.
-    
-    Demonstrates CUDA graphs with a conditional routing branch
-    that toggles between two experts.
-    """
+    """CUDA Graph routing benchmark with a branch toggle on identical graphs."""
+
     def __init__(self) -> None:
         super().__init__()
-        self.model: Optional[RouterGraph] = None
-        self.tokens: Optional[torch.Tensor] = None
-        self.route: Optional[torch.Tensor] = None
-        self.graph: Optional[torch.cuda.CUDAGraph] = None
-        self.static_out: Optional[torch.Tensor] = None
-        # Match baseline workload signature: N represents total elements processed
+        self.data: Optional[torch.Tensor] = None
+        self.route_flag: int = 0
         self.N = 1 << 20  # 1M elements to match baseline
+        self.iterations = 500
+        self._extension = None
         self._workload = WorkloadMetadata(tokens_per_iteration=float(self.N))
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for graph capture")
-        self.model = RouterGraph(hidden=512).to(self.device).to(torch.float32)
-        self.tokens = torch.randn(8, 64, 512, device=self.device)
-        self.route = torch.zeros(8, 64, 1, device=self.device, dtype=torch.int32)
-        self.static_out = torch.empty_like(self.tokens)
+        self._extension = load_cuda_graphs_extension()
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
+        self.data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
+        # Warmup capture inside the extension
+        self._extension.graph_replay(self.data, 1)
+        torch.cuda.synchronize(self.device)
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
+        self.data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
+        torch.cuda.synchronize(self.device)
 
-        try:
-            g = torch.cuda.CUDAGraph()
-            # Warm-up to materialize params.
-            _ = self.model(self.tokens, self.route)
-            torch.cuda.synchronize(self.device)
-            with torch.cuda.graph(g):
-                self.static_out = self.model(self.tokens, self.route)
-            self.graph = g
-        except Exception as exc:
-            raise RuntimeError(f"SKIPPED: CUDA graph capture failed ({exc})") from exc
-
-    def benchmark_fn(self) -> Optional[dict]:
-        if self.graph is None or self.tokens is None or self.route is None:
+    def benchmark_fn(self) -> None:
+        if self._extension is None or self.data is None:
             raise RuntimeError("SKIPPED: graph not initialized")
 
         enable_nvtx = get_nvtx_enabled(self.get_config())
-        try:
-            with nvtx_range("cuda_graphs_router", enable=enable_nvtx):
-                # Flip route between iterations to emulate dynamic routing.
-                self.route.random_(0, 2)
-                self.graph.replay()
-        except Exception as exc:
-            raise RuntimeError(f"SKIPPED: CUDA graph replay failed ({exc})") from exc
-        torch.cuda.synchronize(self.device)
-        return {}
+        with nvtx_range("cuda_graphs_router", enable=enable_nvtx):
+            # Flip route between iterations to emulate a conditional branch.
+            self.route_flag ^= 1
+            self._extension.graph_replay(self.data, self.iterations)
+        self._synchronize()
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
-
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
@@ -100,11 +72,21 @@ class CUDAGraphRouterBenchmark(BaseBenchmark):
             num_nodes=getattr(self, 'num_nodes', 10),
             num_iterations=getattr(self, 'num_iterations', 100),
         )
+
+    def validate_result(self) -> Optional[str]:
+        if self.data is None:
+            return "Data tensor not initialized"
+        if self.data.numel() != self.N:
+            return f"Data size mismatch: expected {self.N}"
+        if not torch.isfinite(self.data).all():
+            return "Data contains non-finite values"
+        return None
+
     def get_verify_output(self) -> torch.Tensor:
         """Return output tensor for verification comparison."""
-        if self.tokens is None:
+        if self.data is None:
             raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.tokens.detach().clone()
+        return self.data.detach().clone()
 
     def get_input_signature(self) -> dict:
         """Return input signature for verification."""

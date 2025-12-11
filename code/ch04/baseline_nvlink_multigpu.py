@@ -15,10 +15,15 @@ import torch
 from ch04.baseline_nvlink import BaselineNVLinkBenchmark
 
 
+class MultiGPUBaselineNVLinkBenchmark(BaselineNVLinkBenchmark):
+    def setup(self) -> None:  # type: ignore[override]
+        if torch.cuda.device_count() < 2:
+            raise RuntimeError("SKIPPED: requires >=2 GPUs")
+        super().setup()
+
+
 def get_benchmark() -> BaselineNVLinkBenchmark:
-    if torch.cuda.device_count() < 2:
-        raise RuntimeError("SKIPPED: baseline_nvlink_multigpu requires >=2 GPUs")
-    return BaselineNVLinkBenchmark()
+    return MultiGPUBaselineNVLinkBenchmark()
 
 
 if __name__ == "__main__":

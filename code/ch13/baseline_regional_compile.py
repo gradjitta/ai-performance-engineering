@@ -104,7 +104,8 @@ class BaselineFullGraphCompileBenchmark(BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(0)
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         # Baseline: FP32 eager execution (no tensor core acceleration)
         self.model = TinyTransformerBlock(
             hidden=self.hidden,
@@ -147,7 +148,7 @@ class BaselineFullGraphCompileBenchmark(BaseBenchmark):
 
         # Baseline: FP32 eager execution (no tensor core acceleration)
         with torch.no_grad(), self._nvtx_range("baseline_fp32_eager"):
-            self.output = self.model(x)
+            self.output = self.model(x).detach().clone()
         self._synchronize()
 
     def teardown(self) -> None:

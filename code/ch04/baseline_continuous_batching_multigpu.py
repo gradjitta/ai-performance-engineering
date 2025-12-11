@@ -16,8 +16,6 @@ from ch04.baseline_continuous_batching import BaselineContinuousBatchingBenchmar
 
 
 def get_benchmark() -> BaselineContinuousBatchingBenchmark:
-    if torch.cuda.device_count() < 2:
-        raise RuntimeError("SKIPPED: baseline_continuous_batching_multigpu requires >=2 GPUs")
     return BaselineContinuousBatchingBenchmark()
 
 

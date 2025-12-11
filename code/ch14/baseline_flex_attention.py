@@ -35,7 +35,8 @@ class BaselineFlexAttentionBenchmark(BaseBenchmark):
         self.embed_dim = self.num_heads * self.head_dim  # 1024
         self.seq_len = 1024
         self._last = 0.0
-        self.repeat_passes = 8
+        self.repeat_passes = 1
+        self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
         tokens = self.seq_len * self.num_heads * self.repeat_passes
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.seq_len),
@@ -50,10 +51,11 @@ class BaselineFlexAttentionBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup: materialize query/key/value tensors."""
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         shape = (self.seq_len, self.num_heads, self.head_dim)
-        self.q = torch.randn(shape, device=self.device, dtype=torch.float32)
-        self.k = torch.randn(shape, device=self.device, dtype=torch.float32)
-        self.v = torch.randn(shape, device=self.device, dtype=torch.float32)
+        self.q = torch.randn(shape, device=self.device, dtype=self.dtype)
+        self.k = torch.randn(shape, device=self.device, dtype=self.dtype)
+        self.v = torch.randn(shape, device=self.device, dtype=self.dtype)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -82,7 +84,10 @@ class BaselineFlexAttentionBenchmark(BaseBenchmark):
                     outputs.append(torch.matmul(attn, vh))
             stacked = torch.stack(outputs, dim=1)
             self._last = float(stacked.sum())
-            self.output = stacked.clone()
+            # Flatten heads into the embedding dimension to match optimized output
+            self.output = stacked.permute(1, 0, 2).reshape(
+                1, self.seq_len, self.embed_dim * self.repeat_passes
+            ).contiguous()
             self._synchronize()
 
 
@@ -123,7 +128,7 @@ class BaselineFlexAttentionBenchmark(BaseBenchmark):
         """Return output tensor for verification comparison."""
         if self.output is None:
             raise RuntimeError("Output not available - run benchmark first")
-        return self.output
+        return self.output.float()
 
     def get_input_signature(self) -> dict:
         """Return workload signature for input verification."""

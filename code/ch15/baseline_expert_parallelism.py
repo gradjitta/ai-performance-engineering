@@ -24,30 +24,45 @@ from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E40
 
 
 class ToyGatedMoE(nn.Module):
-    """Top-1 MoE with real per-expert dispatch on a single GPU."""
+    """Top-2 MoE with sequential dispatch on a single GPU."""
 
-    def __init__(self, hidden_dim: int = 1024, num_experts: int = 4):
+    def __init__(self, hidden_dim: int = 1024, num_experts: int = 8, capacity_factor: float = 1.25):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.num_experts = num_experts
+        self.capacity_factor = capacity_factor
         self.gate = nn.Linear(hidden_dim, num_experts, bias=False)
         self.experts = nn.ModuleList(
             [nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, hidden_dim)) for _ in range(num_experts)]
         )
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+        batch, seq, hidden = tokens.shape
         logits = self.gate(tokens)
-        weights = F.softmax(logits, dim=-1)
-        top1 = torch.argmax(weights, dim=-1)
+        probs = F.softmax(logits, dim=-1)
+        top2_w, top2_idx = torch.topk(probs, k=2, dim=-1)
 
-        # Dispatch per expert to avoid mixing routing decisions.
-        outputs = torch.zeros_like(tokens)
-        for expert_idx, expert in enumerate(self.experts):
-            mask = top1 == expert_idx
-            if mask.any():
-                expert_tokens = tokens[mask]
-                outputs[mask] = expert(expert_tokens)
-        return outputs
+        flat_idx = top2_idx.view(batch * seq, 2)
+        flat_w = top2_w.view(batch * seq, 2)
+        flat_tokens = tokens.view(batch * seq, hidden)
+
+        cap = int(self.capacity_factor * (batch * seq) / self.num_experts)
+        counts = torch.bincount(flat_idx.view(-1), minlength=self.num_experts)
+        mask_overflow = counts > cap
+
+        outputs = torch.zeros_like(flat_tokens)
+        for slot in range(2):
+            expert_ids = flat_idx[:, slot]
+            weights = flat_w[:, slot : slot + 1]
+            for eid in torch.unique(expert_ids):
+                eid_int = int(eid.item())
+                if mask_overflow[eid_int]:
+                    continue
+                mask = expert_ids == eid
+                if mask.any():
+                    outputs[mask] += self.experts[eid_int](flat_tokens[mask]) * weights[mask]
+
+        return outputs.view(batch, seq, hidden)
 
 
 class BaselineExpertParallelismBenchmark(BaseBenchmark):
@@ -65,19 +80,18 @@ class BaselineExpertParallelismBenchmark(BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(0)
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         hidden_dim = 1024
         batch = 64
         seq = 16
-        self.model = ToyGatedMoE(hidden_dim=hidden_dim, num_experts=4).to(self.device).to(torch.bfloat16).eval()
+        self.model = ToyGatedMoE(hidden_dim=hidden_dim, num_experts=8).to(self.device).to(torch.bfloat16).eval()
         self.inputs = torch.randn(batch, seq, hidden_dim, device=self.device, dtype=torch.bfloat16)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> Optional[dict]:
         if self.model is None or self.inputs is None:
-            if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
+            raise RuntimeError("Model or inputs not initialized")
 
         enable_nvtx = get_nvtx_enabled(self.get_config())
         start = self._record_start()
@@ -113,7 +127,10 @@ class BaselineExpertParallelismBenchmark(BaseBenchmark):
 
     def get_input_signature(self) -> dict:
         """Return input signature for verification."""
-        return {"type": "expert_parallelism"}
+        seq_len = self.inputs.shape[1] if self.inputs is not None else 16
+        hidden = self.inputs.shape[2] if self.inputs is not None else 1024
+        batch = self.inputs.shape[0] if self.inputs is not None else 64
+        return {"type": "expert_parallelism", "shapes": {"tokens": (batch, seq_len, hidden)}}
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""

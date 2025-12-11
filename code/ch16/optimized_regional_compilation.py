@@ -28,6 +28,7 @@ from core.harness.benchmark_harness import (
     BenchmarkConfig,
 )
 from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
+from ch16.baseline_regional_compilation import DummyTransformer
 
 MODEL_CANDIDATES: List[Dict[str, int]] = [
     {"n_layers": 4, "d_model": 1024, "d_ff": 4096},
@@ -103,38 +104,46 @@ class OptimizedRegionalCompilationBenchmark(BaseBenchmark):
     def __init__(self):
         super().__init__()
         self.device = resolve_device()
-        self.model = None
-        self.sequence_schedule = [512, 768, 1024, 1280, 1536, 1792, 2048]
-        self.max_seq_len = 2048
+        self.model: Optional[DummyTransformer] = None
+        self.sequence_schedule = [768]
+        self.max_seq_len = 768
         self._iteration = 0
         self.compiled_layers = 0
         self.input_buffer: Optional[torch.Tensor] = None
         self.host_buffer: Optional[torch.Tensor] = None
         self.transfer_stream: Optional[torch.cuda.Stream] = None
         self.graph_cache: Dict[int, GraphCacheEntry] = {}
+        self._verify_input: Optional[torch.Tensor] = None
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         # Use the larger preset so region capture speedups have room to show.
-        candidate = MODEL_CANDIDATES[1]
-        model = LargeTransformerModel(
+        candidate = MODEL_CANDIDATES[0]
+        model = DummyTransformer(
             n_layers=candidate["n_layers"],
             d_model=candidate["d_model"],
             d_ff=candidate["d_ff"],
         ).to(self.device, dtype=torch.bfloat16).eval()
-        # Ensure no backward graphs are constructed during capture/replay.
-        for p in model.parameters():
-            p.requires_grad_(False)
         self.model = model
         self._configure_runtime()
         self.transfer_stream = torch.cuda.Stream()
         self.input_buffer = torch.empty(
-            1, self.max_seq_len, device=self.device, dtype=torch.long
+            1, self.max_seq_len, device=self.device, dtype=torch.bfloat16
         )
         self.host_buffer = torch.empty(
-            1, self.max_seq_len, device="cpu", dtype=torch.long, pin_memory=True
+            1, self.max_seq_len, device="cpu", dtype=torch.bfloat16, pin_memory=True
         )
         self._prepare_cuda_graphs()
+        self._verify_input = torch.randint(
+            0, 50304, (1, self.max_seq_len), device=self.device, dtype=torch.long
+        )
+        tokens = self.max_seq_len * candidate["d_model"]
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(tokens),
+        )
 
     def setup_with_custom_regions(self, config: BenchmarkConfig, layer_indices: Optional[list[int]] = None) -> None:
         """Compatibility shim: reuse standard setup for demo purposes."""
@@ -165,8 +174,12 @@ class OptimizedRegionalCompilationBenchmark(BaseBenchmark):
         unique_lengths = sorted(set(self.sequence_schedule))
 
         for seq_len in unique_lengths:
-            static_input = torch.randint(
-                0, 50304, (1, seq_len), device=self.device, dtype=torch.long
+            static_input = torch.randn(
+                1,
+                seq_len,
+                self.model.layers[0][0].normalized_shape[0],  # type: ignore[index]
+                device=self.device,
+                dtype=torch.bfloat16,
             )
             # Warm-up and capture under inference mode to avoid autograd state.
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
@@ -191,8 +204,8 @@ class OptimizedRegionalCompilationBenchmark(BaseBenchmark):
 
         seq_len = self.sequence_schedule[self._iteration % len(self.sequence_schedule)]
         self._iteration += 1
-        cpu_tokens = torch.randint(
-            0, 50304, (1, seq_len), device="cpu", dtype=torch.long
+        cpu_tokens = torch.randn(
+            1, seq_len, self.model.layers[0][0].normalized_shape[0], device="cpu", dtype=torch.bfloat16  # type: ignore[index]
         )
         self.host_buffer[:, :seq_len].copy_(cpu_tokens)
         if seq_len < self.max_seq_len:
@@ -212,6 +225,9 @@ class OptimizedRegionalCompilationBenchmark(BaseBenchmark):
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                 self.output = self.model(self.input_buffer[:, :seq_len])
         torch.cuda.synchronize()
+        if self._verify_input is not None and self.model is not None:
+            with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+                self.output = self.model(self._verify_input[:, :seq_len]).detach().float().clone()
 
     def run(self, compare_eager: bool = False) -> torch.Tensor:
         """Run a single forward pass for demo/validation."""

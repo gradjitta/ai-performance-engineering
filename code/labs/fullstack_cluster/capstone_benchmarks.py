@@ -27,15 +27,15 @@ class CapstoneMatmulBenchmark(BaseBenchmark):
         validate_against_baseline: bool = True,
     ) -> None:
         super().__init__()
-        # Capstone kernels assume multi-GPU fabrics; skip on single-GPU hosts.
-        if torch.cuda.device_count() < 2:
-            raise RuntimeError("SKIPPED: Capstone benchmarks require >=2 GPUs.")
         self._runner = runner
         self._label = label
         self._size = size
         self._validate = validate_against_baseline
+        self._lhs: Optional[torch.Tensor] = None
+        self._rhs: Optional[torch.Tensor] = None
         self._last_output: Optional[torch.Tensor] = None
         self._reference: Optional[torch.Tensor] = None
+        self._parameter_count = 0
         self._config = BenchmarkConfig(
             iterations=iterations,
             warmup=warmup,
@@ -53,8 +53,11 @@ class CapstoneMatmulBenchmark(BaseBenchmark):
             custom_units_per_iteration=flops_per_iteration,
             custom_unit_name="FLOPs",
         )
+        self._workload_registered = True
 
     def setup(self) -> None:
+        if torch.cuda.device_count() < 2:
+            raise RuntimeError("SKIPPED: requires >=2 GPUs")
         torch.manual_seed(0)
         self._lhs = torch.randn(
             self._size, self._size, device=self.device, dtype=torch.float16
@@ -63,6 +66,7 @@ class CapstoneMatmulBenchmark(BaseBenchmark):
             self._size, self._size, device=self.device, dtype=torch.float16
         )
         torch.cuda.synchronize(self.device)
+        self._parameter_count = 0
 
         if self._validate:
             self._reference = baseline_matmul(self._lhs, self._rhs).detach().clone()
@@ -107,3 +111,40 @@ class CapstoneMatmulBenchmark(BaseBenchmark):
             f"{self._label}.bytes_transferred": bytes_transferred,
             f"{self._label}.arithmetic_intensity": flops / bytes_transferred if bytes_transferred > 0 else 0.0,
         }
+
+    def get_verify_output(self) -> torch.Tensor:
+        if self._last_output is None:
+            raise RuntimeError("benchmark_fn() must be called before verification")
+        return self._last_output.detach().clone()
+
+    def get_verify_inputs(self) -> dict:
+        if self._lhs is None or self._rhs is None:
+            raise RuntimeError("setup() must be called before get_verify_inputs()")
+        return {"lhs": self._lhs, "rhs": self._rhs}
+
+    def get_input_signature(self) -> dict:
+        if self._lhs is None or self._rhs is None:
+            raise RuntimeError("setup() must be called before get_input_signature()")
+        return {
+            "label": self._label,
+            "size": self._size,
+            "shapes": {
+                "lhs": tuple(self._lhs.shape),
+                "rhs": tuple(self._rhs.shape),
+            },
+            "dtypes": {
+                "lhs": str(self._lhs.dtype),
+                "rhs": str(self._rhs.dtype),
+            },
+            "batch_size": int(self._size),
+            "parameter_count": int(self._parameter_count),
+            "precision_flags": {
+                "fp16": True,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+        }
+
+    def get_output_tolerance(self) -> tuple:
+        return (1e-3, 200.0)

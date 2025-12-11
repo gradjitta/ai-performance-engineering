@@ -17,6 +17,10 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import torch
+
+from core.benchmark.verification import InputSignature
+
 # Add repo root to path
 repo_root = Path(__file__).parent.parent.parent
 if str(repo_root) not in sys.path:
@@ -61,6 +65,7 @@ def check_compliance(benchmark: Any) -> Dict[str, bool]:
     compliance = {
         "get_verify_output": False,
         "get_input_signature": False,
+        "get_verify_inputs": False,
         "get_output_tolerance": False,
         "validate_result": False,
         "jitter_exemption_reason": False,
@@ -86,7 +91,31 @@ def check_compliance(benchmark: Any) -> Dict[str, bool]:
     if hasattr(benchmark, "get_input_signature"):
         try:
             sig = benchmark.get_input_signature()
-            compliance["get_input_signature"] = sig is not None and len(sig) > 0
+            if isinstance(sig, InputSignature):
+                compliance["get_input_signature"] = not sig.validate(strict=True)
+            elif isinstance(sig, dict):
+                shapes = sig.get("shapes", {})
+                dtypes = sig.get("dtypes", {})
+                batch = sig.get("batch_size", None)
+                params = sig.get("parameter_count", None)
+                compliance["get_input_signature"] = bool(
+                    shapes and dtypes and batch is not None and params is not None
+                )
+        except RuntimeError:
+            # Accept RuntimeError (e.g., setup not called) as an implemented method
+            compliance["get_input_signature"] = True
+        except Exception:
+            pass
+
+    if hasattr(benchmark, "get_verify_inputs"):
+        try:
+            inp = benchmark.get_verify_inputs()
+            if isinstance(inp, torch.Tensor):
+                compliance["get_verify_inputs"] = True
+            elif isinstance(inp, dict):
+                compliance["get_verify_inputs"] = any(isinstance(v, torch.Tensor) for v in inp.values())
+        except RuntimeError:
+            compliance["get_verify_inputs"] = True
         except Exception:
             pass
     

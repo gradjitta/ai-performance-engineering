@@ -69,6 +69,8 @@ class BaselinePerformanceBenchmark(BaseBenchmark):
         self.targets = None
         self._verify_input = None
         self._verify_output = None
+        self.parameter_count = 0
+        self._workload_registered = False
     
     def setup(self) -> None:
         """Setup: initialize model, fixed inputs, and verification output."""
@@ -93,6 +95,7 @@ class BaselinePerformanceBenchmark(BaseBenchmark):
             self.model = self.model.to(self.device)
         
         self.model.eval()
+        self.parameter_count = sum(p.numel() for p in self.model.parameters())
         self.microbatches = [
             torch.randn(self.batch_size, 256, device=self.device)
             for _ in range(self.num_microbatches)
@@ -118,6 +121,9 @@ class BaselinePerformanceBenchmark(BaseBenchmark):
         if self.device.type == "cuda":
             torch.cuda.synchronize()
         self.optimizer.zero_grad(set_to_none=True)
+        samples = float(self.batch_size * self.num_microbatches)
+        self.register_workload_metadata(samples_per_iteration=samples)
+        self._workload_registered = True
     
     def benchmark_fn(self) -> None:
         """Function to benchmark."""
@@ -192,10 +198,30 @@ class BaselinePerformanceBenchmark(BaseBenchmark):
             raise RuntimeError("setup() must be called before verification")
         return self._verify_output
 
+    def get_verify_inputs(self) -> dict:
+        if self._verify_input is None:
+            raise RuntimeError("setup() must be called before get_verify_inputs()")
+        return {"verify_input": self._verify_input}
+
     def get_input_signature(self) -> dict:
         """Return input signature for verification."""
+        if self._verify_input is None:
+            raise RuntimeError("setup() must be called before get_input_signature()")
         return {
+            "shapes": {
+                "verify_input": tuple(self._verify_input.shape),
+            },
+            "dtypes": {
+                "verify_input": str(self._verify_input.dtype),
+            },
             "batch_size": self.batch_size,
+            "parameter_count": int(self.parameter_count),
+            "precision_flags": {
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
             "num_microbatches": self.num_microbatches,
             "input_dim": 256,
             "output_dim": 10,

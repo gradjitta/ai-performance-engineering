@@ -29,42 +29,41 @@ class NVFP4TRTLLMBenchmark(BaseBenchmark):
         self.linear: Optional[nn.Linear] = None
         self.inputs: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(tokens_per_iteration=0.0)
-        self._trt_available = False
-        self.output = None
+        self._stack_available = False
+        self.output: Optional[torch.Tensor] = None
+        self.graph = None
+        self._trt_runner = None
 
     def setup(self) -> None:
         # TensorRT-LLM path first, with optional CUDA Graph capture.
         engine_path = os.getenv("TRT_LLM_ENGINE")
+        trt_exc: Optional[Exception] = None
         try:
             import tensorrt_llm  # type: ignore
             from tensorrt_llm.runtime import ModelRunner  # type: ignore
-            self._trt_available = True
-            if engine_path is None:
-                raise RuntimeError("SKIPPED: set TRT_LLM_ENGINE to a TensorRT-LLM engine path")
-            self._trt_runner = ModelRunner.from_engine(engine_path)
-            self.inputs = torch.randint(0, 1000, (1, 32), device=self.device, dtype=torch.int32)
-            # Optional: capture a CUDA graph for the runner if supported.
-            try:
-                stream = torch.cuda.Stream()
-                torch.cuda.synchronize()
-                self.graph = torch.cuda.CUDAGraph()
-                with torch.cuda.graph(self.graph, stream=stream):
-                    self._trt_runner.generate(self.inputs)  # type: ignore[attr-defined]
-            except Exception:
-                self.graph = None
-            return
-        except Exception as exc:
-            self._trt_available = False
-        self.output = None
-            # Continue to Transformer Engine NVFP4 path if TRT-LLM is absent.
-            trt_msg = str(exc)
+            if engine_path is not None:
+                self._stack_available = True
+                self._trt_runner = ModelRunner.from_engine(engine_path)
+                self.inputs = torch.randint(0, 1000, (1, 32), device=self.device, dtype=torch.int32)
+                try:
+                    stream = torch.cuda.Stream()
+                    torch.cuda.synchronize()
+                    self.graph = torch.cuda.CUDAGraph()
+                    with torch.cuda.graph(self.graph, stream=stream):
+                        self._trt_runner.generate(self.inputs)  # type: ignore[attr-defined]
+                except Exception:
+                    self.graph = None
+                return
+        except Exception as exc:  # pragma: no cover - optional dependency
+            trt_exc = exc
+        trt_msg = f"{trt_exc}" if trt_exc is not None else "TensorRT-LLM unavailable"
 
         try:
             import transformer_engine.pytorch as te  # type: ignore
             from transformer_engine.pytorch import fp8_autocast  # noqa: F401
-            self._trt_available = True
+            self._stack_available = True
             self._te = te
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - optional dependency
             raise RuntimeError(f"SKIPPED: NVFP4 stack not available ({trt_msg})") from exc
 
         self.linear = nn.Linear(1024, 1024, bias=False).to(self.device).to(torch.float16)
@@ -72,7 +71,7 @@ class NVFP4TRTLLMBenchmark(BaseBenchmark):
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> Optional[dict]:
-        if not self._trt_available:
+        if not self._stack_available:
             raise RuntimeError("SKIPPED: NVFP4 stack not available")
 
         enable_nvtx = get_nvtx_enabled(self.get_config())
@@ -85,6 +84,7 @@ class NVFP4TRTLLMBenchmark(BaseBenchmark):
                 else:
                     _ = self._trt_runner.generate(self.inputs)  # type: ignore[attr-defined]
             torch.cuda.synchronize(self.device)
+            self.output = None
             return {}
 
         if self.linear is None or self.inputs is None:
@@ -94,9 +94,9 @@ class NVFP4TRTLLMBenchmark(BaseBenchmark):
             try:
                 from transformer_engine.pytorch import fp8_autocast  # type: ignore
                 with fp8_autocast():
-                    _ = self.linear(self.inputs)
+                    self.output = self.linear(self.inputs)
             except Exception:
-                _ = self.linear(self.inputs)
+                self.output = self.linear(self.inputs)
         torch.cuda.synchronize(self.device)
         return {}
 
@@ -117,14 +117,18 @@ class NVFP4TRTLLMBenchmark(BaseBenchmark):
 
     def get_verify_output(self) -> torch.Tensor:
         """Return output tensor for verification comparison."""
-        # TensorRT-LLM simulation returns timing metrics as tensor
-        import torch
-        # Return simulated FP4 inference metrics
-        return torch.tensor([1.0], dtype=torch.float32)  # Placeholder for actual TRT metrics
+        if self.output is None:
+            raise RuntimeError("benchmark_fn() must be called before verification")
+        return self.output.detach().clone()
 
     def get_input_signature(self) -> dict:
         """Return input signature for verification."""
-        return {"type": "nvfp4_trtllm"}
+        return {
+            "type": "nvfp4_trtllm",
+            "shapes": {
+                "inputs": tuple(self.inputs.shape) if self.inputs is not None else (1, 32 if hasattr(self, '_trt_runner') else 1024),
+            },
+        }
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""

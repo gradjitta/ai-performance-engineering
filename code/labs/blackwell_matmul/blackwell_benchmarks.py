@@ -35,9 +35,6 @@ class GraceBlackwellMatmulBenchmark(BaseBenchmark):
         reference_runner: Optional[TensorRunner] = None,
     ) -> None:
         super().__init__()
-        if torch.cuda.device_count() < 2:
-            raise RuntimeError("SKIPPED: Grace-Blackwell matmul benchmarks require >=2 GPUs.")
-        self.skip_output_check = True
         self._runner = runner
         self._label = label
         self._size_m = size
@@ -50,6 +47,7 @@ class GraceBlackwellMatmulBenchmark(BaseBenchmark):
         self._output: Optional[torch.Tensor] = None
         self._dtype = torch.float16
         self._reference: Optional[torch.Tensor] = None
+        self._parameter_count = 0
         self._config = BenchmarkConfig(
             iterations=iterations,
             warmup=warmup,
@@ -88,10 +86,13 @@ class GraceBlackwellMatmulBenchmark(BaseBenchmark):
             custom_units_per_iteration=flops_per_iteration,
             custom_unit_name="FLOPs",
         )
+        self._workload_registered = True
         # Make it easy to fail fast on unsupported hardware from the runner layer.
         self.required_capabilities: dict[str, bool] = {}
 
     def setup(self) -> None:
+        if torch.cuda.device_count() < 2:
+            raise RuntimeError("SKIPPED: requires >=2 GPUs")
         torch.manual_seed(13)
         device = self.device
         self._lhs = torch.randn(
@@ -101,6 +102,7 @@ class GraceBlackwellMatmulBenchmark(BaseBenchmark):
             self._size_k, self._size_n, device=device, dtype=self._dtype
         )
         torch.cuda.synchronize(device)
+        self._parameter_count = 0
 
         if self._reference_runner is not None:
             with torch.no_grad():
@@ -154,6 +156,45 @@ class GraceBlackwellMatmulBenchmark(BaseBenchmark):
     def get_required_capabilities(self) -> Optional[dict[str, bool]]:
         """Override in subclasses to declare required device features."""
         return self.required_capabilities or None
+
+    def get_verify_output(self) -> torch.Tensor:
+        if self._output is None:
+            raise RuntimeError("benchmark_fn() must be called before verification")
+        return self._output.detach().clone()
+
+    def get_verify_inputs(self) -> dict:
+        if self._lhs is None or self._rhs is None:
+            raise RuntimeError("setup() must be called before get_verify_inputs()")
+        return {"lhs": self._lhs, "rhs": self._rhs}
+
+    def get_input_signature(self) -> dict:
+        if self._lhs is None or self._rhs is None:
+            raise RuntimeError("setup() must be called before get_input_signature()")
+        return {
+            "label": self._label,
+            "size_m": self._size_m,
+            "size_n": self._size_n,
+            "size_k": self._size_k,
+            "shapes": {
+                "lhs": tuple(self._lhs.shape),
+                "rhs": tuple(self._rhs.shape),
+            },
+            "dtypes": {
+                "lhs": str(self._lhs.dtype),
+                "rhs": str(self._rhs.dtype),
+            },
+            "batch_size": int(self._size_m),
+            "parameter_count": int(self._parameter_count),
+            "precision_flags": {
+                "fp16": True,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+        }
+
+    def get_output_tolerance(self) -> tuple:
+        return (1e-3, 5.0)
 
     @property
     def descriptor(self) -> Optional[FeatureDescriptor]:

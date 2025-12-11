@@ -125,7 +125,8 @@ class OptimizedRegionalCompileBenchmark(BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(0)
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         # Enable cuDNN autotuning for optimal kernel selection
         if torch.cuda.is_available():
@@ -175,7 +176,7 @@ class OptimizedRegionalCompileBenchmark(BaseBenchmark):
         x = self.inputs[seq_len]
 
         with torch.no_grad(), self._nvtx_range("optimized_regional_compile"):
-            self.output = self.model(x)
+            self.output = self.model(x).detach().float().clone()
         self._synchronize()
 
     def teardown(self) -> None:
@@ -187,7 +188,7 @@ class OptimizedRegionalCompileBenchmark(BaseBenchmark):
         # NOTE: warmup=10 is REQUIRED to ensure torch.compile JIT overhead is NOT
         # included in measurements. The first few calls trigger compilation.
         return BenchmarkConfig(
-            iterations=10,
+            iterations=8,
             warmup=10,  # Required for torch.compile - excludes JIT overhead from timing
             enable_memory_tracking=False,
             enable_profiling=False,

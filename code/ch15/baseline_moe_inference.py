@@ -30,6 +30,7 @@ from core.optimization.moe_inference import (  # noqa: E402
     SimpleMoEGPT,
     allocate_kv_cache,
     dtype_bytes,
+    env_override_float,
     env_override_int,
 )
 
@@ -69,24 +70,25 @@ class BaselineMoeInferenceBenchmark(BaseBenchmark):
     def _build_config(self) -> MoeInferenceConfig:
         """Allow environment overrides to keep the workload tractable on smaller GPUs."""
         return MoeInferenceConfig(
-            vocab_size=env_override_int("BASELINE_MOE_VOCAB", 32768),
-            hidden_size=env_override_int("BASELINE_MOE_HIDDEN", 2048),
-            ffn_size=env_override_int("BASELINE_MOE_FFN", 8192),
-            num_layers=env_override_int("BASELINE_MOE_LAYERS", 12),
+            vocab_size=env_override_int("BASELINE_MOE_VOCAB", 16384),
+            hidden_size=env_override_int("BASELINE_MOE_HIDDEN", 1024),
+            ffn_size=env_override_int("BASELINE_MOE_FFN", 4096),
+            num_layers=env_override_int("BASELINE_MOE_LAYERS", 8),
             num_moe_layers=env_override_int("BASELINE_MOE_MOE_LAYERS", 4),
             num_experts=env_override_int("BASELINE_MOE_EXPERTS", 32),
-            top_k=1,
+            top_k=2,
             moe_layer_frequency=max(1, env_override_int("BASELINE_MOE_MOE_FREQ", 2)),
-            batch_size=env_override_int("BASELINE_MOE_BATCH", 2),
-            context_window=env_override_int("BASELINE_MOE_CONTEXT", 2048),
-            decode_tokens=env_override_int("BASELINE_MOE_DECODE", 64),
-            router_noise=0.0,
+            batch_size=env_override_int("BASELINE_MOE_BATCH", 1),
+            context_window=env_override_int("BASELINE_MOE_CONTEXT", 512),
+            decode_tokens=env_override_int("BASELINE_MOE_DECODE", 32),
+            router_noise=env_override_float("BASELINE_MOE_ROUTER_NOISE", 0.0),
             dtype=torch.bfloat16,
         )
 
     # --------------------------------------------------------------------- setup
     def setup(self) -> None:
-        torch.manual_seed(13)
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         cfg = self.config
         self.model = SimpleMoEGPT(cfg, device=self.device).eval()
         self.prompts = torch.randint(
@@ -152,6 +154,8 @@ class BaselineMoeInferenceBenchmark(BaseBenchmark):
                     step_ms = (time.perf_counter() - decode_start) * 1000.0
                     tpot_times.append(step_ms)
                     seed_tokens = torch.argmax(decode_logits[:, -1, :], dim=-1, keepdim=True)
+            # Capture the final token ids for verification
+            self.output = seed_tokens.detach().float().clone()
 
         telemetry_after = query_gpu_telemetry(logical_index)
 
