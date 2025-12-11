@@ -149,6 +149,13 @@ class BaselinePerformanceBenchmark(BaseBenchmark):
         # Capture verification output AFTER training completes
         with torch.no_grad():
             self._verify_output = self.model(self._verify_input).clone()
+        self._set_verification_payload(
+            inputs={"verify_input": self._verify_input},
+            output=self._verify_output,
+            batch_size=self._verify_input.shape[0],
+            parameter_count=int(self.parameter_count),
+            output_tolerance=(0.5, 0.5),
+        )
 
     
     def teardown(self) -> None:
@@ -191,52 +198,6 @@ class BaselinePerformanceBenchmark(BaseBenchmark):
         except Exception as e:
             return f"Model forward pass failed: {e}"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self._verify_output is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self._verify_output
-
-    def get_verify_inputs(self) -> dict:
-        if self._verify_input is None:
-            raise RuntimeError("setup() must be called before get_verify_inputs()")
-        return {"verify_input": self._verify_input}
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        if self._verify_input is None:
-            raise RuntimeError("setup() must be called before get_input_signature()")
-        return {
-            "shapes": {
-                "verify_input": tuple(self._verify_input.shape),
-            },
-            "dtypes": {
-                "verify_input": str(self._verify_input.dtype),
-            },
-            "batch_size": self.batch_size,
-            "parameter_count": int(self.parameter_count),
-            "precision_flags": {
-                "fp16": False,
-                "bf16": False,
-                "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
-            },
-            "num_microbatches": self.num_microbatches,
-            "input_dim": 256,
-            "output_dim": 10,
-        }
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison.
-        
-        Training benchmarks have inherent non-determinism from:
-        - FP16 vs FP32 precision differences
-        - Non-deterministic CUDA operations (atomics, etc.)
-        - Different training paths affecting final weights
-        Wide tolerance (0.5, 0.5) ensures both converge to similar output range.
-        """
-        return (0.5, 0.5)
 
 
 def get_benchmark() -> BaseBenchmark:

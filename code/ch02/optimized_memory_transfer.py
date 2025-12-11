@@ -6,10 +6,11 @@ from typing import Optional
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
-class OptimizedMemoryTransferBenchmark(BaseBenchmark):
+class OptimizedMemoryTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized NVLink-C2C style transfer using non-blocking copy."""
     
     def __init__(self):
@@ -43,6 +44,21 @@ class OptimizedMemoryTransferBenchmark(BaseBenchmark):
         with self._nvtx_range("memory_transfer_optimized"):
             self.device_data.copy_(self.host_data, non_blocking=True)
             self._synchronize()
+
+        verify_output = self.device_data[:1000].detach().clone()
+        self._set_verification_payload(
+            inputs={"host_data": self.host_data},
+            output=verify_output,
+            batch_size=self.N,
+            parameter_count=0,
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+            output_tolerance=(1e-4, 1e-4),
+        )
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -74,25 +90,6 @@ class OptimizedMemoryTransferBenchmark(BaseBenchmark):
         if self.device_data is None:
             return "Device tensor not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return slice of transferred data for verification.
-        
-        Return first 1000 elements to verify data integrity without
-        transferring the entire buffer back.
-        """
-        if self.device_data is None:
-            raise RuntimeError("setup() must be called before verification")
-        # Return slice of actual data (not checksum)
-        return self.device_data[:1000].clone()
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"N": self.N, "dtype": "float32", "transfer_type": "h2d"}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (1e-4, 1e-4)
 
 
 def get_benchmark() -> BaseBenchmark:

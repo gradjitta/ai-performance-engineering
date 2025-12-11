@@ -62,10 +62,6 @@ class BaselineGuidedDecodingBenchmark(BaseBenchmark):
         # Create FIXED inputs for deterministic verification
         self.embedded_input = torch.randn(self.batch_size, self.seq_len, self.hidden_dim, device=self.device)
         self.memory = torch.randn(self.batch_size, self.seq_len, self.hidden_dim, device=self.device)
-        
-        # Compute verification output once
-        with torch.no_grad():
-            self._verify_output = self.model(self.embedded_input, self.memory).clone()
         self._synchronize()
     
     def benchmark_fn(self) -> None:
@@ -74,9 +70,16 @@ class BaselineGuidedDecodingBenchmark(BaseBenchmark):
         with self._nvtx_range("baseline_guided_decoding"):
             with torch.no_grad():
                 # Use fixed inputs for deterministic verification
-                self._verify_output = self.model(self.embedded_input, self.memory)
-                _ = self._verify_output.sum()
+                output = self.model(self.embedded_input, self.memory)
+                _ = output.sum()
             self._synchronize()
+        self._set_verification_payload(
+            inputs={"embedded_input": self.embedded_input, "memory": self.memory},
+            output=output,
+            batch_size=self.batch_size,
+            parameter_count=int(self.parameter_count),
+            output_tolerance=(1e-4, 1e-4),
+        )
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -106,51 +109,6 @@ class BaselineGuidedDecodingBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
-
-    def get_verify_inputs(self) -> dict:
-        if self.embedded_input is None or self.memory is None:
-            raise RuntimeError("setup() must be called before get_verify_inputs()")
-        return {
-            "embedded_input": self.embedded_input,
-            "memory": self.memory,
-        }
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        if self.embedded_input is None or self.memory is None:
-            raise RuntimeError("setup() must be called before get_input_signature()")
-        return {
-            "shapes": {
-                "embedded_input": tuple(self.embedded_input.shape),
-                "memory": tuple(self.memory.shape),
-            },
-            "dtypes": {
-                "embedded_input": str(self.embedded_input.dtype),
-                "memory": str(self.memory.dtype),
-            },
-            "batch_size": self.batch_size,
-            "parameter_count": int(self.parameter_count),
-            "precision_flags": {
-                "fp16": False,
-                "bf16": False,
-                "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
-            },
-            "num_layers": 2,
-            "nhead": 8,
-            "hidden_dim": self.hidden_dim,
-            "seq_len": self.seq_len,
-        }
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self._verify_output is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self._verify_output
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (1e-4, 1e-4)
 
 
 

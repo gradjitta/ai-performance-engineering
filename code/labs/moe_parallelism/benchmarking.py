@@ -121,6 +121,7 @@ class PlanBenchmark(BaseBenchmark):
         return self._override_device
 
     def setup(self) -> None:
+        torch.manual_seed(42)
         self.report = None
         self._summary = None
 
@@ -134,6 +135,16 @@ class PlanBenchmark(BaseBenchmark):
                 float(report.throughput_tokens_per_s),
                 float(getattr(report, "memory_per_device_gb", 0.0)),
             ]
+        )
+        if self.output is None or self.metrics is None:
+            raise RuntimeError("Failed to produce output for verification")
+        self._set_verification_payload(
+            inputs={"metrics": self.metrics},
+            output=self.output.detach().clone(),
+            batch_size=1,
+            parameter_count=0,
+            precision_flags={"fp16": False, "bf16": False, "tf32": False},
+            output_tolerance=(0.1, 1.0),
         )
 
     def teardown(self) -> None:
@@ -184,21 +195,6 @@ class PlanBenchmark(BaseBenchmark):
             self.metrics = torch.randn(expected_shape, dtype=torch.float32)
         summary_tensor = torch.tensor([metric_values], dtype=torch.float32)
         self.output = (summary_tensor + self.metrics).detach()
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        shape = tuple(self.metrics.shape) if self.metrics is not None else (1, 3)
-        return {"plan": str(self.plan), "cluster": str(self.cluster), "shapes": {"metrics": shape}}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def run_benchmark(benchmark: PlanBenchmark) -> None:

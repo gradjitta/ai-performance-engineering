@@ -13,6 +13,7 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.utils.extension_loader_template import load_cuda_extension
 
@@ -26,13 +27,14 @@ def resolve_device() -> torch.device:
     return torch.device("cuda")
 
 
-class LoopUnrollingBenchmarkBase(BaseBenchmark):
+class LoopUnrollingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
     """Base class that manages CUDA extension loading and tensor setup."""
 
     rows: int = 1 << 14  # 16,384 rows
     elements_per_row: int = 512
     weight_period: int = 8
     nvtx_label: str = "loop_unrolling"
+    output_tolerance = (5e-3, 5e-3)
 
     def __init__(self) -> None:
         super().__init__()
@@ -82,6 +84,19 @@ class LoopUnrollingBenchmarkBase(BaseBenchmark):
 
         with nvtx_range(self.nvtx_label, enable=enable_nvtx):
             self._invoke_kernel()
+        if self.inputs is None or self.weights is None or self.output is None:
+            raise RuntimeError("benchmark_fn() must run after setup() initializes tensors")
+        self._set_verification_payload(
+            inputs={
+                "inputs": self.inputs,
+                "weights": self.weights,
+            },
+            output=self.output.detach(),
+            batch_size=self.rows,
+            parameter_count=int(self.weight_period),
+            precision_flags={"tf32": torch.backends.cuda.matmul.allow_tf32},
+            output_tolerance=self.output_tolerance,
+        )
 
     def teardown(self) -> None:
         self.inputs = None
@@ -124,21 +139,15 @@ class LoopUnrollingBenchmarkBase(BaseBenchmark):
 
     def get_input_signature(self) -> dict:
         """Return workload signature for input verification."""
-        return {
-            "rows": self.rows,
-            "elements_per_row": self.elements_per_row,
-            "weight_period": self.weight_period,
-        }
+        return super().get_input_signature()
 
     def get_verify_output(self) -> torch.Tensor:
         """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output
+        return super().get_verify_output()
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""
-        return (5e-3, 5e-3)
+        return super().get_output_tolerance()
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return loop unrolling optimization metrics."""

@@ -6,11 +6,12 @@ from typing import Optional
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from ch06.workload_config import WORKLOAD
 
 
-class OptimizedQuantizationILPBenchmark(BaseBenchmark):
+class OptimizedQuantizationILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized: FP16 with half the memory bandwidth for 2x throughput.
     
     Chapter 6: Increasing GPU ILP Through Microarchitecture Awareness
@@ -48,6 +49,15 @@ class OptimizedQuantizationILPBenchmark(BaseBenchmark):
             # Simple multiply-add in FP16 - half the memory bandwidth
             self.output = self.input * 2.0 + 1.0
             self._synchronize()
+        verify_output = self.output.float().detach() if self.output is not None else None
+        self._set_verification_payload(
+            inputs={"input": self.input},
+            output=verify_output,
+            batch_size=self.N,
+            parameter_count=0,
+            output_tolerance=(1e-3, 1e-3),
+            precision_flags={"fp16": True, "bf16": False, "fp8": False, "tf32": False},
+        )
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -78,23 +88,6 @@ class OptimizedQuantizationILPBenchmark(BaseBenchmark):
         if self.output is None:
             return "Output tensor not initialized"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"N": self.N}
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output.float()  # Convert to float32 for comparison with baseline
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison.
-        
-        FP16 vs FP32 have precision differences.
-        """
-        return (1e-3, 1e-3)
 
 
 

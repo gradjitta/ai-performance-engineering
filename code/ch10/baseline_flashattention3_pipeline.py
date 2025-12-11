@@ -30,6 +30,7 @@ from typing import Optional
 import math
 
 from core.utils.compile_utils import enable_tf32
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -117,7 +118,7 @@ class BaselineFlashAttention3(nn.Module):
         return self.out_proj(attn_output)
 
 
-class BaselineFlashAttention3Benchmark(BaseBenchmark):
+class BaselineFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark):
     """Baseline benchmark for FlashAttention-3 style attention.
     
     Measures performance of standard tiled attention without:
@@ -140,6 +141,8 @@ class BaselineFlashAttention3Benchmark(BaseBenchmark):
         self.use_causal = True
         
         self.input: Optional[torch.Tensor] = None
+        self._verify_input: Optional[torch.Tensor] = None
+        self.parameter_count: int = 0
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -159,7 +162,8 @@ class BaselineFlashAttention3Benchmark(BaseBenchmark):
             enable_tf32()
         
         torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         self.model = BaselineFlashAttention3(
             hidden_dim=self.hidden_dim,
@@ -167,6 +171,7 @@ class BaselineFlashAttention3Benchmark(BaseBenchmark):
             head_dim=self.head_dim,
             dropout=0.0,
         ).to(self.device).eval()
+        self.parameter_count = sum(p.numel() for p in self.model.parameters())
         
         # Use BF16 for modern GPU workloads
         dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
@@ -176,6 +181,7 @@ class BaselineFlashAttention3Benchmark(BaseBenchmark):
             self.batch_size, self.seq_len, self.hidden_dim,
             device=self.device, dtype=dtype
         )
+        self._verify_input = self.input.detach().clone()
         
         # Warmup
         with torch.no_grad():
@@ -190,6 +196,22 @@ class BaselineFlashAttention3Benchmark(BaseBenchmark):
             with torch.no_grad():
                 self.output = self.model(self.input, is_causal=self.use_causal).detach()
         self._synchronize()
+        if self._verify_input is None:
+            raise RuntimeError("Verification input not initialized")
+        dtype = self._verify_input.dtype
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=self.parameter_count,
+            precision_flags={
+                "fp16": dtype == torch.float16,
+                "bf16": dtype == torch.bfloat16,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.5, 5.0),
+        )
     
     def teardown(self) -> None:
         """Clean up."""
@@ -251,20 +273,6 @@ class BaselineFlashAttention3Benchmark(BaseBenchmark):
                 return "NaN in attention output"
         
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output.float()
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "seq_len": self.seq_len, "hidden_dim": self.hidden_dim}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison - wider due to BF16/FP16."""
-        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaseBenchmark:

@@ -33,10 +33,9 @@ from core.optimization.moe_inference import (  # noqa: E402
     env_override_float,
     env_override_int,
 )
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 
-class BaselineMoeInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class BaselineMoeInferenceBenchmark(BaseBenchmark):
     """Implements the HuggingFace-style baseline described in the MoE showcase doc."""
 
     def __init__(self) -> None:

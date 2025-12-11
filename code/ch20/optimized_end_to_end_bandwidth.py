@@ -59,6 +59,10 @@ class OptimizedEndToEndBandwidthBenchmark(BaseBenchmark):
         self._inductor_cfg_state: Optional[InductorCudagraphState] = None
         self._used_compiled_model = False
         self._compile_error: Optional[str] = None
+        self._tracked_streams: set[torch.cuda.Stream] = set()
+        self._tracker_installed = False
+        self._orig_stream_cls = None
+        self._default_stream: Optional[torch.cuda.Stream] = None
         tokens = self.batch_size * self.num_batches
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(tokens),
@@ -83,11 +87,32 @@ class OptimizedEndToEndBandwidthBenchmark(BaseBenchmark):
                 torch.backends.cudnn.deterministic = False
             torch.manual_seed(42)
             
+            self._install_stream_tracker()
             model = SimplePipeline(hidden_dim=self.hidden_dim).to(self.device).half().eval()
-            # torch.compile can introduce hidden streams; keep eager to satisfy stream audits.
-            self._compile_error = "torch.compile disabled to avoid undeclared stream timing"
-            self._used_compiled_model = False
-            self.model = model
+            compile_supported, compile_reason = is_torch_compile_supported_on_device()
+            disable_compile = bool(os.environ.get("PYTEST_CURRENT_TEST"))
+            if compile_supported and not disable_compile:
+                try:
+                    compiled_model = torch.compile(model, mode="reduce-overhead")
+                    self.model = compiled_model
+                    self._used_compiled_model = True
+                except Exception as exc:
+                    self._compile_error = f"{exc.__class__.__name__}: {exc}"
+                    self._used_compiled_model = False
+                    self.model = model
+                    if LOGGER is not None:
+                        LOGGER.warning(
+                            "torch.compile failed for %s; falling back to eager.",
+                            self.__class__.__name__,
+                            exc_info=exc,
+                        )
+            else:
+                reason = compile_reason or "torch.compile unsupported on this GPU"
+                if disable_compile:
+                    reason = "torch.compile disabled under pytest"
+                self._compile_error = reason
+                self._used_compiled_model = False
+                self.model = model
 
             test_input = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float16)
             for _ in range(3):
@@ -125,6 +150,16 @@ class OptimizedEndToEndBandwidthBenchmark(BaseBenchmark):
             else:
                 self.output = None
             self._synchronize()
+        if self.inputs is None:
+            raise RuntimeError("setup() must be called before verification")
+        stacked_inputs = torch.stack(self.inputs)
+        self._set_verification_payload(
+            inputs={"inputs": stacked_inputs},
+            output=self.output,
+            batch_size=stacked_inputs.shape[0],
+            parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
+            output_tolerance=(0.1, 1.0),
+        )
     
     def teardown(self) -> None:
         self.model = None
@@ -133,6 +168,10 @@ class OptimizedEndToEndBandwidthBenchmark(BaseBenchmark):
         torch.cuda.empty_cache()
         restore_inductor_cudagraph_features(self._inductor_cfg_state)
         self._inductor_cfg_state = None
+        if self._tracker_installed and self._orig_stream_cls is not None:
+            torch.cuda.Stream = self._orig_stream_cls  # type: ignore[assignment]
+        self._tracker_installed = False
+        self._tracked_streams.clear()
     
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(
@@ -163,25 +202,31 @@ class OptimizedEndToEndBandwidthBenchmark(BaseBenchmark):
             return f"Expected {self.num_batches} outputs, got {len(self.outputs) if self.outputs else 0}"
         return None
 
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
+    def get_custom_streams(self) -> list[torch.cuda.Stream]:
+        """Declare any non-default streams created (compile/Inductor)."""
+        declared = set(self._tracked_streams)
+        if self._default_stream is not None:
+            declared.add(self._default_stream)
+        # Return stable list for auditor
+        return list(declared)
 
-    def get_verify_inputs(self) -> torch.Tensor:
-        """Return stacked inputs for aliasing checks."""
-        if self.inputs is None:
-            raise RuntimeError("setup() must be called before verification")
-        return torch.stack(self.inputs)
+    def _install_stream_tracker(self) -> None:
+        """Track streams created so we can declare them to the harness."""
+        if not torch.cuda.is_available() or self._tracker_installed:
+            return
+        self._default_stream = torch.cuda.current_stream(self.device)
+        self._tracked_streams = set()
+        orig_cls = torch.cuda.Stream
+        self._orig_stream_cls = orig_cls
+        benchmark = self
 
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "hidden_dim": self.hidden_dim}
+        def _tracking_stream(*args, **kwargs):  # type: ignore[override]
+            s = orig_cls(*args, **kwargs)
+            benchmark._tracked_streams.add(s)
+            return s
 
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
+        torch.cuda.Stream = _tracking_stream  # type: ignore[assignment]
+        self._tracker_installed = True
 
 
 def get_benchmark() -> BaseBenchmark:

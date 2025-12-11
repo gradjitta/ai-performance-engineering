@@ -8,6 +8,8 @@
 #include <cstring>
 #include <iostream>
 
+#include "cuda_verify.cuh"
+
 constexpr int N = 1 << 21;  // Moderate workload to surface occupancy effects without long runs.
 
 __global__ __launch_bounds__(256, 4)
@@ -115,6 +117,11 @@ int main(int argc, char** argv) {
       reps,
       avg_kernel_ms,
       total_ms);
+#ifdef VERIFY
+  float checksum = 0.0f;
+  VERIFY_CHECKSUM(h_out, N, &checksum);
+  VERIFY_PRINT_CHECKSUM(checksum);
+#endif
 
   cudaFree(d_in);
   cudaFree(d_out);

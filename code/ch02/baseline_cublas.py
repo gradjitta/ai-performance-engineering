@@ -6,11 +6,12 @@ from typing import Optional, Tuple
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.utils.compile_utils import configure_tf32, restore_tf32
 
 
-class BaselineCublasBenchmark(BaseBenchmark):
+class BaselineCublasBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """
     Baseline: FP32 matmul with TF32 disabled.
 
@@ -43,10 +44,7 @@ class BaselineCublasBenchmark(BaseBenchmark):
 
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float32)
         self.B = torch.randn(self.k, self.n, device=self.device, dtype=torch.float32)
-        
-        # Compute verification output
-        self.C = torch.matmul(self.A, self.B)
-        self._synchronize()
+        self.C = None
 
     def benchmark_fn(self) -> None:
         """Plain cuBLAS FP32 matmul."""
@@ -54,6 +52,23 @@ class BaselineCublasBenchmark(BaseBenchmark):
         with self._nvtx_range("baseline_cublas_fp32"):
             self.C = torch.matmul(self.A, self.B)
         self._synchronize()
+
+        if self.C is None:
+            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._set_verification_payload(
+            inputs={"A": self.A, "B": self.B},
+            output=self.C.detach().clone(),
+            batch_size=self.A.shape[0],
+            parameter_count=0,
+            precision_flags={
+                # Baseline runs pure FP32 math; signature stays consistent with optimized path for fair comparison.
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": False,
+            },
+            output_tolerance=(1e-2, 1e-1),
+        )
 
     def teardown(self) -> None:
         """Restore TF32 settings and free tensors."""
@@ -84,23 +99,6 @@ class BaselineCublasBenchmark(BaseBenchmark):
         if self.A is None or self.B is None:
             return "Matrices not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.C is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self.C
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"m": self.m, "n": self.n, "k": self.k, "dtype": "float32"}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison.
-        
-        Note: Uses looser tolerance because optimized uses TF32 which has lower precision.
-        """
-        return (1e-2, 1e-1)
 
 
 def get_benchmark() -> BaseBenchmark:

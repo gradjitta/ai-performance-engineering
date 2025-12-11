@@ -27,6 +27,7 @@ from core.harness.benchmark_harness import (
     ExecutionMode,
     WorkloadMetadata,
 )
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -238,7 +239,7 @@ class OptimizedGraceCoherentMemory:
         torch.cuda.empty_cache()
 
 
-class OptimizedGraceCoherentMemoryBenchmark(BaseBenchmark):
+class OptimizedGraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Harness-friendly wrapper around the optimized coherent memory path."""
 
     def __init__(self, size_mb: int = 256, iterations: int = 100):
@@ -255,7 +256,6 @@ class OptimizedGraceCoherentMemoryBenchmark(BaseBenchmark):
         self.elapsed_s: Optional[float] = None
         self.bandwidth_gb_s: Optional[float] = None
         self.size_mb = size_mb
-        self._verify_output: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         # Seed FIRST for deterministic verification
@@ -273,14 +273,28 @@ class OptimizedGraceCoherentMemoryBenchmark(BaseBenchmark):
         if self._impl.strategy != "zero_copy":
             self._impl.gpu_data.copy_(self._impl.cpu_data, non_blocking=False)
             torch.cuda.synchronize()
-        
-        # Store slice of actual transferred data for jitter-enabled verification
-        self._verify_output = self._impl.gpu_data[:1000].clone()
 
     def benchmark_fn(self) -> None:
         elapsed = self._impl.run()
         self.elapsed_s = elapsed
         self.bandwidth_gb_s = (self._impl.size_mb / 1024) * self._impl.iterations * 2 / elapsed
+        verify_output = self._impl.gpu_data[:1000].detach().clone()
+        self._set_verification_payload(
+            inputs={
+                "cpu_data": self._impl.cpu_data,
+                "gpu_data": self._impl.gpu_data,
+            },
+            output=verify_output,
+            batch_size=self._impl.cpu_data.shape[0],
+            parameter_count=0,
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+            output_tolerance=(1e-3, 1e-3),
+        )
 
     def teardown(self) -> None:
         self._impl.cleanup()
@@ -305,26 +319,6 @@ class OptimizedGraceCoherentMemoryBenchmark(BaseBenchmark):
         if self.elapsed_s is None:
             return "Benchmark did not run"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return slice of transferred data for verification comparison."""
-        if self._verify_output is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self._verify_output
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        num_elements = (self.size_mb * 1024 * 1024) // 4  # float32
-        return {
-            "size_mb": self.size_mb,
-            "transfer_type": "coherent",
-            "shapes": {"data": (1, num_elements)},  # 2D shape for jitter check
-            "dtypes": {"data": "float32"},
-        }
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (1e-3, 1e-3)
 
 
 def get_benchmark() -> BaseBenchmark:

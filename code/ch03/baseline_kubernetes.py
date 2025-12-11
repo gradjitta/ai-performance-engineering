@@ -18,6 +18,7 @@ if str(repo_root) not in sys.path:
 import torch
 import torch.nn as nn
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -26,7 +27,7 @@ from core.harness.benchmark_harness import (
 )
 
 
-class BaselineKubernetesBenchmark(BaseBenchmark):
+class BaselineKubernetesBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Loads batches from CPU each iteration with blocking copies."""
 
     def __init__(self):
@@ -88,6 +89,19 @@ class BaselineKubernetesBenchmark(BaseBenchmark):
         
         self.output = out.detach()
         self._synchronize()
+        self._set_verification_payload(
+            inputs={"data": data, "target": target},
+            output=self.output,
+            batch_size=data.shape[0],
+            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+            output_tolerance=(1e-3, 1e-3),
+        )
 
     def teardown(self) -> None:
         self.model = None
@@ -111,25 +125,6 @@ class BaselineKubernetesBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {
-            "batch_size": 512,
-            "input_dim": 1024,
-            "hidden_dim": 1024,
-            "output_dim": 1024,
-        }
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is not None:
-            return self.output.detach().clone()
-        raise RuntimeError("benchmark_fn() must be called before verification - output is None")
-    
-    def get_output_tolerance(self) -> tuple:
-        """Return custom tolerance for training output comparison."""
-        return (1e-3, 1e-3)
 
 
 def get_benchmark() -> BaseBenchmark:

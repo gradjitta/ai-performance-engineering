@@ -14,6 +14,7 @@ import torch
 
 from typing import Optional
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -23,7 +24,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
 )
 
 
-class OptimizedKernelLaunchesBenchmark(BaseBenchmark):
+class OptimizedKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Benchmark implementation following BaseBenchmark."""
     
     def __init__(self):
@@ -39,6 +40,7 @@ class OptimizedKernelLaunchesBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self._verify_input: Optional[torch.Tensor] = None
         # Kernel launch benchmark - fixed dimensions for consistent overhead measurement
     
     def setup(self) -> None:
@@ -69,6 +71,7 @@ class OptimizedKernelLaunchesBenchmark(BaseBenchmark):
                 self.x_capture = self.x_capture + 1.0
                 self.x_capture = self.x_capture * 0.99
                 self.x_capture = torch.relu(self.x_capture)
+        self._verify_input = self.x_template.detach().clone()
         
         # Create replay function
         def replay():
@@ -90,6 +93,22 @@ class OptimizedKernelLaunchesBenchmark(BaseBenchmark):
             with torch.no_grad():
                 _ = self.replay_fn()
         self._synchronize()
+        if self._verify_input is None or self.x_capture is None:
+            raise RuntimeError("Verification input or captured output missing")
+        dtype = self._verify_input.dtype
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.x_capture.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=0,
+            precision_flags={
+                "fp16": dtype == torch.float16,
+                "bf16": dtype == torch.bfloat16,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(1e-4, 1e-4),
+        )
 
     def teardown(self) -> None:
         """Cleanup."""
@@ -126,20 +145,6 @@ class OptimizedKernelLaunchesBenchmark(BaseBenchmark):
         if self.replay_fn is None:
             return "Replay function not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.x_capture is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.x_capture
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"size": self.size, "iterations": self.iterations}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (1e-4, 1e-4)
 
 
 def get_benchmark() -> BaseBenchmark:

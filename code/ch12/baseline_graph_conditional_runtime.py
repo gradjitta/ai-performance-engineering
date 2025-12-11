@@ -27,9 +27,10 @@ from core.harness.benchmark_harness import (
     BenchmarkMode,
     WorkloadMetadata,
 )
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 
-class BaselineGraphBenchmark(BaseBenchmark):
+class BaselineGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Baseline: Fresh kernel launches each iteration.
     
     This shows the overhead of launching kernels individually:
@@ -47,6 +48,7 @@ class BaselineGraphBenchmark(BaseBenchmark):
         self.hidden_dim = 2048
         
         self.data: Optional[torch.Tensor] = None
+        self._verify_input: Optional[torch.Tensor] = None
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -67,6 +69,8 @@ class BaselineGraphBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup data tensor."""
         torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         dtype = torch.float16
         if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
@@ -76,6 +80,7 @@ class BaselineGraphBenchmark(BaseBenchmark):
             self.batch_size, self.seq_len, self.hidden_dim,
             device=self.device, dtype=dtype
         )
+        self._verify_input = self.data.detach().clone()
         
         # Warmup
         for _ in range(5):
@@ -119,19 +124,31 @@ class BaselineGraphBenchmark(BaseBenchmark):
         metrics["graph.uses_cuda_graph"] = 0.0
         return metrics
 
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.data is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.data.detach().clone()
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "seq_len": self.seq_len}
-
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""
         return (0.1, 1.0)
+
+    def benchmark_fn(self) -> None:
+        """Benchmark fresh kernel launches."""
+        with self._nvtx_range("fresh_kernel_launches"):
+            self._compute_ops()
+        self._synchronize()
+        if self._verify_input is None or self.data is None:
+            raise RuntimeError("Verification input/output not initialized")
+        dtype = self._verify_input.dtype
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.data.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=0,
+            precision_flags={
+                "fp16": dtype == torch.float16,
+                "bf16": dtype == torch.bfloat16,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=self.get_output_tolerance(),
+        )
 
 
 def get_benchmark() -> BaseBenchmark:

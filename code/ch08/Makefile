@@ -11,15 +11,16 @@ else
 MAXRREGCOUNT_FLAG := -maxrregcount=$(MAXRREGCOUNT)
 endif
 
-NVCC_FLAGS = $(CUDA_NVCC_ARCH_FLAGS) $(NVCC_LINEINFO) --threads=0 $(PTXAS_WARN) $(MAXRREGCOUNT_FLAG)
+NVCC_FLAGS = $(CUDA_NVCC_ARCH_FLAGS) $(NVCC_LINEINFO) --threads=0 $(PTXAS_WARN) $(MAXRREGCOUNT_FLAG) -I../core/common/headers
 SUFFIX = $(TARGET_SUFFIX)
 
 EXTENSION_SOURCES = $(wildcard *_kernels.cu)
 CUDA_SOURCES = $(filter-out %_kernels.cu %_tcgen05.cu,$(wildcard *.cu))
 BASE_TARGETS = $(CUDA_SOURCES:.cu=)
 TARGETS = $(addsuffix $(SUFFIX), $(BASE_TARGETS))
+VERIFY_TARGETS = $(addsuffix _verify$(SUFFIX), $(BASE_TARGETS))
 
-.PHONY: all clean compare b200 gb10 b300 gb300 profile-nsys profile-ncu profile-hta profile-perf profile-all $(TARGETS)
+.PHONY: all clean compare b200 gb10 b300 gb300 profile-nsys profile-ncu profile-hta profile-perf profile-all $(TARGETS) $(VERIFY_TARGETS)
 
 all: $(TARGETS)
 	@echo "Building Chapter 8 examples with $(ARCH) (CUDA $(CUDA_VERSION))"
@@ -29,6 +30,11 @@ all: $(TARGETS)
 $(TARGETS): %$(SUFFIX): %.cu
 	@echo "Compiling $@..."
 	$(NVCC) $(NVCC_FLAGS) -o $@ $< -lcuda
+
+# Verify binaries build with -DVERIFY=1 for harness checksum parsing
+$(VERIFY_TARGETS): %_verify$(SUFFIX): %.cu
+	@echo "Compiling verify binary $@..."
+	$(NVCC) $(NVCC_FLAGS) -DVERIFY=1 -o $@ $< -lcuda
 
 compare: clean
 	@echo "========================================"
@@ -94,5 +100,5 @@ profile-all: all
 	done
 
 clean:
-	rm -f $(addsuffix _sm100,$(BASE_TARGETS)) $(addsuffix _sm121,$(BASE_TARGETS)) *.o *.so *.a
-	rm -f nsys_profile_* ncu_profile_* hta_profile_* perf.data_* comprehensive_*
+	rm -f $(addsuffix _sm100,$(BASE_TARGETS)) $(addsuffix _sm121,$(BASE_TARGETS)) $(addsuffix _sm100,$(addsuffix _verify,$(BASE_TARGETS))) $(addsuffix _sm121,$(addsuffix _verify,$(BASE_TARGETS))) *.o *.so *.a
+	rm -f nsys_profile_* ncu_profile_* hta_profile_* perf.data_* comprehensive_* *_verify_sm103 *_verify_sm100 *_verify_sm121

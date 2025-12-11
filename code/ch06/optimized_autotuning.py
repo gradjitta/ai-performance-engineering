@@ -13,10 +13,11 @@ try:
 except ImportError:
     pass  # Continue if arch_config not available
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
-class OptimizedAutotuningBenchmark(BaseBenchmark):
+class OptimizedAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized: uses autotuning to find optimal parameters."""
     
     def __init__(self):
@@ -81,6 +82,13 @@ class OptimizedAutotuningBenchmark(BaseBenchmark):
                 transformed = self._transform(window)
                 self.output[offset : offset + span].copy_(transformed, non_blocking=True)
             self._synchronize()
+        self._set_verification_payload(
+            inputs={"input": self.input},
+            output=self.output.detach(),
+            batch_size=self.N,
+            parameter_count=0,
+            output_tolerance=(1e-4, 1e-4),
+        )
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -111,20 +119,6 @@ class OptimizedAutotuningBenchmark(BaseBenchmark):
         if self.output is None:
             return "Output tensor not initialized"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"N": self.N, "block_size": 2048}  # Match baseline's block_size for signature
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (1e-4, 1e-4)
 
 
 

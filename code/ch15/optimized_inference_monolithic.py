@@ -8,7 +8,6 @@ import torch
 import torch.nn as nn
 
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 
 class SimpleLLM(nn.Module):
@@ -34,7 +33,7 @@ class SimpleLLM(nn.Module):
         return torch.cat(outputs, dim=1)
 
 
-class OptimizedInferenceDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class OptimizedInferenceDisaggregatedBenchmark(BaseBenchmark):
     """Benchmark: optimized decode service (prefill runs elsewhere)."""
     
     def __init__(self):

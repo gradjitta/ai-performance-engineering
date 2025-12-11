@@ -6,11 +6,12 @@ from typing import Optional
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from ch06.cuda_extensions import load_bank_conflicts_extension
 
 
-class BaselineBankConflictsBenchmark(BaseBenchmark):
+class BaselineBankConflictsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Bank conflicts - poor shared memory access pattern (uses CUDA extension)."""
     
     def __init__(self):
@@ -49,6 +50,13 @@ class BaselineBankConflictsBenchmark(BaseBenchmark):
             for _ in range(self.repeats):
                 self._extension.bank_conflicts(self.output, self.input)
             self._synchronize()
+        self._set_verification_payload(
+            inputs={"input": self.input},
+            output=self.output.detach(),
+            batch_size=self.N,
+            parameter_count=0,
+            output_tolerance=(1e-4, 1e-4),
+        )
     
     def teardown(self) -> None:
         """Clean up resources."""
@@ -89,20 +97,6 @@ class BaselineBankConflictsBenchmark(BaseBenchmark):
         if not torch.isfinite(self.output).all():
             return "Output contains non-finite values"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"N": self.N}
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (1e-4, 1e-4)
 
 
 

@@ -13,6 +13,7 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin  # noqa: E402
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -54,7 +55,7 @@ class PieceGraphModel(nn.Module):
         return x
 
 
-class BaselinePieceGraphsBenchmark(BaseBenchmark):
+class BaselinePieceGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Monolithic graph capture baseline for piece-graphs."""
 
     def __init__(self):
@@ -73,17 +74,23 @@ class BaselinePieceGraphsBenchmark(BaseBenchmark):
             requests_per_iteration=float(self.repeats),
             tokens_per_iteration=float(tokens),
         )
+        self._verify_input: Optional[torch.Tensor] = None
+        self.parameter_count: int = 0
 
     def setup(self) -> None:
-        torch.manual_seed(0)
+        torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         self.model = (
             PieceGraphModel(hidden_dim=self.hidden, n_layers=12)
             .to(self.device, dtype=torch.float16)
             .eval()
         )
+        self.parameter_count = sum(p.numel() for p in self.model.parameters())
         self.inputs = torch.randn(
             self.batch, self.hidden, device=self.device, dtype=torch.float16
         )
+        self._verify_input = self.inputs.detach().clone()
         # Capture monolithic graph
         try:
             self.graph = torch.cuda.CUDAGraph()
@@ -100,18 +107,36 @@ class BaselinePieceGraphsBenchmark(BaseBenchmark):
     def benchmark_fn(self) -> None:
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
+        last_output: Optional[torch.Tensor] = None
         with nvtx_range("baseline_piece_graphs", enable=enable_nvtx):
             for _ in range(self.repeats):
                 if self.graph and self.static_input is not None and self.static_output is not None:
                     self.static_input.copy_(self.inputs)
                     self.graph.replay()
+                    last_output = self.static_output
                 else:
-                    _ = self.model(self.inputs)
+                    last_output = self.model(self.inputs)
             torch.cuda.synchronize(self.device)
-        # Capture output AFTER benchmark for verification
-        if self._verify_input is not None and self.model is not None:
-            with torch.no_grad():
-                self.output = self.model(self._verify_input).float().clone()
+        if last_output is None and self.model is not None:
+            last_output = self.model(self.inputs)
+        if last_output is None:
+            raise RuntimeError("Failed to produce output during benchmark")
+        self.output = last_output.detach().float().clone()
+        if self._verify_input is None:
+            raise RuntimeError("Verification input not initialized")
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output,
+            batch_size=self._verify_input.shape[0],
+            parameter_count=self.parameter_count,
+            precision_flags={
+                "fp16": True,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.1, 1.0),
+        )
 
     def teardown(self) -> None:
         self.model = None
@@ -149,20 +174,6 @@ class BaselinePieceGraphsBenchmark(BaseBenchmark):
         if self.model is None or self.inputs is None:
             return "Model/inputs not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch": self.batch, "hidden": self.hidden, "repeats": self.repeats}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

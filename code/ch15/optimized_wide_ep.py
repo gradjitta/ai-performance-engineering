@@ -20,7 +20,6 @@ if str(repo_root) not in sys.path:
 
 from core.harness.benchmark_harness import BaseBenchmark, WorkloadMetadata  # noqa: E402
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 
 class WideExpertMoE(nn.Module):
@@ -58,7 +57,7 @@ class WideExpertMoE(nn.Module):
         return outputs.view(batch, seq, -1)
 
 
-class WideExpertParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class WideExpertParallelBenchmark(BaseBenchmark):
     """Optimized expert-parallel simulation with widening factor."""
 
     def __init__(self) -> None:

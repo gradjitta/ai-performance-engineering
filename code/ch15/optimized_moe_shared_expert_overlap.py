@@ -22,7 +22,6 @@ if str(repo_root) not in sys.path:
 
 from core.harness.benchmark_harness import BaseBenchmark, WorkloadMetadata  # noqa: E402
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 
 class OverlappedMoE(nn.Module):
@@ -118,7 +117,7 @@ class OverlappedMoE(nn.Module):
         return self.combine(out.view(batch, seq, hidden))
 
 
-class OptimizedMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class OptimizedMoeOverlapBenchmark(BaseBenchmark):
     def __init__(self) -> None:
         super().__init__()
         self.model: Optional[OverlappedMoE] = None

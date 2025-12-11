@@ -48,6 +48,13 @@ class BaselineFP4HardwareKernelBenchmark(BaseBenchmark):
         torch.manual_seed(42)
         a = torch.randn(4, 4)
         self.output = (a @ a).flatten()[:4].float().clone()
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output,
+            batch_size=1,
+            parameter_count=0,
+            output_tolerance=(1e-5, 1e-5),
+        )
 
     def teardown(self) -> None:
         super().teardown()
@@ -63,29 +70,6 @@ class BaselineFP4HardwareKernelBenchmark(BaseBenchmark):
         if not self.bin_path.exists():
             return "Binary not found"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"binary": "baseline_fp4_hardware_kernel", "arch": "sm_100"}
-
-    def get_verify_output(self) -> "torch.Tensor":
-        """Return output tensor for verification comparison.
-        
-        Binary benchmark: returns consistent checksum for binary identity.
-        """
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-
-    def get_verify_inputs(self) -> "torch.Tensor":
-        """Return placeholder input tensor for aliasing checks."""
-        if self._verify_input is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self._verify_input
-
-    def get_output_tolerance(self) -> tuple:
-        """Tight tolerance: deterministic reference matmul output."""
-        return (1e-5, 1e-5)
 
 
 def get_benchmark() -> BaselineFP4HardwareKernelBenchmark:

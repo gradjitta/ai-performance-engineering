@@ -8,10 +8,9 @@ import torch
 import torch.nn as nn
 
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 
-class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class BaselineKVCacheManagementBenchmark(BaseBenchmark):
     """Baseline: recomputes KV every step (no cache reuse)."""
     
     def __init__(self):

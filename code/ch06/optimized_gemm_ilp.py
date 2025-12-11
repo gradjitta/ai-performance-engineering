@@ -6,11 +6,12 @@ from typing import Optional
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from ch06.cuda_extensions import load_ilp_extension
 
 
-class OptimizedILPBenchmark(BaseBenchmark):
+class OptimizedILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Independent operations and unrolling - high ILP (uses CUDA extension).
     
     Does the same amount of work as baseline (4 iterations) for fair comparison.
@@ -61,6 +62,13 @@ class OptimizedILPBenchmark(BaseBenchmark):
             if src is not self.output:
                 self.output.copy_(src)
             self._synchronize()
+        self._set_verification_payload(
+            inputs={"input": self.input},
+            output=self.output.detach(),
+            batch_size=self.N,
+            parameter_count=0,
+            output_tolerance=(1e-2, 1e-2),
+        )
     
     def teardown(self) -> None:
         """Clean up resources."""
@@ -101,20 +109,6 @@ class OptimizedILPBenchmark(BaseBenchmark):
         if not torch.isfinite(self.output).all():
             return "Output contains non-finite values"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"N": self.N, "repeats": self.repeats}
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison - ILP reordering may affect precision."""
-        return (1e-2, 1e-2)
 
 
 

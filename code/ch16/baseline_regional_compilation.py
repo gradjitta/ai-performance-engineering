@@ -15,6 +15,7 @@ if str(repo_root) not in sys.path:
 
 from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 from core.utils.compile_utils import error_on_graph_break, maybe_nested_compile_region  # noqa: E402
+from core.benchmark.verification_mixin import VerificationPayloadMixin  # noqa: E402
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -65,7 +66,7 @@ def _run_layer(layer: nn.Module, x: torch.Tensor) -> torch.Tensor:
     return layer(x)
 
 
-class BaselineRegionalCompilationBenchmark(BaseBenchmark):
+class BaselineRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Full-model compilation baseline that demonstrates piece-graph issues."""
 
     def __init__(self):
@@ -73,6 +74,7 @@ class BaselineRegionalCompilationBenchmark(BaseBenchmark):
         self.model: Optional[DummyTransformer] = None
         self.inputs: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
+        self.parameter_count: int = 0
         # Use a mid-sized config so the full-graph compilation cost is noticeable.
         self.choice = MODEL_CANDIDATES[-1]  # 1B-style config (4x1024)
         tokens = self.choice["seq_len"] * self.choice["d_model"]
@@ -88,6 +90,7 @@ class BaselineRegionalCompilationBenchmark(BaseBenchmark):
         d_model = self.choice["d_model"]
         d_ff = self.choice["d_ff"]
         self.model = DummyTransformer(n_layers, d_model, d_ff).to(self.device, dtype=torch.bfloat16).eval()
+        self.parameter_count = sum(p.numel() for p in self.model.parameters())
         self.inputs = torch.randn(
             1,
             self.choice["seq_len"],
@@ -95,13 +98,7 @@ class BaselineRegionalCompilationBenchmark(BaseBenchmark):
             device=self.device,
             dtype=torch.bfloat16,
         )
-        self._verify_input = torch.randn(
-            1,
-            self.choice["seq_len"],
-            d_model,
-            device=self.device,
-            dtype=torch.bfloat16,
-        )
+        self._verify_input = self.inputs.detach().clone()
         warn_benchmark_scaling(
             scaling_type="Model size",
             original_values={
@@ -131,9 +128,21 @@ class BaselineRegionalCompilationBenchmark(BaseBenchmark):
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                 self.output = self.model(self.inputs).float().clone()
             torch.cuda.synchronize(self.device)
-        if self._verify_input is not None:
-            with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
-                self.output = self.model(self._verify_input).float().clone()
+        if self._verify_input is None:
+            raise RuntimeError("Verification input not initialized")
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=self.parameter_count,
+            precision_flags={
+                "fp16": False,
+                "bf16": True,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.1, 1.0),
+        )
 
     def teardown(self) -> None:
         self.model = None
@@ -168,20 +177,6 @@ class BaselineRegionalCompilationBenchmark(BaseBenchmark):
         if self.model is None or self.inputs is None:
             return "Model/inputs not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"n_layers": self.choice["n_layers"], "d_model": self.choice["d_model"]}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

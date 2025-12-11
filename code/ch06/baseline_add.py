@@ -6,10 +6,11 @@ from typing import Optional
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
-class BaselineAddBenchmark(BaseBenchmark):
+class BaselineAddBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Many tiny kernel launches to illustrate overhead."""
     
     def __init__(self):
@@ -41,6 +42,13 @@ class BaselineAddBenchmark(BaseBenchmark):
             for i in range(self.N):
                 self.C[i] = self.A[i] + self.B[i]
             self._synchronize()
+        self._set_verification_payload(
+            inputs={"A": self.A, "B": self.B},
+            output=self.C.detach(),
+            batch_size=self.N,
+            parameter_count=0,
+            output_tolerance=(1e-5, 1e-5),
+        )
     
     def teardown(self) -> None:
         """Cleanup (excluded from timing)."""
@@ -59,7 +67,7 @@ class BaselineAddBenchmark(BaseBenchmark):
     
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
-    
+
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
         from core.benchmark.metrics import compute_kernel_fundamentals_metrics
@@ -81,20 +89,6 @@ class BaselineAddBenchmark(BaseBenchmark):
         if not torch.isfinite(self.C).all():
             return "Result tensor C contains non-finite values"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"N": self.N}
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.C is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.C
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (1e-5, 1e-5)
 
 
 

@@ -10,11 +10,10 @@ if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 from ch18.run_vllm_decoder import VLLMMoEInferenceBenchmark  # noqa: E402
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 import torch
 
 
-class Ch15VLLMMoEInferenceBenchmark(VerificationPayloadMixin, VLLMMoEInferenceBenchmark):
+class Ch15VLLMMoEInferenceBenchmark(VLLMMoEInferenceBenchmark):
     """Chapter-local wrapper that supplies strict verification metadata."""
 
     def benchmark_fn(self) -> None:

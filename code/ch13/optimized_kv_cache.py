@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 
 from core.utils.compile_utils import enable_tf32
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
@@ -117,7 +118,7 @@ class SimpleAttentionLayer(nn.Module):
         return self.proj(out)
 
 
-class OptimizedKVCacheOptimizedBenchmark(BaseBenchmark):
+class OptimizedKVCacheOptimizedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized KV cache with memory reuse."""
     
     def __init__(self):
@@ -125,6 +126,8 @@ class OptimizedKVCacheOptimizedBenchmark(BaseBenchmark):
         self.model = None
         self.kv_cache = None
         self.inputs = None
+        self.output = None
+        self._verify_input = None
         self.hidden_dim = 512
         self.num_heads = 16
         self.head_dim = self.hidden_dim // self.num_heads
@@ -136,6 +139,7 @@ class OptimizedKVCacheOptimizedBenchmark(BaseBenchmark):
             requests_per_iteration=float(len(self.sequence_lengths)),
             tokens_per_iteration=float(tokens),
         )
+        self.parameter_count = 0
     
     def setup(self) -> None:
         if torch.cuda.is_available():
@@ -143,6 +147,8 @@ class OptimizedKVCacheOptimizedBenchmark(BaseBenchmark):
             torch.backends.cudnn.deterministic = False
             enable_tf32()
         torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         self.model = nn.ModuleList(
             [
@@ -150,6 +156,7 @@ class OptimizedKVCacheOptimizedBenchmark(BaseBenchmark):
                 for _ in range(6)
             ]
         ).to(self.device).eval()
+        self.parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.kv_cache = OptimizedKVCache(
             max_seq_len=self.max_seq_len,
@@ -164,6 +171,8 @@ class OptimizedKVCacheOptimizedBenchmark(BaseBenchmark):
         for seq_len in self.sequence_lengths:
             x = torch.randn(self.batch_size, seq_len, self.hidden_dim, device=self.device, dtype=torch.float16)
             self.inputs.append(x)
+        if self.inputs:
+            self._verify_input = self.inputs[0].detach().clone()
         
         self._synchronize()
     
@@ -184,10 +193,23 @@ class OptimizedKVCacheOptimizedBenchmark(BaseBenchmark):
                 
                 self.kv_cache.free(request_id)
         self._synchronize()
-        # Capture output AFTER benchmark for verification
-        if self._verify_input is not None and self.model is not None:
-            with torch.no_grad():
-                self.output = self.model(self._verify_input).float().clone()
+        # Capture output from the final forward for verification
+        self.output = hidden.detach().clone()
+        if self._verify_input is None:
+            raise RuntimeError("Verification input not initialized")
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output,
+            batch_size=self._verify_input.shape[0],
+            parameter_count=self.parameter_count,
+            precision_flags={
+                "fp16": True,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.1, 1.0),
+        )
 
     def teardown(self) -> None:
         self.model = None
@@ -219,16 +241,6 @@ class OptimizedKVCacheOptimizedBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "num_heads": self.num_heads}
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""

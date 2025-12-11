@@ -22,7 +22,6 @@ if str(repo_root) not in sys.path:
 
 from core.harness.benchmark_harness import BaseBenchmark, WorkloadMetadata  # noqa: E402
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 
 def _expert_to_rank(expert_id: int, experts_per_rank: int) -> int:
@@ -145,7 +144,7 @@ class Top2MoE(nn.Module):
         return out.view(batch, seq, hidden)
 
 
-class OptimizedExpertParallelismBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class OptimizedExpertParallelismBenchmark(BaseBenchmark):
     """Top-2 expert benchmark meant to mirror the doc's optimized target."""
 
     def __init__(self) -> None:

@@ -18,10 +18,9 @@ from ch15.placement_sim import (  # noqa: E402
     PlacementSimulator,
     percentile,
 )
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 
-class _PlacementBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class _PlacementBenchmark(BaseBenchmark):
     """Shared scaffolding for placement simulations."""
 
     def __init__(self, cfg: PlacementConfig, prefix: str) -> None:

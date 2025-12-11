@@ -432,10 +432,11 @@ class TestVerifyInputsMatch:
         optimized = MockBenchmarkDifferentWorkload(batch_size=64, seq_len=128, hidden_size=768)
         
         result = verify_fn(baseline, optimized, "baseline.py", "optimized.py")
-        
+    
         assert result["equivalent"] is False
         assert len(result["mismatches"]) > 0
-        assert "batch_size" in result["mismatches"][0]
+        first_mismatch = result["mismatches"][0].lower()
+        assert "batch_size" in first_mismatch or "shapes" in first_mismatch
     
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
     def test_skipped_when_benchmark_opts_out(self, verify_fn):

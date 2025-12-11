@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 import sys
 
 repo_root = Path(__file__).parent.parent
@@ -28,9 +29,6 @@ class OptimizedOccupancyTuningUnroll8(OccupancyBinaryBenchmark):
             optimized_ms=getattr(self, '_last_elapsed_ms', 1.0),
             name="occupancy_tuning_unroll8",
         )
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        raise RuntimeError("CUDA binary benchmark - tensor verification not applicable")
 
 
 

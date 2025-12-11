@@ -65,6 +65,7 @@ class BaselineMatmulPyTorchBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup: Initialize matrices."""
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         # Standard PyTorch matmul
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float32)
@@ -84,26 +85,23 @@ class BaselineMatmulPyTorchBenchmark(BaseBenchmark):
             out = torch.matmul(self.A, self.B)
             self.C = torch.relu(out + self.bias)
         self._synchronize()
+        self._set_verification_payload(
+            inputs={"A": self.A, "B": self.B, "bias": self.bias},
+            output=self.C.detach().clone(),
+            batch_size=self.m,
+            parameter_count=0,
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.5, 5.0),
+        )
 
     def teardown(self) -> None:
         """Cleanup."""
         del self.A, self.B, self.C, self.bias
         torch.cuda.empty_cache()
-    
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.C is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.C
-
-    def get_input_signature(self) -> dict:
-        """Describe the inputs so the harness can validate equivalence."""
-        return {"m": self.m, "n": self.n, "k": self.k}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        # fp32 baseline vs fp16 optimized can diverge significantly
-        return (0.5, 5.0)
 
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark configuration."""

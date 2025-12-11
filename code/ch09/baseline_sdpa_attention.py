@@ -26,6 +26,7 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -35,7 +36,7 @@ from core.harness.benchmark_harness import (
 )
 
 
-class BaselineSDPAAttentionBenchmark(BaseBenchmark):
+class BaselineSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Baseline: Naive multi-kernel attention without fusion.
     
     Demonstrates low arithmetic intensity due to:
@@ -69,6 +70,8 @@ class BaselineSDPAAttentionBenchmark(BaseBenchmark):
 
     def setup(self) -> None:
         torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         # Create Q, K, V tensors in attention shape [B, H, S, D]
         shape = (self.batch_size, self.num_heads, self.seq_len, self.head_dim)
@@ -104,6 +107,25 @@ class BaselineSDPAAttentionBenchmark(BaseBenchmark):
                 _ = self.output.sum()
         
         self._synchronize()
+        if self.output is None:
+            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._set_verification_payload(
+            inputs={
+                "query": self.query,
+                "key": self.key,
+                "value": self.value,
+            },
+            output=self.output.detach().clone(),
+            batch_size=self.batch_size,
+            parameter_count=0,
+            precision_flags={
+                "fp16": True,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(1e-2, 1e-2),
+        )
 
     def teardown(self) -> None:
         self.query = None
@@ -131,21 +153,6 @@ class BaselineSDPAAttentionBenchmark(BaseBenchmark):
         if self.query is None:
             return "Query tensor not initialized"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"batch_size": self.batch_size, "num_heads": self.num_heads, 
-                "seq_len": self.seq_len, "head_dim": self.head_dim}
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (1e-2, 1e-2)  # Allow for numerical differences in attention
 
 
 

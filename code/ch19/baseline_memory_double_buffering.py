@@ -90,6 +90,14 @@ class MemoryDoubleBufferingBenchmark(BaseBenchmark):
                     with torch.cuda.stream(self.stream):
                         self.output = self.model(self.buffer)
                     self.stream.synchronize()
+        self._set_verification_payload(
+            inputs={"buffer": self.buffer},
+            output=self.output,
+            batch_size=self.batch_size,
+            parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
+            output_tolerance=(0.1, 1.0),
+            precision_flags={"fp16": True, "bf16": False, "fp8": False, "tf32": False},
+        )
 
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -123,26 +131,6 @@ class MemoryDoubleBufferingBenchmark(BaseBenchmark):
         if self.output is None:
             return "Output tensor not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-    
-    def get_verify_inputs(self) -> torch.Tensor:
-        """Return device buffer used for verification/alias checks."""
-        if self.buffer is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self.buffer
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "seq_len": self.seq_len}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

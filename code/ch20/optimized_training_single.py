@@ -114,6 +114,13 @@ class OptimizedTrainingDistributedBenchmark(BaseBenchmark):
         # Capture output AFTER training for verification
         with torch.no_grad():
             self.output = self.model(self._verify_input).float().clone()
+        self._set_verification_payload(
+            inputs={"verify_input": self._verify_input},
+            output=self.output,
+            batch_size=self._verify_input.shape[0] if self._verify_input is not None else self.batch_size,
+            parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
+            output_tolerance=(0.1, 1.0),
+        )
     
     def teardown(self) -> None:
         self.model = None
@@ -149,26 +156,6 @@ class OptimizedTrainingDistributedBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-    
-    def get_verify_inputs(self) -> torch.Tensor:
-        """Return fixed verification input for aliasing checks."""
-        if self._verify_input is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self._verify_input
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "hidden_dim": self.hidden_dim}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

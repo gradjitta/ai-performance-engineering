@@ -25,6 +25,7 @@ import torch.nn as nn
 import torch.distributed as dist
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -109,7 +110,7 @@ class SimpleTransformerBlock(nn.Module):
         return x
 
 
-class OptimizedFSDP2FP8CommBenchmark(BaseBenchmark):
+class OptimizedFSDP2FP8CommBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Benchmark FSDP2 with FP8 communication compression."""
 
     def __init__(self):
@@ -125,6 +126,7 @@ class OptimizedFSDP2FP8CommBenchmark(BaseBenchmark):
         self._comm_bytes_saved = 0.0
         self.output = None
         self._verify_input = None
+        self.parameter_count = 0
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -135,7 +137,8 @@ class OptimizedFSDP2FP8CommBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup model with simulated FP8 communication."""
         torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         # Build model
         layers = nn.ModuleList([
@@ -143,6 +146,7 @@ class OptimizedFSDP2FP8CommBenchmark(BaseBenchmark):
             for _ in range(self.num_layers)
         ])
         self.model = nn.Sequential(*layers).to(self.device, torch.bfloat16)
+        self.parameter_count = sum(p.numel() for p in self.model.parameters())
         
         # Calculate communication savings
         total_params = sum(p.numel() for p in self.model.parameters())
@@ -209,6 +213,21 @@ class OptimizedFSDP2FP8CommBenchmark(BaseBenchmark):
                 self.output = self.model(self._verify_input).float().clone()
                 self.model.train()
         self._synchronize()
+        if self._verify_input is None or self.output is None:
+            raise RuntimeError("Verification input/output not initialized")
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output,
+            batch_size=self._verify_input.shape[0],
+            parameter_count=self.parameter_count,
+            precision_flags={
+                "fp16": False,
+                "bf16": True,
+                "fp8": True,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.5, 5.0),
+        )
 
     def teardown(self) -> None:
         """Cleanup."""
@@ -241,20 +260,6 @@ class OptimizedFSDP2FP8CommBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "seq_len": self.seq_len}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

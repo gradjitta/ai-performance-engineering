@@ -78,6 +78,7 @@ class OptimizedMatmulCUTLASSBenchmark(BaseBenchmark):
             # Enable TF32 for faster matmul on Ampere+ GPUs
             enable_tf32()
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float16)
         self.B = torch.randn(self.k, self.n, device=self.device, dtype=torch.float16)
@@ -101,6 +102,18 @@ class OptimizedMatmulCUTLASSBenchmark(BaseBenchmark):
             # CUTLASS-optimized matrix multiplication (via torch.compile)
             self.C = self.compiled_matmul(self.A, self.B, self.bias)
         self._synchronize()
+        self._set_verification_payload(
+            inputs={"A": self.A, "B": self.B, "bias": self.bias},
+            output=self.C.float().detach().clone(),
+            batch_size=self.m,
+            parameter_count=0,
+            precision_flags={
+                "fp16": True,
+                "bf16": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.5, 5.0),
+        )
 
     def teardown(self) -> None:
         """Cleanup."""
@@ -130,20 +143,6 @@ class OptimizedMatmulCUTLASSBenchmark(BaseBenchmark):
         if self.A is None or self.B is None or self.bias is None:
             return "Tensors not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.C is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.C.float()  # Convert to fp32 for comparison with baseline
-
-    def get_input_signature(self) -> dict:
-        """Describe the inputs so the harness can validate equivalence."""
-        return {"m": self.m, "n": self.n, "k": self.k}
-
-    def get_output_tolerance(self) -> tuple:
-        # CUTLASS/fp16 vs eager/fp32 can diverge significantly; allow very relaxed tolerance.
-        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaseBenchmark:

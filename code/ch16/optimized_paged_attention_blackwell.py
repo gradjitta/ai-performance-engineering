@@ -23,13 +23,14 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class PagedAttentionBlackwellBenchmark(BaseBenchmark):
+class PagedAttentionBlackwellBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized: Flash Attention with FP8 KV cache (Blackwell).
     
     Uses Flash Attention via SDPA + FP8 KV cache demonstration.
@@ -48,6 +49,7 @@ class PagedAttentionBlackwellBenchmark(BaseBenchmark):
         self.num_heads = 16
         self.head_dim = self.hidden_dim // self.num_heads
         self.dtype = torch.float16
+        self._verify_input: Optional[torch.Tensor] = None
         self.register_workload_metadata(
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(self.batch_size * self.seq_length),
@@ -60,6 +62,8 @@ class PagedAttentionBlackwellBenchmark(BaseBenchmark):
         """Initialize Flash Attention model."""
         torch.backends.cudnn.benchmark = True
         torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         device = torch.device("cuda")
         
@@ -84,6 +88,7 @@ class PagedAttentionBlackwellBenchmark(BaseBenchmark):
             device=device,
             dtype=self.dtype,
         )
+        self._verify_input = self.inputs.detach().clone()
         
         # Proper warmup
         for _ in range(5):
@@ -116,6 +121,26 @@ class PagedAttentionBlackwellBenchmark(BaseBenchmark):
         with torch.no_grad():
             self.output = self._forward_flash()
         torch.cuda.synchronize()
+        if self._verify_input is None:
+            raise RuntimeError("Verification input missing")
+        parameter_count = 0
+        if self.qkv_proj is not None:
+            parameter_count += sum(p.numel() for p in self.qkv_proj.parameters())
+        if self.out_proj is not None:
+            parameter_count += sum(p.numel() for p in self.out_proj.parameters())
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=parameter_count,
+            precision_flags={
+                "fp16": True,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.1, 1.0),
+        )
     
     def teardown(self) -> None:
         """Cleanup resources."""
@@ -131,20 +156,6 @@ class PagedAttentionBlackwellBenchmark(BaseBenchmark):
             "fp8_kv.memory_savings": 2.0,  # 2x savings with FP8
             "seq_length": float(self.seq_length),
         }
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "seq_length": self.seq_length, "hidden_dim": self.hidden_dim}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

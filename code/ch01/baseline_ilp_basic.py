@@ -82,14 +82,6 @@ class BaselineIlpBasicBenchmark(BaseBenchmark):
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.output = torch.empty(self.N, device=self.device, dtype=torch.float32)
         self.parameter_count = 0
-        
-        # Pre-compute verification output
-        val = self.input
-        val = val * 2.0
-        val = val + 1.0
-        val = val * 3.0
-        val = val - 5.0
-        self.output = val
         torch.cuda.synchronize()
     
     def benchmark_fn(self) -> None:
@@ -118,6 +110,13 @@ class BaselineIlpBasicBenchmark(BaseBenchmark):
             # Sequential dependencies prevent parallel execution
             # Cannot hide instruction latency
         torch.cuda.synchronize(self.device)
+        self._set_verification_payload(
+            inputs={"input": self.input},
+            output=self.output,
+            batch_size=self.N,
+            parameter_count=int(self.parameter_count),
+            output_tolerance=(1e-5, 1e-5),
+        )
 
     
     def teardown(self) -> None:
@@ -146,46 +145,6 @@ class BaselineIlpBasicBenchmark(BaseBenchmark):
         if self.input is None or self.output is None:
             return "Tensors not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        # Limit verification payload to avoid shipping 100M elements through subprocess JSON
-        sample_size = min(1024, self.output.numel())
-        return self.output.reshape(-1)[:sample_size].detach().clone()
-
-    def get_verify_inputs(self) -> dict:
-        if self.input is None:
-            raise RuntimeError("setup() must be called before get_verify_inputs()")
-        return {"input": self.input}
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        if self.input is None or self.output is None:
-            raise RuntimeError("setup() must be called before get_input_signature()")
-        return {
-            "shapes": {
-                "input": tuple(self.input.shape),
-                "output": tuple(self.output.shape),
-            },
-            "dtypes": {
-                "input": str(self.input.dtype),
-                "output": str(self.output.dtype),
-            },
-            "batch_size": int(self.N),
-            "parameter_count": int(self.parameter_count),
-            "precision_flags": {
-                "fp16": False,
-                "bf16": False,
-                "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
-            },
-        }
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (1e-5, 1e-5)
 
 
 def get_benchmark() -> BaseBenchmark:

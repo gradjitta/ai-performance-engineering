@@ -19,11 +19,12 @@ import torch.nn as nn
 import os
 from core.benchmark.smoke import is_smoke_mode
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.optimization.allocator_tuning import log_allocator_guidance
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 
-class BaselineDockerBenchmark(BaseBenchmark):
+class BaselineDockerBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Simulates a non-containerized setup with blocking H2D copies."""
 
     def __init__(self):
@@ -89,6 +90,19 @@ class BaselineDockerBenchmark(BaseBenchmark):
         
         # Store output for verification
         self.output = out.detach()
+        self._set_verification_payload(
+            inputs={"data": x, "target": y},
+            output=self.output,
+            batch_size=self.batch_size,
+            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+            output_tolerance=(1.0, 10.0),
+        )
 
     def teardown(self) -> None:
         self.model = None
@@ -115,24 +129,6 @@ class BaselineDockerBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is not None:
-            return self.output.detach().clone()
-        raise RuntimeError("benchmark_fn() must be called before verification - output is None")
-    
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for verification.
-        
-        Data loading benchmarks may process different batches, so use wide
-        tolerance. Primary checks are: no NaN, shapes match, reasonable values.
-        """
-        return (1.0, 10.0)
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "num_batches": self.num_batches}
 
 
 def get_benchmark() -> BaseBenchmark:

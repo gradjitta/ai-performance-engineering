@@ -50,6 +50,13 @@ class VectorizationBenchmark(BaseBenchmark):
                 t = (t * 1.0001) + 0.0001
             self.output = t.detach()
             torch.cuda.synchronize(self.device)
+        self._set_verification_payload(
+            inputs={"tensor": self.tensor},
+            output=self.output,
+            batch_size=self.N,
+            parameter_count=0,
+            output_tolerance=(0.1, 1.0),
+        )
 
     def teardown(self) -> None:
         self.tensor = None
@@ -74,26 +81,6 @@ class VectorizationBenchmark(BaseBenchmark):
         if self.tensor is None:
             return "Tensor not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-    
-    def get_verify_inputs(self) -> torch.Tensor:
-        """Return original tensor used as input for aliasing checks."""
-        if self.tensor is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self.tensor
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"N": self.N, "repeats": self.repeats}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

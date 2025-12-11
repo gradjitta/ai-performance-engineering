@@ -15,6 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
@@ -58,7 +59,7 @@ class NaiveAttentionModule(nn.Module):
         return out
 
 
-class BaselineFlashSDPBenchmark(BaseBenchmark):
+class BaselineFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Baseline: naive attention with explicit matmul (no Flash SDP)."""
 
     def __init__(self):
@@ -74,18 +75,22 @@ class BaselineFlashSDPBenchmark(BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self.output = None
+        self._verify_input: Optional[torch.Tensor] = None
         self.register_workload_metadata(
             requests_per_iteration=float(self.batch),
             tokens_per_iteration=float(tokens),
         )
 
     def setup(self) -> None:
-        torch.manual_seed(0)
+        torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         # Baseline: naive attention without Flash SDP
         self.model = NaiveAttentionModule(hidden_dim=self.hidden, num_heads=8).to(
             self.device, dtype=torch.float16
         )
         self.inputs = torch.randn(self.batch, self.seq_len, self.hidden, device=self.device, dtype=torch.float16)
+        self._verify_input = self.inputs.detach().clone()
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -96,6 +101,21 @@ class BaselineFlashSDPBenchmark(BaseBenchmark):
         with nvtx_range("naive_attention_baseline", enable=enable_nvtx):
             self.output = self.model(self.inputs)
         torch.cuda.synchronize(self.device)
+        if self._verify_input is None:
+            raise RuntimeError("Verification input missing")
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            precision_flags={
+                "fp16": True,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.1, 1.0),
+        )
 
     def teardown(self) -> None:
         self.model = None
@@ -106,20 +126,6 @@ class BaselineFlashSDPBenchmark(BaseBenchmark):
         if self.model is None or self.inputs is None:
             return "Model/inputs not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"batch": self.batch, "seq_len": self.seq_len, "hidden": self.hidden}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(

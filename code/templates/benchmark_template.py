@@ -1,169 +1,99 @@
-"""Template for creating new benchmarks.
+"""Template for creating new benchmarks with full verification.
 
-This template provides a complete example of a benchmark implementation
-following the benchmark contract. Copy this file and modify it for your needs.
-
-Usage:
-    1. Copy this template to your chapter directory
-    2. Rename the file (e.g., baseline_my_benchmark.py or optimized_my_benchmark.py)
-    3. Implement the required methods: setup(), benchmark_fn(), teardown()
-    4. Optionally implement get_config() and validate_result()
-    5. Add a get_benchmark() function that returns your benchmark instance
+Copy this file into your chapter directory and fill in the benchmark-specific
+details. The mixin enforces the required verification methods so new benchmarks
+fail fast if verification payloads are missing.
 """
 
 from __future__ import annotations
 
-import torch
-import torch.nn as nn
 from typing import Optional
 
+import torch
+import torch.nn as nn
+
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 
-class MyBenchmark(BaseBenchmark):
+class MyBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Description of what this benchmark measures.
-    
+
     This benchmark demonstrates [technique/optimization/pattern].
-    
+
     Key aspects:
     - What it measures (e.g., "Matrix multiplication performance")
     - What technique it uses (e.g., "Naive implementation" or "Optimized with tensor cores")
     - Expected performance characteristics
     """
-    
+
     def __init__(self):
-        """Initialize benchmark with device resolution.
-        
-        Subclasses should call super().__init__() and then set up their own attributes.
-        """
+        """Initialize benchmark with device resolution."""
         super().__init__()
-        # Add your benchmark-specific attributes here
         self.model: Optional[nn.Module] = None
         self.input_data: Optional[torch.Tensor] = None
-        # ... other attributes
-    
+        self._verify_input: Optional[torch.Tensor] = None
+
     def setup(self) -> None:
-        """Setup phase: initialize models, data, etc.
-        
-        This method is called once before benchmarking begins.
-        Use it to:
-        - Initialize models, tensors, or other resources
-        - Move data to the correct device
-        - Set random seeds if needed
-        - Perform any one-time setup
-        
-        Example:
-            torch.manual_seed(42)
-            self.model = nn.Linear(256, 256).to(self.device)
-            self.input_data = torch.randn(32, 256, device=self.device)
-            torch.cuda.synchronize()  # Ensure setup is complete
-        """
-        # Set random seed for reproducibility (optional)
+        """Setup phase: initialize models, data, etc."""
         torch.manual_seed(42)
-        
-        # Initialize your model/data here
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
+
         self.model = nn.Linear(256, 256).to(self.device)
         self.input_data = torch.randn(32, 256, device=self.device)
-        
-        # Synchronize CUDA operations to ensure setup is complete
+        self._verify_input = self.input_data.detach().clone()
+
         if torch.cuda.is_available():
             torch.cuda.synchronize()
-    
+
     def benchmark_fn(self) -> None:
-        """Function to benchmark. Must be callable with no args.
-        
-        This method is called repeatedly during benchmarking.
-        It should contain the code you want to measure.
-        
-        Best practices:
-        - Keep it focused on the operation being measured
-        - Use NVTX ranges for profiling (via self._nvtx_range())
-        - Synchronize CUDA operations if needed (via self._synchronize())
-        - Avoid unnecessary overhead (e.g., print statements)
-        
-        Example:
-            with self._nvtx_range("my_operation"):
-                output = self.model(self.input_data)
-                self._synchronize()  # Wait for CUDA operations to complete
-        """
-        # Use NVTX ranges for profiling (automatically enabled when profiling is on)
+        """Function to benchmark. Must be callable with no args."""
+        if self.model is None or self.input_data is None or self._verify_input is None:
+            raise RuntimeError("setup() must initialize model and inputs before benchmarking")
+
         with self._nvtx_range("my_benchmark_operation"):
-            # Your benchmark code here
             output = self.model(self.input_data)
-            
-            # Synchronize CUDA operations to ensure accurate timing
             self._synchronize()
-    
+
+        # Capture verification payload from the timed run (no fallbacks)
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=output.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            output_tolerance=(1e-4, 1e-4),
+        )
+
     def teardown(self) -> None:
-        """Cleanup phase.
-        
-        This method is called once after benchmarking completes.
-        Use it to:
-        - Free GPU memory
-        - Clean up resources
-        - Reset state
-        
-        Note: This is called even if benchmarking fails, so make it safe.
-        """
-        # Clean up resources
+        """Cleanup phase."""
         self.model = None
         self.input_data = None
-        
-        # Optionally clear CUDA cache (usually not needed, harness handles this)
+        self._verify_input = None
+
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-    
+
     def get_config(self) -> Optional[BenchmarkConfig]:
-        """Optional: return benchmark-specific config overrides.
-        
-        Use this to customize benchmark configuration for this specific benchmark.
-        Common use cases:
-        - Different iteration counts for slow benchmarks
-        - Custom timeouts for benchmarks that take longer
-        - Enabling memory tracking for memory-intensive benchmarks
-        
-        Returns:
-            BenchmarkConfig with overrides, or None to use defaults
-            
-        Example:
-            config = BenchmarkConfig()
-            config.iterations = 50  # Fewer iterations for slow benchmark
-            config.measurement_timeout_seconds = 30  # Longer timeout
-            config.enable_memory_tracking = True  # Track memory usage
-            return config
-        """
-        # Return None to use default config
+        """Optional: return benchmark-specific config overrides."""
         return None
-        
-        # Or return a custom config:
-        # config = BenchmarkConfig()
-        # config.iterations = 50
-        # return config
-    
+
     def validate_result(self) -> Optional[str]:
-        """Optional: validate benchmark result, return error message if invalid.
-        
-        This method is called after benchmarking to validate the results.
-        Use it to check:
-        - Correctness of computations
-        - Expected performance characteristics
-        - Resource usage (memory, etc.)
-        
-        Returns:
-            None if result is valid, or error message string if invalid
-            
-        Example:
-            # Check that output is not NaN
-            if torch.isnan(self.last_output).any():
-                return "Output contains NaN values"
-            return None
-        """
-        # Return None if validation passes
+        """Optional: validate benchmark result, return error message if invalid."""
         return None
-        
-        # Or return an error message if validation fails:
-        # if some_condition:
-        #     return "Error description"
+
+    # Verification methods (fail-fast; provided by mixin)
+    def get_verify_output(self) -> torch.Tensor:
+        """Return benchmark output captured during the timed run."""
+        return super().get_verify_output()
+
+    def get_input_signature(self):
+        """Return workload description for verification."""
+        return super().get_input_signature()
+
+    def get_output_tolerance(self):
+        """Return (rtol, atol) tolerance for output comparison."""
+        return super().get_output_tolerance()
 
 
 def get_benchmark():
@@ -199,4 +129,3 @@ if __name__ == "__main__":
     
     if result.memory:
         print(f"Peak memory: {result.memory.peak_mb:.2f} MB")
-

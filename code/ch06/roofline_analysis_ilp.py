@@ -18,6 +18,7 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from ch06.baseline_gemm_ilp import BaselineGEMMILPBenchmark
 from ch06.optimized_gemm_ilp import OptimizedILPBenchmark
@@ -81,7 +82,7 @@ class RooflineAnalyzer:
         }
 
 
-class RooflineAnalysisILPBenchmark(BaseBenchmark):
+class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Benchmark for roofline analysis of ILP kernels."""
     
     def __init__(self):
@@ -89,9 +90,11 @@ class RooflineAnalysisILPBenchmark(BaseBenchmark):
         self.analyzer: Optional[RooflineAnalyzer] = None
         self.results: Optional[Dict] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_input: Optional[torch.Tensor] = None
     
     def setup(self) -> None:
         """Setup: Initialize roofline analyzer."""
+        torch.manual_seed(42)
         self.analyzer = RooflineAnalyzer(
             peak_bandwidth_gbs=8000,
             peak_compute_tflops=2000,
@@ -124,6 +127,20 @@ class RooflineAnalysisILPBenchmark(BaseBenchmark):
                 optimized_result.get("efficiency", 0.0),
                 self.analyzer.ridge_point,
             ], dtype=torch.float32)
+            self._verify_input = torch.tensor([self.analyzer.ridge_point], dtype=torch.float32)
+            self._set_verification_payload(
+                inputs={"ridge_point": self._verify_input},
+                output=self.output,
+                batch_size=1,
+                parameter_count=0,
+                precision_flags={
+                    "fp16": False,
+                    "bf16": False,
+                    "fp8": False,
+                    "tf32": torch.backends.cuda.matmul.allow_tf32,
+                },
+                output_tolerance=(1e-4, 1e-4),
+            )
 
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -192,13 +209,6 @@ class RooflineAnalysisILPBenchmark(BaseBenchmark):
         speedup = baseline_time / optimized_time if optimized_time > 0 else 0
         print(f"\nSpeedup: {speedup:.2f}x ({baseline_time:.2f} ms → {optimized_time:.2f} ms)")
         print("\n  Tip: Tensor cores provide significant speedup for compute-bound GEMM operations")
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.clone()
-
 
 
 def get_benchmark() -> BaseBenchmark:

@@ -222,11 +222,13 @@ class TestVerificationEnforcement:
             def setup(self): pass
             def benchmark_fn(self): pass
             def teardown(self): pass
-            def get_input_signature(self): return {"shapes": {"x": (10,)}}
+            def get_input_signature(self): return {"shapes": {"x": (10,)}, "dtypes": {"x": "float32"}, "batch_size": 1, "parameter_count": 10, "precision_flags": {}}
             def validate_result(self): return None
             def get_verify_output(self):
                 """Required in strict mode - return output tensor(s) for verification."""
                 return {"output": torch.tensor([1.0])}
+            def get_output_tolerance(self):
+                return (1e-3, 1e-3)
         
         benchmark = CompliantBenchmark()
         compliant, errors, warnings = BenchmarkContract.check_verification_compliance(benchmark)
@@ -352,4 +354,3 @@ class TestGatePerf:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

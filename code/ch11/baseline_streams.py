@@ -18,6 +18,7 @@ from typing import Optional, List
 import torch
 
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.benchmark.verification import simple_signature
 
 
 class BaselineStreamsBenchmark(BaseBenchmark):
@@ -121,11 +122,21 @@ class BaselineStreamsBenchmark(BaseBenchmark):
         if self.results is None:
             raise RuntimeError("Results not available - run benchmark first")
         # Concatenate all results for comparison
-        return torch.cat(self.results, dim=0)
+        output = torch.cat(self.results, dim=0)
+        if getattr(self, "_verification_payload", None) is None:
+            sample = self.host_data[0] if self.host_data else torch.zeros(self.N, dtype=torch.float32)
+            self._set_verification_payload(
+                inputs={"host_data": sample},
+                output=output,
+                batch_size=self.num_chunks,
+                parameter_count=self.N * self.num_chunks,
+                output_tolerance=self.get_output_tolerance(),
+            )
+        return output
 
     def get_input_signature(self) -> dict:
         """Return workload signature for input verification."""
-        return {"N": self.N, "num_chunks": self.num_chunks}
+        return simple_signature(batch_size=self.num_chunks, num_chunks=self.num_chunks, N=self.N)
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""

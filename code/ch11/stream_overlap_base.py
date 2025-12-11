@@ -6,6 +6,7 @@ from typing import List, Optional
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
@@ -16,7 +17,7 @@ def resolve_device() -> torch.device:
     return torch.device("cuda")
 
 
-class StridedStreamBaseline(BaseBenchmark):
+class StridedStreamBaseline(VerificationPayloadMixin, BaseBenchmark):
     """Baseline workload that executes strided copies on a single stream."""
 
     def __init__(
@@ -70,6 +71,21 @@ class StridedStreamBaseline(BaseBenchmark):
                     h_out.copy_(d_buf, non_blocking=True)
                 # Naive path blocks on each segment, preventing overlap.
                 self.stream.synchronize()
+        if (
+            self.host_input is None
+            or self.host_output is None
+            or self.host_in_chunks is None
+            or self.host_out_chunks is None
+        ):
+            raise RuntimeError("benchmark_fn() must run after setup() initializes buffers")
+        self._set_verification_payload(
+            inputs={"host_input": self.host_input},
+            output=self.host_output.detach().clone(),
+            batch_size=self.host_input.numel(),
+            parameter_count=0,
+            precision_flags={"tf32": torch.backends.cuda.matmul.allow_tf32},
+            output_tolerance=(1e-5, 1e-5),
+        )
 
     def teardown(self) -> None:
         self.stream = None
@@ -106,20 +122,18 @@ class StridedStreamBaseline(BaseBenchmark):
 
     def get_input_signature(self) -> dict:
         """Return workload signature for input verification."""
-        return {"N": self.N, "num_segments": self.num_segments}
+        return super().get_input_signature()
 
     def get_verify_output(self) -> torch.Tensor:
         """Return output tensor for verification comparison."""
-        if self.host_output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.host_output
+        return super().get_verify_output()
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""
-        return (1e-5, 1e-5)
+        return super().get_output_tolerance()
 
 
-class ConcurrentStreamOptimized(BaseBenchmark):
+class ConcurrentStreamOptimized(VerificationPayloadMixin, BaseBenchmark):
     """Optimized workload that splits data across multiple CUDA streams."""
 
     def __init__(
@@ -191,6 +205,21 @@ class ConcurrentStreamOptimized(BaseBenchmark):
                         h_out.copy_(d_buf, non_blocking=True)
                 # Let async copies and compute overlap across streams.
                 torch.cuda.synchronize()
+        if (
+            self.host_input is None
+            or self.host_output is None
+            or self.host_in_chunks is None
+            or self.host_out_chunks is None
+        ):
+            raise RuntimeError("benchmark_fn() must run after setup() initializes buffers")
+        self._set_verification_payload(
+            inputs={"host_input": self.host_input},
+            output=self.host_output.detach().clone(),
+            batch_size=self.host_input.numel(),
+            parameter_count=0,
+            precision_flags={"tf32": torch.backends.cuda.matmul.allow_tf32},
+            output_tolerance=(1e-5, 1e-5),
+        )
 
     def teardown(self) -> None:
         self.streams = None
@@ -225,14 +254,12 @@ class ConcurrentStreamOptimized(BaseBenchmark):
 
     def get_input_signature(self) -> dict:
         """Return workload signature for input verification."""
-        return {"N": self.N, "num_streams": self.num_streams}
+        return super().get_input_signature()
 
     def get_verify_output(self) -> torch.Tensor:
         """Return output tensor for verification comparison."""
-        if self.host_output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.host_output
+        return super().get_verify_output()
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""
-        return (1e-5, 1e-5)
+        return super().get_output_tolerance()

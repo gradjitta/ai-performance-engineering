@@ -7,10 +7,11 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
-class BaselineAutotuningBenchmark(BaseBenchmark):
+class BaselineAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Baseline: fixed parameters without autotuning."""
     
     def __init__(self):
@@ -47,6 +48,13 @@ class BaselineAutotuningBenchmark(BaseBenchmark):
                 transformed = self._transform(window)
                 self.output[start:end].copy_(transformed)
             self._synchronize()
+        self._set_verification_payload(
+            inputs={"input": self.input},
+            output=self.output.detach(),
+            batch_size=self.N,
+            parameter_count=0,
+            output_tolerance=(1e-4, 1e-4),
+        )
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -77,20 +85,6 @@ class BaselineAutotuningBenchmark(BaseBenchmark):
         if self.output is None:
             return "Output tensor not initialized"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"N": self.N, "block_size": self.block_size}
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (1e-4, 1e-4)
 
 
 

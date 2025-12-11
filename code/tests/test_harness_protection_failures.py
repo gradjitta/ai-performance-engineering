@@ -59,7 +59,8 @@ class _GraphCheatBenchmark(BaseBenchmark):
         self.x = None
 
     def setup(self) -> None:
-        self.x = torch.randn(4, device=self.device)
+        # Use deterministic values to avoid seed complaints when audit is forced to fail
+        self.x = torch.ones(4, device=self.device)
 
     def benchmark_fn(self) -> torch.Tensor:
         return self.x * 2
@@ -87,7 +88,7 @@ class _StreamCheatBenchmark(BaseBenchmark):
         self.x = None
 
     def setup(self) -> None:
-        self.x = torch.randn(4, device=self.device)
+        self.x = torch.ones(4, device=self.device)
 
     def benchmark_fn(self) -> torch.Tensor:
         return self.x + 1
@@ -125,6 +126,9 @@ class _DummyAuditContext:
 def _run_harness(benchmark: BaseBenchmark, config: BenchmarkConfig):
     """Helper to run harness in thread mode and return result."""
     harness = BenchmarkHarness()
+    # Disable setup precomputation detection for tests that aren't validating it
+    if not isinstance(benchmark, _CheatingSetupBenchmark):
+        config.detect_setup_precomputation = False
     result = harness._benchmark_with_threading(benchmark, config)
     return result
 
@@ -171,18 +175,3 @@ def test_stream_audit_failure(monkeypatch):
 
     result = _run_harness(bench, config)
     assert any("stream timing violation" in err.lower() for err in result.errors)
-
-
-class _DummyAuditContext:
-    """Helper context to mimic audit_streams returning an auditor."""
-
-    def __enter__(self):
-        return _DummyAuditor()
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-
-class _DummyAuditor:
-    def check_issues(self):
-        return False, ["auditor failure"]

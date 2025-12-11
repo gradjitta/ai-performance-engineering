@@ -13,6 +13,7 @@ import torch
 
 from typing import Optional
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -24,7 +25,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
 from ch12.cuda_extensions import load_cuda_graphs_extension
 
 
-class BaselineCudaGraphsBenchmark(BaseBenchmark):
+class BaselineCudaGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Separate kernel launches - multiple launches without graph optimization (uses CUDA extension)."""
     
     def __init__(self):
@@ -33,6 +34,7 @@ class BaselineCudaGraphsBenchmark(BaseBenchmark):
         self.N = 1 << 20  # 1M elements - large enough for meaningful work
         self.iterations = 500  # More iterations to amortize graph capture cost
         self._extension = None
+        self._verify_input: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(self.N),
@@ -43,13 +45,18 @@ class BaselineCudaGraphsBenchmark(BaseBenchmark):
         self._extension = load_cuda_graphs_extension()
         
         torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         self.data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
         torch.cuda.synchronize(self.device)
         # Warm up kernel launches so compilation/init costs are excluded.
         self._extension.separate_kernel_launches(self.data, 1)
         torch.cuda.synchronize()
         torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         self.data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
+        self._verify_input = self.data.detach().clone()
         torch.cuda.synchronize()
     
     def benchmark_fn(self) -> None:
@@ -66,7 +73,21 @@ class BaselineCudaGraphsBenchmark(BaseBenchmark):
         with nvtx_range("cuda_graphs", enable=enable_nvtx):
             self._extension.separate_kernel_launches(self.data, self.iterations)
             self._synchronize()
-
+        if self.data is None or self._verify_input is None:
+            raise RuntimeError("Data or verification input not initialized")
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.data.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=0,
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.1, 1.0),
+        )
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -106,20 +127,6 @@ class BaselineCudaGraphsBenchmark(BaseBenchmark):
         if not torch.isfinite(self.data).all():
             return "Data contains non-finite values"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.data is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.data.detach().clone()
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"N": self.N}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

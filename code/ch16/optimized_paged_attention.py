@@ -25,6 +25,7 @@ import torch.nn.functional as F
 
 from typing import Optional
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -41,7 +42,7 @@ def resolve_device() -> torch.device:
     return torch.device("cuda")
 
 
-class OptimizedPagedAttentionBenchmark(BaseBenchmark):
+class OptimizedPagedAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized: Flash Attention via SDPA (fast)."""
     
     def __init__(self):
@@ -56,6 +57,7 @@ class OptimizedPagedAttentionBenchmark(BaseBenchmark):
         self.num_heads = 16
         self.head_dim = self.hidden_dim // self.num_heads
         self.dtype = torch.float16
+        self._verify_input: Optional[torch.Tensor] = None
         
         tokens = self.batch_size * self.max_seq_len
         self._workload = WorkloadMetadata(
@@ -69,6 +71,8 @@ class OptimizedPagedAttentionBenchmark(BaseBenchmark):
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.deterministic = False
         torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         self.qkv_proj = nn.Linear(
             self.hidden_dim,
@@ -91,6 +95,7 @@ class OptimizedPagedAttentionBenchmark(BaseBenchmark):
             device=self.device,
             dtype=self.dtype,
         )
+        self._verify_input = self.inputs.detach().clone()
         
         # Proper warmup
         for _ in range(5):
@@ -134,8 +139,28 @@ class OptimizedPagedAttentionBenchmark(BaseBenchmark):
 
         with nvtx_range("optimized_paged_attention", enable=enable_nvtx):
             with torch.no_grad():
-                _ = self._forward_flash()
+                self.output = self._forward_flash().detach().clone()
         self._synchronize()
+        if self._verify_input is None:
+            raise RuntimeError("Verification input missing")
+        parameter_count = 0
+        if self.qkv_proj is not None:
+            parameter_count += sum(p.numel() for p in self.qkv_proj.parameters())
+        if self.out_proj is not None:
+            parameter_count += sum(p.numel() for p in self.out_proj.parameters())
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output,
+            batch_size=self._verify_input.shape[0],
+            parameter_count=parameter_count,
+            precision_flags={
+                "fp16": True,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.1, 1.0),
+        )
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -162,20 +187,6 @@ class OptimizedPagedAttentionBenchmark(BaseBenchmark):
         if self.qkv_proj is None or self.inputs is None:
             return "Model not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"batch_size": self.batch_size, "max_seq_len": self.max_seq_len, "hidden_dim": self.hidden_dim}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

@@ -21,30 +21,38 @@ from ch15.baseline_continuous_batching import BaselineContinuousBatchingBenchmar
 class BaselineContinuousBatchingBenchmark(_BaselineContinuousBatchingBenchmark):
     """Direct alias to the chapter 15 baseline; skips when GPUs < 2 in the wrapper."""
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.jitter_exemption_reason = "SKIPPED: requires >=2 GPUs"
+        init_tokens = torch.zeros((1, self.hidden_dim), dtype=torch.float32)
+        self._verify_inputs = {"tokens": init_tokens}
+        # Seed verification payload so audit can query without setup.
+        self._set_verification_payload(
+            inputs=self._verify_inputs,
+            output=torch.zeros_like(init_tokens),
+            batch_size=1,
+            parameter_count=0,
+        )
+
     def setup(self) -> None:
         if torch.cuda.device_count() < 2:
             raise RuntimeError("SKIPPED: requires >=2 GPUs")
         super().setup()
         if self.batches:
-            self._verify_inputs = {"tokens": self.batches[0][:1].detach().clone()}
+            tokens = torch.cat(self.batches, dim=0).detach().clone()
+            self._verify_inputs = {"tokens": tokens}
         else:
             self._verify_inputs = {"tokens": torch.zeros((1, self.hidden_dim), device=self.device)}
 
-    def get_verify_output(self) -> torch.Tensor:
-        return super().get_verify_output()
-
-    def get_verify_inputs(self) -> dict:
-        return {k: v.detach().clone() for k, v in getattr(self, "_verify_inputs", {}).items()}
-
-    def get_input_signature(self) -> dict:
-        batch_shape = tuple(self._verify_inputs["tokens"].shape) if hasattr(self, "_verify_inputs") else (1, self.hidden_dim)
-        return {
-            "batch_size": self.batch_size,
-            "num_batches": self.num_batches,
-            "hidden_dim": self.hidden_dim,
-            "shapes": {"tokens": batch_shape, "output": tuple(self.output.shape) if self.output is not None else (0,)},
-            "dtypes": {"tokens": "float32"},
-        }
+    def benchmark_fn(self) -> None:
+        super().benchmark_fn()
+        self._set_verification_payload(
+            inputs={k: v for k, v in self._verify_inputs.items()},
+            output=self.output,
+            batch_size=self.num_samples if hasattr(self, "num_samples") else self.batch_size,
+            parameter_count=sum(p.numel() for p in self.model.parameters()) if getattr(self, "model", None) else 0,
+            output_tolerance=super().get_output_tolerance(),
+        )
 
 
 

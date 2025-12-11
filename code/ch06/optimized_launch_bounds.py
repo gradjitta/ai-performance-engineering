@@ -6,11 +6,12 @@ from typing import Optional
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from ch06.cuda_extensions import load_launch_bounds_extension
 
 
-class OptimizedLaunchBoundsBenchmark(BaseBenchmark):
+class OptimizedLaunchBoundsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Kernel with launch bounds annotation (optimized)."""
     
     def __init__(self):
@@ -47,6 +48,13 @@ class OptimizedLaunchBoundsBenchmark(BaseBenchmark):
         with self._nvtx_range("optimized_launch_bounds"):
             self._extension.launch_bounds_optimized(self.input_data, self.output_data, self.iterations)
             self._synchronize()
+        self._set_verification_payload(
+            inputs={"input": self.input_data},
+            output=self.output_data.detach(),
+            batch_size=self.N,
+            parameter_count=0,
+            output_tolerance=(1e-4, 1e-4),
+        )
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -84,20 +92,6 @@ class OptimizedLaunchBoundsBenchmark(BaseBenchmark):
         if not torch.isfinite(self.output_data).all():
             return "Output contains non-finite values"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"N": self.N, "iterations": self.iterations}
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output_data is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output_data
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (1e-4, 1e-4)
 
 
 

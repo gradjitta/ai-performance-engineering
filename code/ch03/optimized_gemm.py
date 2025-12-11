@@ -17,6 +17,7 @@ if str(repo_root) not in sys.path:
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -26,7 +27,7 @@ from core.harness.benchmark_harness import (
 from core.utils.compile_utils import configure_tf32, restore_tf32
 
 
-class OptimizedGemmBenchmark(BaseBenchmark):
+class OptimizedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Single large matmul captured inside torch.compile."""
 
     def __init__(self):
@@ -86,6 +87,19 @@ class OptimizedGemmBenchmark(BaseBenchmark):
         self._synchronize()
         
         self.output = result
+        self._set_verification_payload(
+            inputs={"left": self.left, "right": self.right},
+            output=self.output.detach().clone(),
+            batch_size=self.left.shape[0],
+            parameter_count=0,
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": True,
+            },
+            output_tolerance=(1e-4, 1e-3),
+        )
 
     def teardown(self) -> None:
         self.left = None
@@ -112,28 +126,6 @@ class OptimizedGemmBenchmark(BaseBenchmark):
         if self.fn is None:
             return "Compiled function not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is not None:
-            return self.output.detach().clone()
-        raise RuntimeError("benchmark_fn() must be called before verification - output is None")
-
-    def get_output_tolerance(self) -> tuple:
-        """Return custom tolerance for output comparison.
-        
-        The blocked baseline matmul accumulates results differently than this
-        single matmul, leading to different floating-point rounding. With TF32
-        enabled, this causes small numerical differences (~1e-3 absolute).
-        
-        Returns:
-            Tuple of (rtol, atol)
-        """
-        return (1e-4, 1e-3)  # Single fused matmul has different FP accumulation order
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"m": self.m, "n": self.n, "k": self.k}
 
 
 def get_benchmark() -> BaseBenchmark:

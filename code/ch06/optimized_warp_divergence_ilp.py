@@ -19,6 +19,7 @@ from typing import Callable, Optional, Tuple
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.utils.compile_utils import compile_callable
 from core.optimization.inductor_guard import (
     InductorCudagraphState,
@@ -58,7 +59,7 @@ def _fused_branchless_kernel(
     return result, mask_source
 
 
-class OptimizedWarpDivergenceILPBenchmark(BaseBenchmark):
+class OptimizedWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized: High ILP by avoiding warp divergence with fused branchless kernel."""
 
     def __init__(self):
@@ -111,6 +112,13 @@ class OptimizedWarpDivergenceILPBenchmark(BaseBenchmark):
             # Single compiled call on full tensor - no chunking, no concat
             assert self._compiled_fn is not None
             self.output, self.routing_logits = self._compiled_fn(self.input, self.routing_logits)
+        self._set_verification_payload(
+            inputs={"input": self.input, "routing_logits": self.routing_logits},
+            output=self.output.detach(),
+            batch_size=self.N,
+            parameter_count=0,
+            output_tolerance=(1e-5, 1e-5),
+        )
 
     def teardown(self) -> None:
         self.input = None
@@ -141,33 +149,6 @@ class OptimizedWarpDivergenceILPBenchmark(BaseBenchmark):
         if self.output is None:
             return "Output tensor not initialized"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {
-            "N": self.N,
-            "branch_iterations": self.branch_iterations,
-            "shapes": {"input": (1, self.N)},  # 2D shape for jitter check
-            "dtypes": {"input": "float32"},
-        }
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison.
-        
-        torch.where should produce IDENTICAL results to boolean indexing
-        because they apply the same math to the same elements.
-        """
-        if self.output is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self.output
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison.
-        
-        FP32 operations with same math should match closely.
-        Using slightly loose tolerance for CUDA parallel execution variance.
-        """
-        return (1e-5, 1e-5)
 
 
 

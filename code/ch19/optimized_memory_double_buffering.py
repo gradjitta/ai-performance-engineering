@@ -134,6 +134,14 @@ class OptimizedMemoryDoubleBufferingBenchmark(BaseBenchmark):
                             next_event.record()
                 self.compute_stream.synchronize()
         torch.cuda.synchronize()
+        self._set_verification_payload(
+            inputs={"buffer": self.buffer_a if self.buffer_a is not None else self.buffer_b},
+            output=self.output,
+            batch_size=self.batch_size,
+            parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
+            output_tolerance=(0.1, 1.0),
+            precision_flags={"fp16": True, "bf16": False, "fp8": False, "tf32": False},
+        )
 
     
     def teardown(self) -> None:
@@ -168,26 +176,6 @@ class OptimizedMemoryDoubleBufferingBenchmark(BaseBenchmark):
         if self.buffer_a is None or self.buffer_b is None:
             return "Buffers not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-           raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-    
-    def get_verify_inputs(self) -> torch.Tensor:
-        """Return device buffer used for aliasing checks."""
-        if self.buffer_a is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self.buffer_a
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "seq_len": self.seq_len}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""

@@ -221,27 +221,42 @@ def reset_cuda_memory_pool(device: Optional[Any] = None) -> None:
     if torch is None or not torch.cuda.is_available():
         return
     
+    # Full reset: sync, drop Python refs, flush allocator caches/stats
     torch.cuda.synchronize(device)
+    gc.collect()
     torch.cuda.empty_cache()
     try:
         torch.cuda.ipc_collect()
     except Exception:
         pass
     
-    # Best-effort reset of caching allocator state where supported
+    # Best-effort allocator cache reset across PyTorch APIs
+    try:
+        if hasattr(torch, "_C") and hasattr(torch._C, "_cuda_releasePool"):
+            torch._C._cuda_releasePool()
+    except Exception:
+        pass
     try:
         if hasattr(torch, "_C") and hasattr(torch._C, "_cuda_cudaCachingAllocator_set_allocator_settings"):
             torch._C._cuda_cudaCachingAllocator_set_allocator_settings("reset_allocator:True")
+        elif hasattr(torch.cuda, "memory") and hasattr(torch.cuda.memory, "_set_allocator_settings"):
+            torch.cuda.memory._set_allocator_settings("reset_allocator:True")
     except Exception:
         pass
     
-    # Also reset the memory stats
+    # Reset allocator statistics
     if hasattr(torch.cuda, 'reset_peak_memory_stats'):
         torch.cuda.reset_peak_memory_stats(device)
     if hasattr(torch.cuda, 'reset_accumulated_memory_stats'):
         torch.cuda.reset_accumulated_memory_stats(device)
-    
-    import gc
+    try:
+        if hasattr(torch, "_C") and hasattr(torch._C, "_cuda_resetPeakHostMemoryStats"):
+            torch._C._cuda_resetPeakHostMemoryStats()
+    except Exception:
+        pass
+    torch.cuda.synchronize(device)
+    if hasattr(torch.cuda, 'reset_accumulated_memory_stats'):
+        torch.cuda.reset_accumulated_memory_stats(device)
     gc.collect()
     torch.cuda.synchronize(device)
 
@@ -680,6 +695,8 @@ class StreamAuditor:
         self._sync_count: int = 0
         self._orig_stream_cls = None
         self._orig_synchronize = None
+        self._orig_stream_fn = None
+        self._orig_set_stream_fn = None
     
     def start(self) -> None:
         """Start stream auditing."""
@@ -724,6 +741,32 @@ class StreamAuditor:
             torch.cuda.synchronize = _audited_synchronize  # type: ignore[assignment]
         except Exception:
             self._orig_synchronize = None
+
+        # Monkeypatch torch.cuda.stream to record usage of existing streams
+        try:
+            self._orig_stream_fn = torch.cuda.stream
+            auditor = self
+
+            def _audited_stream_fn(stream, *args, **kwargs):
+                auditor.record_stream_event(stream, operation="stream_ctx")
+                return auditor._orig_stream_fn(stream, *args, **kwargs)
+
+            torch.cuda.stream = _audited_stream_fn  # type: ignore[assignment]
+        except Exception:
+            self._orig_stream_fn = None
+
+        # Monkeypatch torch.cuda.set_stream to capture explicit stream switches
+        try:
+            self._orig_set_stream_fn = torch.cuda.set_stream
+            auditor = self
+
+            def _audited_set_stream(stream, *args, **kwargs):
+                auditor.record_stream_event(stream, operation="set_stream")
+                return auditor._orig_set_stream_fn(stream, *args, **kwargs)
+
+            torch.cuda.set_stream = _audited_set_stream  # type: ignore[assignment]
+        except Exception:
+            self._orig_set_stream_fn = None
     
     def record_stream_event(self, stream: Any, operation: str = "kernel") -> None:
         """Record a stream event for auditing.
@@ -770,6 +813,16 @@ class StreamAuditor:
         if self._orig_synchronize is not None:
             try:
                 torch.cuda.synchronize = self._orig_synchronize  # type: ignore[assignment]
+            except Exception:
+                pass
+        if self._orig_stream_fn is not None:
+            try:
+                torch.cuda.stream = self._orig_stream_fn  # type: ignore[assignment]
+            except Exception:
+                pass
+        if self._orig_set_stream_fn is not None:
+            try:
+                torch.cuda.set_stream = self._orig_set_stream_fn  # type: ignore[assignment]
             except Exception:
                 pass
     

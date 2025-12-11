@@ -176,14 +176,10 @@ class TestSubprocessTimeoutKill:
         )
         harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config)
         
-        # When no timings are collected, harness raises RuntimeError
-        # This is the expected behavior for error propagation
-        with pytest.raises(RuntimeError) as exc_info:
-            harness.benchmark(benchmark)
-        
-        # Verify error message contains useful information
-        error_msg = str(exc_info.value).lower()
-        assert "error" in error_msg or "failed" in error_msg or "benchmark" in error_msg
+        # When subprocess fails, harness should surface errors in the result
+        result = harness.benchmark(benchmark)
+        assert len(result.errors) > 0
+        assert any("intentional benchmark failure" in err.lower() for err in result.errors)
 
 
 class TestPyTorchTimerCorrectness:
@@ -442,9 +438,15 @@ class TestErrorHandling:
             
             def get_output_tolerance(self):
                 return (1e-5, 1e-8)
-        
+
         benchmark = NoSetupBenchmark()
-        config = BenchmarkConfig(iterations=5, warmup=5, enable_profiling=False, use_subprocess=False)
+        config = BenchmarkConfig(
+            iterations=5,
+            warmup=5,
+            enable_profiling=False,
+            use_subprocess=False,
+            adaptive_iterations=False,
+        )
         harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config)
         
         # Should not crash - setup() is optional

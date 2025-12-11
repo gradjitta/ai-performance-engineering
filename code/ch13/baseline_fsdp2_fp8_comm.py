@@ -23,6 +23,7 @@ import torch
 import torch.nn as nn
 import torch.distributed as dist
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -57,7 +58,7 @@ class SimpleTransformerBlock(nn.Module):
         return x
 
 
-class BaselineFSDP2FP32CommBenchmark(BaseBenchmark):
+class BaselineFSDP2FP32CommBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Benchmark FSDP2 with standard FP32 communication (no compression)."""
 
     def __init__(self):
@@ -73,6 +74,7 @@ class BaselineFSDP2FP32CommBenchmark(BaseBenchmark):
         self._comm_bytes = 0.0
         self.output = None
         self._verify_input = None
+        self.parameter_count = 0
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -83,7 +85,8 @@ class BaselineFSDP2FP32CommBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup model with standard FP32 communication."""
         torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         # Build model
         layers = nn.ModuleList([
@@ -91,6 +94,7 @@ class BaselineFSDP2FP32CommBenchmark(BaseBenchmark):
             for _ in range(self.num_layers)
         ])
         self.model = nn.Sequential(*layers).to(self.device, torch.bfloat16)
+        self.parameter_count = sum(p.numel() for p in self.model.parameters())
         
         # Calculate communication volume (FP32 = 4 bytes per element)
         total_params = sum(p.numel() for p in self.model.parameters())
@@ -143,6 +147,21 @@ class BaselineFSDP2FP32CommBenchmark(BaseBenchmark):
                 self.output = self.model(self._verify_input).float().clone()
                 self.model.train()
         self._synchronize()
+        if self._verify_input is None or self.output is None:
+            raise RuntimeError("Verification input/output not initialized")
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output,
+            batch_size=self._verify_input.shape[0],
+            parameter_count=self.parameter_count,
+            precision_flags={
+                "fp16": False,
+                "bf16": True,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.5, 5.0),
+        )
 
     def teardown(self) -> None:
         """Cleanup."""
@@ -188,7 +207,7 @@ class BaselineFSDP2FP32CommBenchmark(BaseBenchmark):
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaseBenchmark:

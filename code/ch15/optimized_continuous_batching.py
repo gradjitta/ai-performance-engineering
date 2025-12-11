@@ -9,10 +9,9 @@ import torch
 import torch.nn as nn
 
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 
-class OptimizedContinuousBatchingBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class OptimizedContinuousBatchingBenchmark(BaseBenchmark):
     """Optimized: continuous batching with dynamic batch composition."""
     
     def __init__(self):

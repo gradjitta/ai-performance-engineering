@@ -30,6 +30,19 @@ class OccupancyBinaryBenchmark(CudaBinaryBenchmark):
         run_args: list[str] | None = None,
     ):
         chapter_dir = Path(__file__).parent
+        args = run_args or [
+            "--block-size",
+            "32",
+            "--smem-bytes",
+            "45000",
+            "--unroll",
+            "1",
+            "--inner-iters",
+            "1",
+            "--reps",
+            "60",
+        ]
+        params = self._parse_run_args(args)
         super().__init__(
             chapter_dir=chapter_dir,
             binary_name="occupancy_tuning",
@@ -38,27 +51,28 @@ class OccupancyBinaryBenchmark(CudaBinaryBenchmark):
             warmup=5,
             timeout_seconds=90,
             # Baseline: small block, heavy shared memory to depress occupancy.
-            run_args=run_args
-            or [
-                "--block-size",
-                "32",
-                "--smem-bytes",
-                "45000",
-                "--unroll",
-                "1",
-                "--inner-iters",
-                "1",
-                "--reps",
-                "60",
-            ],
+            run_args=args,
+            workload_params={"batch_size": 1, **params},
             time_regex=r"avg_kernel_ms=([0-9]+\.?[0-9]*)",  # Parse kernel time from binary output.
         )
         self.build_env = build_env or {}
         self.register_workload_metadata(requests_per_iteration=1.0)
 
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"type": "occupancy_tuning", "friendly_name": self.friendly_name}
+    @staticmethod
+    def _parse_run_args(args: list[str]) -> dict[str, int]:
+        """Convert CLI-style run args into explicit workload parameters."""
+        if len(args) % 2 != 0:
+            raise ValueError("run_args must contain flag/value pairs")
+        params: dict[str, int] = {}
+        for flag, value in zip(args[0::2], args[1::2]):
+            if not flag.startswith("--"):
+                raise ValueError(f"Expected flag starting with '--', got {flag}")
+            key = flag.lstrip("-").replace("-", "_")
+            try:
+                params[key] = int(value)
+            except ValueError:
+                raise ValueError(f"run_args value for {flag} must be an integer, got {value}")
+        return params
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""
@@ -113,7 +127,6 @@ class BaselineOccupancyTuningBenchmark(OccupancyBinaryBenchmark):
     def __init__(self) -> None:
         super().__init__(friendly_name="Occupancy Tuning (baseline)")
 
-
     def get_custom_metrics(self) -> Optional[dict]:
         """Return optimization metrics for occupancy_tuning."""
         from core.benchmark.metrics import compute_speedup_metrics
@@ -122,13 +135,6 @@ class BaselineOccupancyTuningBenchmark(OccupancyBinaryBenchmark):
             optimized_ms=getattr(self, '_last_elapsed_ms', 1.0),
             name="occupancy_tuning",
         )
-    def get_verify_output(self) -> "torch.Tensor":
-        """CUDA binary benchmark - no tensor output available."""
-        import torch
-        # CUDA binary benchmarks run external executables with no tensor output
-        # Return empty tensor as verification is done via binary output parsing
-        raise RuntimeError("CUDA binary benchmark - tensor verification not applicable")
-
 
 
 def get_benchmark() -> BaselineOccupancyTuningBenchmark:

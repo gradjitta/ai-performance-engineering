@@ -12,10 +12,9 @@ import torch
 import torch.nn as nn
 
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 
-class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class BaselineKVCacheLocalOnlyBenchmark(BaseBenchmark):
     """Local-only KV cache with host spill."""
 
     def __init__(self):

@@ -14,6 +14,7 @@ import torch
 
 from typing import Optional
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -26,7 +27,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
 from ch12.cuda_extensions import load_graph_bandwidth_extension
 
 
-class OptimizedGraphBandwidthBenchmark(BaseBenchmark):
+class OptimizedGraphBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """CUDA graphs - measures bandwidth within graphs (uses CUDA extension)."""
     
     def __init__(self):
@@ -40,6 +41,7 @@ class OptimizedGraphBandwidthBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(self.N * self.iterations),
         )
+        self._verify_input: Optional[torch.Tensor] = None
     
     def setup(self) -> None:
         """Setup: Initialize tensors and load CUDA extension."""
@@ -61,12 +63,15 @@ class OptimizedGraphBandwidthBenchmark(BaseBenchmark):
             ) from e
         
         torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         self.src = torch.randn(self.N, dtype=torch.float32, device=self.device)
         self.dst = torch.empty_like(self.src)
         torch.cuda.synchronize(self.device)
         # Dry run so CUDA graph capture / kernel launch overhead happens before timing.
         self._extension.graph_kernel(self.dst, self.src, 1)
         torch.cuda.synchronize()
+        self._verify_input = self.src.detach().clone()
     
     def benchmark_fn(self) -> None:
         """Benchmark: CUDA graph kernel."""
@@ -83,6 +88,21 @@ class OptimizedGraphBandwidthBenchmark(BaseBenchmark):
             # Call CUDA extension with graph kernel
             self._extension.graph_kernel(self.dst, self.src, self.iterations)
         self._synchronize()
+        if self._verify_input is None or self.dst is None:
+            raise RuntimeError("Verification input/output not initialized")
+        self._set_verification_payload(
+            inputs={"src": self._verify_input},
+            output=self.dst.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=0,
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.1, 1.0),
+        )
 
     
     def teardown(self) -> None:
@@ -122,12 +142,6 @@ class OptimizedGraphBandwidthBenchmark(BaseBenchmark):
         if not torch.isfinite(self.dst).all():
             return "Destination tensor contains non-finite values"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.dst is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.dst.detach().clone()
 
     def get_input_signature(self) -> dict:
         """Return input signature for verification."""

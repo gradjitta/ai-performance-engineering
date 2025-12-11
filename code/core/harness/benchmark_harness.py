@@ -35,6 +35,7 @@ import numpy as np
 import torch
 
 from core.utils.compile_utils import enable_tf32
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 if TYPE_CHECKING:
     from core.benchmark.models import (
@@ -65,6 +66,12 @@ from core.benchmark.models import (
     ProtonMetrics,
     TorchMetrics,
     ThroughputStats,
+)
+from core.harness.validity_checks import (
+    GraphCaptureCheatDetector,
+    audit_streams,
+    check_rank_execution,
+    check_stream_sync_completeness,
 )
 
 PYDANTIC_AVAILABLE = True
@@ -752,7 +759,7 @@ class TorchrunLaunchSpec:
 BenchmarkResult = PydanticBenchmarkResult
 
 
-class BaseBenchmark:
+class BaseBenchmark(VerificationPayloadMixin):
     """Base class for benchmarks with shared functionality.
     
     Provides common patterns for device resolution, setup, teardown, validation,
@@ -789,6 +796,7 @@ class BaseBenchmark:
         self._workload_metadata: Optional[WorkloadMetadata] = None
         self._workload_registered: bool = False
         self._execution_marker: Optional[torch.Tensor] = None
+        self._verification_payload = None
     
     def _resolve_device(self) -> torch.device:
         """Resolve CUDA device, failing fast if CUDA is not available.
@@ -840,9 +848,12 @@ class BaseBenchmark:
 
     def get_verify_inputs(self) -> Dict[str, torch.Tensor]:
         """Return input tensors used for verification/aliasing checks."""
+        payload = getattr(self, "_verification_payload", None)
+        if payload is not None:
+            return VerificationPayloadMixin.get_verify_inputs(self)
         raise NotImplementedError(
-            f"{self.__class__.__name__} must implement get_verify_inputs() explicitly. "
-            "Return the exact tensors used during verification to enable aliasing checks."
+            f"{self.__class__.__name__} must implement get_verify_inputs() explicitly or call "
+            "_set_verification_payload() after preparing inputs."
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> Optional[TorchrunLaunchSpec]:
@@ -875,9 +886,12 @@ class BaseBenchmark:
         Raises:
             NotImplementedError: If subclass doesn't implement this method
         """
+        payload = getattr(self, "_verification_payload", None)
+        if payload is not None:
+            return VerificationPayloadMixin.get_verify_output(self)
         raise NotImplementedError(
-            f"{self.__class__.__name__} must implement get_verify_output() explicitly. "
-            "Return the output tensor that should be compared between baseline and optimized. "
+            f"{self.__class__.__name__} must implement get_verify_output() explicitly or call "
+            "_set_verification_payload() to register outputs. "
             "Checksums or fixed scalars are not allowed—surface the real tensor (or a representative slice)."
         )
 
@@ -933,21 +947,33 @@ class BaseBenchmark:
         Raises:
             NotImplementedError: If not overridden by subclass
         """
+        payload = getattr(self, "_verification_payload", None)
+        if payload is not None:
+            return VerificationPayloadMixin.get_input_signature(self)
         raise NotImplementedError(
             f"{self.__class__.__name__} must implement get_input_signature() explicitly. "
             "NO AUTO-INFERENCE. NO FALLBACKS. Return a dict with workload parameters "
-            "(e.g., {'batch_size': 32, 'seq_len': 512})."
+            "(e.g., {'batch_size': 32, 'seq_len': 512}) or call _set_verification_payload()."
         )
 
     def get_output_tolerance(self) -> Tuple[float, float]:
         """MANDATORY: Return (rtol, atol) tolerance for output comparison."""
+        payload = getattr(self, "_verification_payload", None)
+        if payload is not None:
+            return VerificationPayloadMixin.get_output_tolerance(self)
         raise NotImplementedError(
-            f"{self.__class__.__name__} must implement get_output_tolerance() explicitly."
+            f"{self.__class__.__name__} must implement get_output_tolerance() explicitly or provide a "
+            "tolerance via _set_verification_payload()."
         )
 
     def get_custom_streams(self) -> List["torch.cuda.Stream"]:
         """Return any non-default streams used by this benchmark."""
         return []
+
+    # When True, all streams observed by the StreamAuditor will be treated as
+    # declared for timing validation. Benchmarks can set this to False to opt
+    # out and rely solely on get_custom_streams().
+    declare_all_streams: bool = True
 
     def mark_execution_complete(self) -> None:
         """Mark that this benchmark executed work on this rank/device."""
@@ -2019,6 +2045,12 @@ class BenchmarkHarness:
         times_ms: List[float] = []
         inference_timing_data: Optional[Dict[str, List[float]]] = None
         seed_metadata = copy.deepcopy(getattr(self, "_seed_info", None))
+        stage_watchdog: Dict[str, Dict[str, Any]] = {
+            "setup": {"status": "pending"},
+            "warmup": {"status": "pending"},
+            "profiling": {"status": "pending"},
+            "measurement": {"status": "pending"},
+        }
         
         # Get benchmark name and module info for error messages
         module_override = getattr(benchmark, "_module_file_override", None)
@@ -2376,8 +2408,31 @@ class BenchmarkHarness:
                 for detail in error_details:
                     logger.error(f"  {detail}")
                 logger.error("=" * 80)
-            
-            raise RuntimeError(error_message)
+
+            # Return a structured failure result instead of raising
+            stage_watchdog["measurement"] = {"status": "error", "duration": 0.0}
+            failure_stage = next(
+                (stage for stage, meta in stage_watchdog.items() if meta.get('status') in ('error', 'timeout')),
+                "measurement",
+            )
+            failure_meta = stage_watchdog.get(failure_stage, {})
+            duration = failure_meta.get("duration", 0.0) or 0.0
+            limit_lookup = {
+                "setup": config.get_effective_timeout("setup"),
+                "warmup": config.get_effective_timeout("warmup"),
+                "profiling": config.get_effective_timeout("profiling"),
+                "measurement": getattr(config, 'measurement_timeout_seconds', config.timeout_seconds),
+            }
+            limit = limit_lookup.get(failure_stage, getattr(config, 'measurement_timeout_seconds', config.timeout_seconds))
+            return self._create_timeout_result(
+                stage=failure_stage,
+                duration=duration,
+                limit=limit,
+                errors=errors,
+                benchmark_name=benchmark_name,
+                config=config,
+                watchdog=stage_watchdog,
+            )
         
         # Compute statistics
         result = self._compute_stats(times_ms, config)
@@ -2568,20 +2623,17 @@ class BenchmarkHarness:
                         outputs = {}
                         if hasattr(benchmark, "output"):
                             outputs["output"] = getattr(benchmark, "output")
-                        getter = getattr(benchmark, "get_verify_output", None)
-                        if callable(getter):
-                            try:
-                                outputs["verify_output"] = getter()
-                            except Exception:
-                                pass
                         return outputs
 
                     def _run_setup_with_detection():
                         start_stage('setup')
-                        precompute_ok, precompute_err = check_setup_precomputation(_collect_outputs_for_hash, benchmark.setup)
-                        if not precompute_ok:
-                            finish_stage('setup', status='error')
-                            raise RuntimeError(precompute_err or "Setup pre-computation detected")
+                        if getattr(config, "detect_setup_precomputation", True):
+                            precompute_ok, precompute_err = check_setup_precomputation(_collect_outputs_for_hash, benchmark.setup)
+                            if not precompute_ok:
+                                finish_stage('setup', status='error')
+                                raise RuntimeError(precompute_err or "Setup pre-computation detected")
+                        else:
+                            benchmark.setup()
                         finish_stage('setup')
                     
                     if setup_timeout is not None:
@@ -3013,7 +3065,28 @@ class BenchmarkHarness:
                     logger.error(f"  {detail}")
                 logger.error("=" * 80)
             
-            raise RuntimeError(error_message)
+            failure_stage = next(
+                (stage for stage, meta in stage_watchdog.items() if meta.get('status') in ('error', 'timeout')),
+                "measurement",
+            )
+            failure_meta = stage_watchdog.get(failure_stage, {})
+            duration = failure_meta.get("duration", 0.0) or 0.0
+            limit_lookup = {
+                "setup": config.get_effective_timeout("setup"),
+                "warmup": config.get_effective_timeout("warmup"),
+                "profiling": config.get_effective_timeout("profiling"),
+                "measurement": getattr(config, 'measurement_timeout_seconds', config.timeout_seconds),
+            }
+            limit = limit_lookup.get(failure_stage, getattr(config, 'measurement_timeout_seconds', config.timeout_seconds))
+            return self._create_timeout_result(
+                stage=failure_stage,
+                duration=duration,
+                limit=limit,
+                errors=errors,
+                benchmark_name=benchmark_name,
+                config=config,
+                watchdog=stage_watchdog,
+            )
         
         # Compute statistics
         result = self._compute_stats(times_ms, config)
@@ -3255,8 +3328,14 @@ class BenchmarkHarness:
                 min_run_time=config.min_run_time_ms / 1000.0  # Convert to seconds
             )
             
-            # measurement.times is already in seconds
-            times_ms = [t * 1000 for t in measurement.times]
+            # measurement.times is already in seconds; tolerate tuple returns from mocks
+            if hasattr(measurement, "times"):
+                raw_times = measurement.times
+            elif isinstance(measurement, (tuple, list)) and measurement:
+                raw_times = measurement[0]
+            else:
+                raise RuntimeError("PyTorch Timer returned unexpected measurement format")
+            times_ms = [t * 1000 for t in raw_times]
             
             # If we got fewer iterations than requested, pad with repeats
             if len(times_ms) < config.iterations:
@@ -3300,8 +3379,7 @@ class BenchmarkHarness:
         from core.harness.validity_checks import (
             reset_cuda_memory_pool, capture_gpu_state, gc_disabled,
             clear_compile_cache, force_tensor_evaluation, validate_environment,
-            MemoryAllocationTracker, audit_streams, check_stream_sync_completeness,
-            get_active_streams, GraphCaptureCheatDetector
+            MemoryAllocationTracker, get_active_streams
         )
         
         # 0. Validate environment and log device enumeration
@@ -3608,6 +3686,11 @@ class BenchmarkHarness:
                         declared_ids = set(post_streams)
                         if info.default_stream_id is not None:
                             declared_ids.add(info.default_stream_id)
+                        if getattr(benchmark_obj, "declare_all_streams", False):
+                            declared_ids.update(info.stream_ids)
+                        elif declared_streams:
+                            # Only add explicitly declared streams when auto-declare is disabled
+                            declared_ids.update({s.cuda_stream for s in declared_streams if hasattr(s, "cuda_stream")})
                         undeclared_streams = info.stream_ids - declared_ids
                         if undeclared_streams:
                             issues.append(

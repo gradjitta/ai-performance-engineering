@@ -3,6 +3,11 @@
 ## BE EFFICIENT AND ASK QUESTIONS AT KEY DECISION POINTS
 - Instead of forging ahead and performing a lot of changes, ask me questions if you are unsure or just want re-assurance that your approach is valid.
 
+## Verification Mixins REQUIRED
+- Benchmarks must surface verification metadata via `VerificationPayloadMixin` + `_set_verification_payload()` inside `benchmark_fn()` (or equivalent path).
+- Do NOT hand-roll `get_verify_output()/get_input_signature()/get_output_tolerance()` unless there is a truly special case; fail fast instead of adding fallbacks.
+- New benchmarks should copy the compliant template (`templates/benchmark_compliant.py`) and keep mixin usage consistent.
+
 ## Chapter Consistency
 - Make sure all code in the chapter (chXX/ examples are consistent with the content in the equivalent chapter (XX) of the AI Systems Performance Engineering book (book/chXX.md)
 

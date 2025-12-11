@@ -12,6 +12,7 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.utils.extension_loader_template import load_cuda_extension
 
@@ -22,7 +23,7 @@ def resolve_device() -> torch.device:
     return torch.device("cuda")
 
 
-class TilingBenchmarkBase(BaseBenchmark):
+class TilingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
     """Base class that pre-loads the CUDA tiling extension and inputs."""
 
     extension_name = "ch08_tiling_kernels"
@@ -30,6 +31,7 @@ class TilingBenchmarkBase(BaseBenchmark):
     extra_cuda_cflags = ["-O3", "--use_fast_math", "-lineinfo"]
     extra_ldflags = ["-lcublas"]
     tensor_dtype = torch.float32
+    output_tolerance = (0.1, 1.0)
 
     nvtx_label: str = "tiling"
     matrix_rows: int = 2048
@@ -90,6 +92,23 @@ class TilingBenchmarkBase(BaseBenchmark):
 
         with nvtx_range(self.nvtx_label, enable=enable_nvtx):
             self._invoke_kernel()
+        if self.matrix_a is None or self.matrix_b is None or self.output is None:
+            raise RuntimeError("benchmark_fn() must run after setup() initializes tensors")
+        self._set_verification_payload(
+            inputs={
+                "matrix_a": self.matrix_a,
+                "matrix_b": self.matrix_b,
+            },
+            output=self.output.detach(),
+            batch_size=self.matrix_rows,
+            parameter_count=int(self.shared_dim * self.matrix_cols),
+            precision_flags={
+                "fp16": self.tensor_dtype == torch.float16,
+                "bf16": self.tensor_dtype == torch.bfloat16,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=self.output_tolerance,
+        )
 
     def teardown(self) -> None:
         """Release GPU memory."""
@@ -160,17 +179,15 @@ class TilingBenchmarkBase(BaseBenchmark):
 
     def get_verify_output(self) -> torch.Tensor:
         """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
+        return super().get_verify_output()
 
     def get_input_signature(self) -> dict:
         """Return input signature for verification."""
-        return {"matrix_rows": self.matrix_rows, "shared_dim": self.shared_dim, "matrix_cols": self.matrix_cols}
+        return super().get_input_signature()
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
+        return super().get_output_tolerance()
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return tiling optimization metrics for roofline analysis."""

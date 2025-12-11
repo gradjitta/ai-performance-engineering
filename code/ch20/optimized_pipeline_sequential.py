@@ -95,6 +95,13 @@ class OptimizedPipelineOverlapBenchmark(BaseBenchmark):
                 # Capture output for verification
                 self.output = x.detach()
             self._synchronize()
+        self._set_verification_payload(
+            inputs={"inputs": self.inputs},
+            output=self.output.float() if self.output is not None else None,
+            batch_size=self.batch_size,
+            parameter_count=sum(p.numel() for p in self.stages.parameters()) if self.stages is not None else 0,
+            output_tolerance=(0.1, 1.0),
+        )
 
     def teardown(self) -> None:
         self.stages = None
@@ -126,26 +133,6 @@ class OptimizedPipelineOverlapBenchmark(BaseBenchmark):
         if self.stages is None:
             return "Stages not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.float().clone()
-    
-    def get_verify_inputs(self) -> torch.Tensor:
-        """Return pipeline input tensor for aliasing checks."""
-        if self.inputs is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self.inputs
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "hidden_dim": self.hidden_dim}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

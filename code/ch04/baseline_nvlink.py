@@ -101,7 +101,7 @@ class BaselineNVLinkBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
     
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
-        return self._workload
+        return self._workload_metadata
     
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""

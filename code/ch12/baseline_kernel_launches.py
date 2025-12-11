@@ -18,6 +18,7 @@ import torch
 
 from typing import Optional
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -44,7 +45,7 @@ def many_small_ops_regular(x: torch.Tensor, iterations: int = 100) -> torch.Tens
     return x
 
 
-class BaselineKernelLaunchesBenchmark(BaseBenchmark):
+class BaselineKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Benchmark implementation following BaseBenchmark."""
     
     def __init__(self):
@@ -58,6 +59,7 @@ class BaselineKernelLaunchesBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self._verify_input: Optional[torch.Tensor] = None
         # Kernel launch benchmark - fixed dimensions for consistent overhead measurement
     
     def setup(self) -> None:
@@ -65,6 +67,7 @@ class BaselineKernelLaunchesBenchmark(BaseBenchmark):
         # Use bfloat16 for GPU performance
         dtype = torch.bfloat16 if self.device.type == "cuda" and torch.cuda.is_bf16_supported() else torch.float32
         self.x = torch.randn(*self.size, device=self.device, dtype=dtype)
+        self._verify_input = self.x.detach().clone()
     
     def benchmark_fn(self) -> None:
         """Function to benchmark."""
@@ -81,6 +84,22 @@ class BaselineKernelLaunchesBenchmark(BaseBenchmark):
             with torch.no_grad():
                 self.output = many_small_ops_regular(self.x.clone(), self.iterations)
             self._synchronize()
+        if self._verify_input is None:
+            raise RuntimeError("Verification input not initialized")
+        dtype = self._verify_input.dtype
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=0,
+            precision_flags={
+                "fp16": dtype == torch.float16,
+                "bf16": dtype == torch.bfloat16,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(1e-4, 1e-4),
+        )
 
     
     def teardown(self) -> None:
@@ -119,20 +138,6 @@ class BaselineKernelLaunchesBenchmark(BaseBenchmark):
         if not torch.isfinite(self.output).all():
             return "Output contains non-finite values"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"size": self.size, "iterations": self.iterations}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (1e-4, 1e-4)
 
 
 def get_benchmark() -> BaseBenchmark:

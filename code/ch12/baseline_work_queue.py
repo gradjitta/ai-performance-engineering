@@ -13,6 +13,7 @@ import torch
 
 from typing import Optional
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -25,7 +26,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
 from ch12.cuda_extensions import load_work_queue_extension
 
 
-class BaselineWorkQueueBenchmark(BaseBenchmark):
+class BaselineWorkQueueBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Static work distribution - each thread processes fixed indices (uses CUDA extension)."""
     
     def __init__(self):
@@ -39,6 +40,7 @@ class BaselineWorkQueueBenchmark(BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(self.N * self.iterations),
         )
+        self._verify_input: Optional[torch.Tensor] = None
     
     def setup(self) -> None:
         """Setup: Initialize tensors and load CUDA extension."""
@@ -46,14 +48,19 @@ class BaselineWorkQueueBenchmark(BaseBenchmark):
         self._extension = load_work_queue_extension()
         
         torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         self.input_data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
         self.output_data = torch.zeros(self.N, dtype=torch.float32, device=self.device)
         torch.cuda.synchronize(self.device)
         self._extension.static_work_distribution(self.input_data, self.output_data, 1)
         torch.cuda.synchronize()
         torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         self.input_data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
         self.output_data = torch.zeros(self.N, dtype=torch.float32, device=self.device)
+        self._verify_input = self.input_data.detach().clone()
         torch.cuda.synchronize()
     
     def benchmark_fn(self) -> None:
@@ -70,6 +77,21 @@ class BaselineWorkQueueBenchmark(BaseBenchmark):
             # Call CUDA extension with static work distribution
             self._extension.static_work_distribution(self.input_data, self.output_data, self.iterations)
         self._synchronize()
+        if self._verify_input is None or self.output_data is None:
+            raise RuntimeError("Verification input/output not initialized")
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output_data.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=0,
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.1, 1.0),
+        )
 
     
     def teardown(self) -> None:
@@ -110,20 +132,6 @@ class BaselineWorkQueueBenchmark(BaseBenchmark):
         if not torch.isfinite(self.output_data).all():
             return "Output contains non-finite values"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output_data is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output_data.detach().clone()
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"N": self.N}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

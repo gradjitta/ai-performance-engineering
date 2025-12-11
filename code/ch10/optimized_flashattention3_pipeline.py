@@ -35,6 +35,7 @@ from contextlib import contextmanager
 import math
 
 from core.utils.compile_utils import enable_tf32
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -261,7 +262,7 @@ class FA3PipelinedAttention(nn.Module):
         return self.out_proj(attn_output)
 
 
-class OptimizedFlashAttention3Benchmark(BaseBenchmark):
+class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized benchmark with FA3-style pipelining.
     
     Demonstrates improvements from:
@@ -292,6 +293,8 @@ class OptimizedFlashAttention3Benchmark(BaseBenchmark):
         self.use_compile = False  # Disable compile for fair comparison - it adds warmup overhead
         
         self.input: Optional[torch.Tensor] = None
+        self._verify_input: Optional[torch.Tensor] = None
+        self.parameter_count: int = 0
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -311,7 +314,8 @@ class OptimizedFlashAttention3Benchmark(BaseBenchmark):
             enable_tf32()
         
         torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         # Determine if FP8 should be used
         use_fp8 = False
@@ -331,11 +335,13 @@ class OptimizedFlashAttention3Benchmark(BaseBenchmark):
         # Use BF16 for optimal Tensor Core utilization
         dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
         self.model = self.model.to(dtype)
+        self.parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.input = torch.randn(
             self.batch_size, self.seq_len, self.hidden_dim,
             device=self.device, dtype=dtype
         )
+        self._verify_input = self.input.detach().clone()
         
         # Use model directly without torch.compile to avoid compilation overhead
         # The optimization comes from fused QKV and optimal SDPA backend selection
@@ -354,6 +360,22 @@ class OptimizedFlashAttention3Benchmark(BaseBenchmark):
             with torch.no_grad():
                 self.output = self.compiled_model(self.input, is_causal=self.use_causal).detach()
         self._synchronize()
+        if self._verify_input is None:
+            raise RuntimeError("Verification input not initialized")
+        dtype = self._verify_input.dtype
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=self.parameter_count,
+            precision_flags={
+                "fp16": dtype == torch.float16,
+                "bf16": dtype == torch.bfloat16,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(1.0, 10.0),
+        )
     
     def teardown(self) -> None:
         """Clean up."""
@@ -418,20 +440,6 @@ class OptimizedFlashAttention3Benchmark(BaseBenchmark):
                 return "NaN in attention output"
         
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output.float()
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "seq_len": self.seq_len, "hidden_dim": self.hidden_dim}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison - wider due to BF16/FP16 and different attention paths."""
-        return (1.0, 10.0)
 
 
 def get_benchmark() -> BaseBenchmark:

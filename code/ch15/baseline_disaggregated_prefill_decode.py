@@ -21,7 +21,6 @@ from core.harness.benchmark_harness import (
     BenchmarkMode,
     WorkloadMetadata,
 )
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -152,7 +151,7 @@ def run_benchmark(
     return {"mean_time_ms": result.timing.mean_ms, **metrics}
 
 
-class _DisaggregatedPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class _DisaggregatedPrefillDecodeBenchmark(BaseBenchmark):
     """Wrapper benchmark for disaggregated prefill/decode."""
 
     def __init__(self) -> None:

@@ -17,6 +17,7 @@ if str(repo_root) not in sys.path:
 import torch
 import torch.nn as nn
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -45,7 +46,7 @@ def _compute_topology(reserve: int = 2, nic_names: Optional[List[str]] = None) -
     return nic_plan, primary, target_cpus, snippet
 
 
-class OptimizedRackPrepBenchmark(BaseBenchmark):
+class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Aligns NIC, CPU, and GPU locality while double-buffering copies."""
 
     def __init__(self):
@@ -131,6 +132,24 @@ class OptimizedRackPrepBenchmark(BaseBenchmark):
         torch.cuda.current_stream().wait_stream(self.copy_stream)
         with nvtx_range("optimized_rack_prep", enable=enable_nvtx):
             self.output = self.norm(self.device_buffers[self.cur_slot])
+        if self.output is None:
+            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._set_verification_payload(
+            inputs={
+                "host_buffer": self.host_buffers[self.cur_slot],
+                "device_buffer": self.device_buffers[self.cur_slot],
+            },
+            output=self.output.detach().clone(),
+            batch_size=self.host_buffers[self.cur_slot].shape[0],
+            parameter_count=sum(p.numel() for p in self.norm.parameters()),
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+            output_tolerance=(1.0, 10.0),
+        )
         self._start_copy(self.cur_slot)
         self.cur_slot, self.next_slot = self.next_slot, self.cur_slot
         self._synchronize()
@@ -171,24 +190,6 @@ class OptimizedRackPrepBenchmark(BaseBenchmark):
         self.apply_affinity = bool(opts.apply)
         self.reserve_cores = max(0, int(opts.reserve))
         self.preferred_nics = [n for n in (opts.nic or []) if n]
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is not None:
-            return self.output.detach().clone()
-        raise RuntimeError("benchmark_fn() must be called before verification - output is None")
-    
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for verification.
-        
-        Data loading benchmarks may process different buffers, so use wide
-        tolerance. Primary checks are: no NaN, shapes match, reasonable values.
-        """
-        return (1.0, 10.0)
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"seq_len": self.seq_len, "hidden_size": self.hidden_size}
 
 
 def get_benchmark() -> BaseBenchmark:

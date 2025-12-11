@@ -50,6 +50,13 @@ class OptimizedMemoryHBM3eBenchmark(BaseBenchmark):
             self.result.add_(1.1)  # Combines +1.0 and +0.1 into single op
             self._synchronize()
         self.output = self.result
+        self._set_verification_payload(
+            inputs={"data": self.data},
+            output=self.output,
+            batch_size=self.num_elements,
+            parameter_count=0,
+            output_tolerance=(0.1, 1.0),
+        )
     
     def teardown(self) -> None:
         self.data = None
@@ -81,26 +88,6 @@ class OptimizedMemoryHBM3eBenchmark(BaseBenchmark):
         if self.data is None:
             return "Data not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output.detach().clone()
-
-    def get_verify_inputs(self) -> torch.Tensor:
-        """Return input tensor for aliasing checks."""
-        if self.data is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self.data
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"size_mb": self.size_mb, "num_elements": self.num_elements}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

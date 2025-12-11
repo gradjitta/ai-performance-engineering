@@ -14,6 +14,7 @@ if str(repo_root) not in sys.path:
 import torch
 import torch.nn as nn
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -26,7 +27,7 @@ from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 from ch03.grace_blackwell_topology import NICInfo, discover_nics, format_cpulist
 
 
-class BaselineRackPrepBenchmark(BaseBenchmark):
+class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Simulates a NIC→CPU→GPU path without NUMA or IRQ steering."""
 
     def __init__(self):
@@ -62,6 +63,21 @@ class BaselineRackPrepBenchmark(BaseBenchmark):
             self.device_batch.copy_(self.host_batch, non_blocking=False)
             self.output = self.norm(self.device_batch)
             self._synchronize()
+        if self.output is None:
+            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._set_verification_payload(
+            inputs={"host_batch": self.host_batch, "device_batch": self.device_batch},
+            output=self.output.detach().clone(),
+            batch_size=self.host_batch.shape[0],
+            parameter_count=sum(p.numel() for p in self.norm.parameters()),
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+            output_tolerance=(1.0, 10.0),
+        )
 
     def teardown(self) -> None:
         self.host_batch = None
@@ -83,24 +99,6 @@ class BaselineRackPrepBenchmark(BaseBenchmark):
             return None
         summaries = [f"{n.name}:numa={n.numa_node},cpus={format_cpulist(n.local_cpus)}" for n in self.nic_snapshot]
         return {"nic_layouts": len(self.nic_snapshot), "nic_summary": ";".join(summaries)}
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is not None:
-            return self.output.detach().clone()
-        raise RuntimeError("benchmark_fn() must be called before verification - output is None")
-    
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for verification.
-        
-        Data loading benchmarks may process different buffers, so use wide
-        tolerance. Primary checks are: no NaN, shapes match, reasonable values.
-        """
-        return (1.0, 10.0)
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"seq_len": self.seq_len, "hidden_size": self.hidden_size}
 
 
 def get_benchmark() -> BaseBenchmark:

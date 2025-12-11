@@ -16,6 +16,7 @@ if str(repo_root) not in sys.path:
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -24,7 +25,7 @@ from core.harness.benchmark_harness import (
 )
 
 
-class OptimizedNUMAAwareBenchmark(BaseBenchmark):
+class OptimizedNUMAAwareBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Uses pinned host memory and overlaps copies with reduction kernels."""
 
     def __init__(self):
@@ -74,6 +75,24 @@ class OptimizedNUMAAwareBenchmark(BaseBenchmark):
         with self._nvtx_range("optimized_numa"):
             # Compute on ready buffer while next is being copied
             self.output = torch.sum(self.device_buffers[self.cur_slot]).unsqueeze(0)
+        if self.output is None:
+            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._set_verification_payload(
+            inputs={
+                "host_tensor": self.host_tensor,
+                "device_buffer": self.device_buffers[self.cur_slot],
+            },
+            output=self.output.detach().clone(),
+            batch_size=self.host_tensor.shape[0],
+            parameter_count=0,
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+            output_tolerance=(1e-3, 1e-3),
+        )
         # Start copy for current slot (will be ready next iteration)
         self._start_copy(self.cur_slot)
         # Swap slots
@@ -101,23 +120,6 @@ class OptimizedNUMAAwareBenchmark(BaseBenchmark):
         if self.host_tensor is None:
             return "Host tensor not initialized"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {
-            "buffer_size": 128_000_000,
-            "dtype": "float32",
-        }
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is not None:
-            return self.output.detach().clone()
-        raise RuntimeError("benchmark_fn() must be called before verification - output is None")
-    
-    def get_output_tolerance(self) -> tuple:
-        """Return custom tolerance for sum output comparison."""
-        return (1e-3, 1e-3)
 
 
 def get_benchmark() -> BaseBenchmark:

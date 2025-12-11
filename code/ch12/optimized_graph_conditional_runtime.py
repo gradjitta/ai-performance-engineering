@@ -24,6 +24,7 @@ if str(repo_root) not in sys.path:
 import torch
 from torch.cuda import CUDAGraph
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -47,7 +48,7 @@ def supports_conditional_graphs() -> bool:
     return False
 
 
-class OptimizedGraphBenchmark(BaseBenchmark):
+class OptimizedGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized benchmark using CUDA graph replay.
     
     CUDA graphs eliminate kernel launch overhead by:
@@ -66,6 +67,7 @@ class OptimizedGraphBenchmark(BaseBenchmark):
         self.data: Optional[torch.Tensor] = None
         self._graph: Optional[CUDAGraph] = None
         self._graph_stream: Optional[torch.cuda.Stream] = None
+        self._verify_input: Optional[torch.Tensor] = None
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -86,7 +88,8 @@ class OptimizedGraphBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup CUDA graph with static buffers."""
         torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         dtype = torch.float16
         if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
@@ -97,6 +100,7 @@ class OptimizedGraphBenchmark(BaseBenchmark):
             self.batch_size, self.seq_len, self.hidden_dim,
             device=self.device, dtype=dtype
         )
+        self._verify_input = self.data.detach().clone()
         
         # Non-default stream required for graph capture
         self._graph_stream = torch.cuda.Stream()
@@ -124,6 +128,22 @@ class OptimizedGraphBenchmark(BaseBenchmark):
         with self._nvtx_range("graph_replay"):
             self._graph.replay()
         self._synchronize()
+        if self._verify_input is None or self.data is None:
+            raise RuntimeError("Verification input/output not initialized")
+        dtype = self._verify_input.dtype
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.data.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=0,
+            precision_flags={
+                "fp16": dtype == torch.float16,
+                "bf16": dtype == torch.bfloat16,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.1, 1.0),
+        )
     
     def teardown(self) -> None:
         """Clean up."""

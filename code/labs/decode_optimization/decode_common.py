@@ -117,6 +117,7 @@ class DecodeBenchmark(BaseBenchmark):
         self.fp8_recipe = None
         self.metrics: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self.parameter_count: int = 0
         if TE_AVAILABLE:
             if self.cfg.use_fp4 and getattr(te_constants, "NVFP4_BLOCK_SCALING_SIZE", None) is not None:
                 try:
@@ -240,6 +241,8 @@ class DecodeBenchmark(BaseBenchmark):
         self.lm_head = _linear(hs, vs, bias=False)
         if self.cfg.use_fp8 and TE_AVAILABLE and not self._fp4_enabled:
             self._fp8_enabled = True
+        # Parameter count used for verification metadata
+        self.parameter_count = sum(p.numel() for p in self.parameters())
 
     def _cache_te_weight_workspaces(self) -> None:
         """Pre-quantize TE weights by running a warmup forward pass.
@@ -494,6 +497,27 @@ class DecodeBenchmark(BaseBenchmark):
         if self.metrics is None or tuple(self.metrics.shape) != tuple(summary_tensor.shape):
             self.metrics = torch.randn_like(summary_tensor)
         self.output = (summary_tensor + self.metrics).detach().clone()
+        config_tensor = torch.tensor(
+            [self.cfg.batch_size, self.cfg.prompt_tokens, self.cfg.decode_tokens],
+            device="cpu",
+            dtype=torch.int64,
+        )
+        self._set_verification_payload(
+            inputs={
+                "state_buffer": self.state_buffer,
+                "metrics": self.metrics,
+                "config": config_tensor,
+            },
+            output=self.output,
+            batch_size=int(self.cfg.batch_size),
+            parameter_count=int(self.parameter_count),
+            precision_flags={
+                "fp16": self.dtype == torch.float16,
+                "bf16": self.dtype == torch.bfloat16,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.1, 1.0),
+        )
 
     def validate_result(self) -> Optional[str]:
         if torch.isnan(self.state_buffer).any():
@@ -520,22 +544,3 @@ class DecodeBenchmark(BaseBenchmark):
 
     def get_custom_metrics(self) -> Dict[str, float]:
         return self._custom_metrics
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {
-            "batch_size": self.cfg.batch_size,
-            "prompt_tokens": self.cfg.prompt_tokens,
-            "decode_tokens": self.cfg.decode_tokens,
-            "shapes": {"metrics": (1, min(8, self.cfg.hidden_size))},
-        }
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)

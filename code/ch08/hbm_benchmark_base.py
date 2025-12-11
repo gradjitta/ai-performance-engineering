@@ -12,14 +12,16 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.utils.extension_loader_template import load_cuda_extension
 
 
-class HBMBenchmarkBase(BaseBenchmark):
+class HBMBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
     rows: int = 4096
     cols: int = 2048
     nvtx_label: str = "hbm"
+    output_tolerance = (1e-2, 5e-3)
 
     def __init__(self) -> None:
         super().__init__()
@@ -64,6 +66,19 @@ class HBMBenchmarkBase(BaseBenchmark):
         enable_nvtx = get_nvtx_enabled(config) if config else False
         with nvtx_range(self.nvtx_label, enable=enable_nvtx):
             self._invoke_kernel()
+        if self.matrix_row is None or self.matrix_col is None or self.output is None:
+            raise RuntimeError("benchmark_fn() must run after setup() initializes tensors")
+        self._set_verification_payload(
+            inputs={
+                "matrix_row": self.matrix_row,
+                "matrix_col": self.matrix_col,
+            },
+            output=self.output.detach(),
+            batch_size=self.rows,
+            parameter_count=int(self.rows * self.cols),
+            precision_flags={"tf32": torch.backends.cuda.matmul.allow_tf32},
+            output_tolerance=self.output_tolerance,
+        )
 
     def teardown(self) -> None:
         self.matrix_row = None
@@ -98,13 +113,17 @@ class HBMBenchmarkBase(BaseBenchmark):
             return "Output buffer not initialized"
         return None
 
+    def get_verify_output(self) -> torch.Tensor:
+        """Return output tensor for verification comparison."""
+        return super().get_verify_output()
+
     def get_input_signature(self) -> dict:
         """Return workload signature for input verification."""
-        return {"rows": self.rows, "cols": self.cols}
+        return super().get_input_signature()
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison - HBM kernel has numerical drift."""
-        return (1e-2, 5e-3)
+        return super().get_output_tolerance()
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return HBM optimization metrics for memory bandwidth analysis."""

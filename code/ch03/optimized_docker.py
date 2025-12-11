@@ -18,6 +18,7 @@ if str(repo_root) not in sys.path:
 import torch
 import torch.nn as nn
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.optimization.allocator_tuning import log_allocator_guidance
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
@@ -60,7 +61,7 @@ class Prefetcher:
         return self.buffers[self.cur_slot], self.target_bufs[self.cur_slot]
 
 
-class OptimizedDockerBenchmark(BaseBenchmark):
+class OptimizedDockerBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Pinned memory prefetch with same model as baseline for fair comparison."""
 
     def __init__(self):
@@ -129,6 +130,19 @@ class OptimizedDockerBenchmark(BaseBenchmark):
         
         # Store output for verification
         self.output = out.detach()
+        self._set_verification_payload(
+            inputs={"data": inputs, "target": targets},
+            output=self.output,
+            batch_size=self.batch_size,
+            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+            output_tolerance=(1.0, 10.0),
+        )
 
     def teardown(self) -> None:
         self.model = None
@@ -154,24 +168,6 @@ class OptimizedDockerBenchmark(BaseBenchmark):
         if self.prefetcher is None:
             return "Prefetcher not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is not None:
-            return self.output.detach().clone()
-        raise RuntimeError("benchmark_fn() must be called before verification - output is None")
-    
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for verification.
-        
-        Data loading benchmarks may process different batches, so use wide
-        tolerance. Primary checks are: no NaN, shapes match, reasonable values.
-        """
-        return (1.0, 10.0)
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "num_batches": self.num_batches}
 
 
 def get_benchmark() -> BaseBenchmark:

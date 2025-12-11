@@ -6,11 +6,12 @@ from typing import Optional
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from ch06.workload_config import WORKLOAD
 
 
-class BaselineWarpDivergenceILPBenchmark(BaseBenchmark):
+class BaselineWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Baseline: ILP limited by warp divergence."""
     
     def __init__(self):
@@ -62,6 +63,13 @@ class BaselineWarpDivergenceILPBenchmark(BaseBenchmark):
 
             self.output = result
             self.routing_logits = mask_source
+        self._set_verification_payload(
+            inputs={"input": self.input, "routing_logits": self.routing_logits},
+            output=self.output.detach(),
+            batch_size=self.N,
+            parameter_count=0,
+            output_tolerance=(1e-5, 1e-5),
+        )
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -92,33 +100,6 @@ class BaselineWarpDivergenceILPBenchmark(BaseBenchmark):
         if self.output is None:
             return "Output tensor not initialized"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {
-            "N": self.N,
-            "branch_iterations": self.branch_iterations,
-            "shapes": {"input": (1, self.N)},  # 2D shape for jitter check
-            "dtypes": {"input": "float32"},
-        }
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison.
-        
-        Boolean indexing vs torch.where should produce IDENTICAL results
-        because they apply the same math to the same elements.
-        """
-        if self.output is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self.output
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison.
-        
-        FP32 operations with same math should match closely.
-        Using slightly loose tolerance for CUDA parallel execution variance.
-        """
-        return (1e-5, 1e-5)
 
 
 

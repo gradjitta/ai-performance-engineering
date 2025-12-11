@@ -44,26 +44,6 @@ class _DynamicQuantizedCacheBenchmark(BaseBenchmark):
             tokens_per_iteration=float(total_tokens),
         )
 
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.tensor is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.tensor.detach().clone()
-
-    def get_verify_inputs(self) -> torch.Tensor:
-        """Return the cached tensor used for aliasing checks."""
-        if self.tensor is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self.tensor
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"schedule_bits": tuple(self.schedule_bits)}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
-
     def setup(self) -> None:
         torch.manual_seed(7)
         self.tensor = torch.randn(8, 32, 128, device=self.device, dtype=torch.float32)
@@ -131,6 +111,13 @@ class _DynamicQuantizedCacheBenchmark(BaseBenchmark):
         latency_ms = self._record_stop(start)
         self._history["latency_ms"].append(latency_ms)
         self._history["error"].extend(errors)
+        self._set_verification_payload(
+            inputs={"tensor": self.tensor},
+            output=self.tensor,
+            batch_size=self.tensor.shape[0],
+            parameter_count=0,
+            output_tolerance=(0.1, 1.0),
+        )
         return {"errors": errors}
 
     def teardown(self) -> None:

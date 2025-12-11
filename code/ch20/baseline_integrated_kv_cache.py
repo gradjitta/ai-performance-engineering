@@ -176,6 +176,16 @@ class BaselineIntegratedKVCacheBenchmark(BaseBenchmark):
                 self.kv_cache.free(request_id)
         # Capture last hidden state for verification
         self.output = hidden.detach().clone() if hidden is not None else None
+        representative_input = self.inputs[0] if self.inputs else None
+        if representative_input is None:
+            raise RuntimeError("setup() must populate inputs before verification")
+        self._set_verification_payload(
+            inputs={"input": representative_input},
+            output=self.output,
+            batch_size=self.batch_size,
+            parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
+            output_tolerance=(0.1, 1.0),
+        )
 
     
     def teardown(self) -> None:
@@ -207,31 +217,6 @@ class BaselineIntegratedKVCacheBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {
-            "batch_size": self.batch_size,
-            "num_heads": self.num_heads,
-            "head_dim": self.head_dim,
-            "hidden_dim": self.hidden_dim,
-        }
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-    
-    def get_verify_inputs(self) -> torch.Tensor:
-        """Return a representative input tensor for aliasing checks."""
-        if not self.inputs:
-            raise RuntimeError("setup() must be called before verification")
-        return self.inputs[0]
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

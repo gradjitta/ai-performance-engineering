@@ -21,7 +21,6 @@ if str(repo_root) not in sys.path:
 
 from core.harness.benchmark_harness import BaseBenchmark, WorkloadMetadata  # noqa: E402
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 
 class ToyGatedMoE(nn.Module):
@@ -66,7 +65,7 @@ class ToyGatedMoE(nn.Module):
         return outputs.view(batch, seq, hidden)
 
 
-class BaselineExpertParallelismBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class BaselineExpertParallelismBenchmark(BaseBenchmark):
     """Single-GPU MoE baseline without overlap or load balancing tricks."""
 
     def __init__(self) -> None:

@@ -25,11 +25,12 @@ try:
 except ImportError:
     pass
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from ch06.workload_config import WORKLOAD
 
 
-class OptimizedAttentionILPBenchmark(BaseBenchmark):
+class OptimizedAttentionILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized: attention with increased ILP via streaming chunks."""
     
     def __init__(self):
@@ -92,6 +93,16 @@ class OptimizedAttentionILPBenchmark(BaseBenchmark):
                         self._last_sum += out.sum()
 
                 self._synchronize()
+        self._set_verification_payload(
+            inputs={"input": self.input},
+            output=(self._last_sum if self._last_sum is not None else torch.zeros(1, device=self.device)).float().detach(),
+            batch_size=self.batch,
+            parameter_count=sum(p.numel() for p in self.qkv.parameters()) + sum(
+                p.numel() for p in self.out_proj.parameters()
+            ) if self.qkv is not None and self.out_proj is not None else 0,
+            output_tolerance=(1e-2, 100.0),
+            precision_flags={"fp16": True, "bf16": False, "fp8": False, "tf32": False},
+        )
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -123,31 +134,6 @@ class OptimizedAttentionILPBenchmark(BaseBenchmark):
         if self._last_sum is None:
             return "Attention output not computed"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {
-            "batch": self.batch,
-            "embed_dim": self.embed_dim,
-            "tokens": self.tokens,
-            "num_heads": self.num_heads,
-        }
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison.
-        
-        Returns accumulated sum from attention computation.
-        """
-        if self._last_sum is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self._last_sum.float().cpu()
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison.
-        
-        Different attention implementations (MHA vs SDPA) have numerical differences.
-        """
-        return (1e-2, 100.0)
 
 
 

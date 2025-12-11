@@ -310,6 +310,14 @@ class BaselineFP4WeightQuantizationBenchmark(BaseBenchmark):
                 output = self.model(self.input)
                 self.output = output.detach()
         self._synchronize()
+        self._set_verification_payload(
+            inputs={"input": self.input},
+            output=self.output.float() if self.output is not None else None,
+            batch_size=self.batch_size,
+            parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
+            output_tolerance=(0.5, 5.0),
+            precision_flags={"fp16": True, "bf16": False, "fp8": False, "tf32": False},
+        )
     
     def teardown(self) -> None:
         """Clean up."""
@@ -350,26 +358,6 @@ class BaselineFP4WeightQuantizationBenchmark(BaseBenchmark):
                 return "NaN in output"
         
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output.float()
-    
-    def get_verify_inputs(self) -> torch.Tensor:
-        """Return model input used for verification."""
-        if self.input is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self.input
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"batch_size": self.batch_size, "seq_len": self.seq_len, "d_model": self.d_model}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaseBenchmark:

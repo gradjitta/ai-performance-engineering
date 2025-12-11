@@ -17,6 +17,7 @@ if str(repo_root) not in sys.path:
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -25,7 +26,7 @@ from core.harness.benchmark_harness import (
 )
 
 
-class BaselineNUMAUnawareBenchmark(BaseBenchmark):
+class BaselineNUMAUnawareBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Allocates pageable host memory and blocks on every copy."""
 
     def __init__(self):
@@ -57,6 +58,21 @@ class BaselineNUMAUnawareBenchmark(BaseBenchmark):
             # Simple compute to overlap with in optimized version
             self.output = torch.sum(self.device_buffer).unsqueeze(0)
             self._synchronize()
+        if self.output is None:
+            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._set_verification_payload(
+            inputs={"host_tensor": self.host_tensor, "device_buffer": self.device_buffer},
+            output=self.output.detach().clone(),
+            batch_size=self.host_tensor.shape[0],
+            parameter_count=0,
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+            },
+            output_tolerance=(1e-3, 1e-3),
+        )
 
     def teardown(self) -> None:
         self.host_tensor = None
@@ -79,23 +95,6 @@ class BaselineNUMAUnawareBenchmark(BaseBenchmark):
         if self.host_tensor is None:
             return "Host tensor not initialized"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {
-            "buffer_size": 128_000_000,
-            "dtype": "float32",
-        }
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is not None:
-            return self.output.detach().clone()
-        raise RuntimeError("benchmark_fn() must be called before verification - output is None")
-    
-    def get_output_tolerance(self) -> tuple:
-        """Return custom tolerance for sum output comparison."""
-        return (1e-3, 1e-3)
 
 
 def get_benchmark() -> BaseBenchmark:

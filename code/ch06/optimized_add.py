@@ -6,10 +6,11 @@ from typing import Optional
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
-class OptimizedAddParallelBenchmark(BaseBenchmark):
+class OptimizedAddParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Single vectorized kernel to illustrate proper GPU utilization."""
     
     def __init__(self):
@@ -40,6 +41,13 @@ class OptimizedAddParallelBenchmark(BaseBenchmark):
         with self._nvtx_range("add_vectorized"):
             self.C = self.A + self.B
             self._synchronize()
+        self._set_verification_payload(
+            inputs={"A": self.A, "B": self.B},
+            output=self.C.detach(),
+            batch_size=self.N,
+            parameter_count=0,
+            output_tolerance=(1e-5, 1e-5),
+        )
     
     def teardown(self) -> None:
         """Cleanup (excluded from timing)."""
@@ -80,20 +88,6 @@ class OptimizedAddParallelBenchmark(BaseBenchmark):
         if not torch.isfinite(self.C).all():
             return "Result tensor C contains non-finite values"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"N": self.N}
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.C is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.C
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (1e-5, 1e-5)
 
 
 

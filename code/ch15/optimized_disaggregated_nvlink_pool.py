@@ -28,7 +28,6 @@ from core.harness.benchmark_harness import (
     WorkloadMetadata,
 )
 from core.utils.logger import get_logger
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 logger = get_logger(__name__)
 
@@ -207,7 +206,7 @@ def run_benchmark(
     return {"mean_time_ms": result.timing.mean_ms, **metrics}
 
 
-class _DisaggregatedNVLinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class _DisaggregatedNVLinkPoolBenchmark(BaseBenchmark):
     """Wrapper benchmark for disaggregated NVLink pool - requires multi-GPU."""
 
     def __init__(self) -> None:

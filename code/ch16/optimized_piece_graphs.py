@@ -13,6 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
@@ -70,7 +71,7 @@ class RegionalPieceGraph(nn.Module):
 RegionGraph = Tuple[torch.cuda.CUDAGraph, torch.Tensor, torch.Tensor]
 
 
-class OptimizedPieceGraphsBenchmark(BaseBenchmark):
+class OptimizedPieceGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Caches two smaller CUDA graphs per sequence bucket (piece graph strategy)."""
 
     def __init__(self):
@@ -82,15 +83,19 @@ class OptimizedPieceGraphsBenchmark(BaseBenchmark):
         self.iteration = 0
         self.graph_cache: Dict[int, Tuple[RegionGraph, RegionGraph]] = {}
         self._rng = torch.Generator(device=self.device)
-        self._rng.manual_seed(0)
+        self._rng.manual_seed(42)
         self.hidden_dim_val = 768
         self.n_layers_val = 12
+        self.parameter_count: int = 0
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         self.model = RegionalPieceGraph(hidden_dim=768, n_layers=12).to(
             self.device, dtype=torch.float16
         ).eval()
+        self.parameter_count = sum(p.numel() for p in self.model.parameters())
         self._capture_piece_graphs()
 
     def _capture_piece_graphs(self) -> None:
@@ -153,6 +158,20 @@ class OptimizedPieceGraphsBenchmark(BaseBenchmark):
             tail_graph.replay()
         torch.cuda.synchronize()
         self.output = tail_output.detach().clone()
+        verify_tokens = fresh_tokens.detach().clone()
+        self._set_verification_payload(
+            inputs={"input": verify_tokens},
+            output=self.output,
+            batch_size=verify_tokens.shape[0],
+            parameter_count=self.parameter_count,
+            precision_flags={
+                "fp16": True,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.1, 1.0),
+        )
 
     def teardown(self) -> None:
         self.model = None
@@ -163,20 +182,6 @@ class OptimizedPieceGraphsBenchmark(BaseBenchmark):
         if self.model is None:
             return "Model not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"hidden_dim": self.hidden_dim_val, "n_layers": self.n_layers_val}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(

@@ -8,10 +8,9 @@ import torch
 import torch.nn as nn
 
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 
-class BaselineContinuousBatchingBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class BaselineContinuousBatchingBenchmark(BaseBenchmark):
     """Baseline: static batching, sequential processing."""
     
     def __init__(self):

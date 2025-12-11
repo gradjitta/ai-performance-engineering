@@ -78,6 +78,13 @@ class BaselineMultipleUnoptimizedBenchmark(BaseBenchmark):
                     _ = out.sum()  # Force materialization
                 self.output = out.detach()
             self._synchronize()
+        self._set_verification_payload(
+            inputs={"x": self.x},
+            output=self.output.float() if self.output is not None else None,
+            batch_size=self.batch_size,
+            parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
+            output_tolerance=(0.5, 6.0),
+        )
     
     def teardown(self) -> None:
         self.model = None
@@ -109,26 +116,6 @@ class BaselineMultipleUnoptimizedBenchmark(BaseBenchmark):
         if self.x is None:
             return "Input tensor not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-    
-    def get_verify_inputs(self) -> torch.Tensor:
-        """Return input tensor for aliasing checks."""
-        if self.x is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self.x
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "hidden_dim": self.hidden_dim}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
 
 
 def get_benchmark() -> BaseBenchmark:

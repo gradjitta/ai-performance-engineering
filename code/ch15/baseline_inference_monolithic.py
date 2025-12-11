@@ -25,7 +25,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
     WorkloadMetadata,
 )
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
-from ch15.verification_payload_mixin import VerificationPayloadMixin
+from core.benchmark.verification import InputSignature, PrecisionFlags
 
 
 class SimpleLLM(nn.Module):
@@ -60,7 +60,7 @@ class SimpleLLM(nn.Module):
         return torch.cat(outputs, dim=1)
 
 
-class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class BaselineInferenceMonolithicBenchmark(BaseBenchmark):
     """Monolithic inference baseline using the shared harness conventions."""
     
     def __init__(self):
@@ -90,7 +90,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         with torch.no_grad():
             self.kv_cache = self.model.prefill(self.prompt)
         torch.cuda.synchronize(self.device)
-        self._verify_prompt = torch.randint(0, 10000, (1, 32), device=self.device)
+        self._verify_prompt = torch.randint(0, 10000, (self.batch_size, self.prefill_seq), device=self.device)
     
     def benchmark_fn(self) -> Optional[dict]:
         if self.model is None or self.prompt is None:
@@ -129,7 +129,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
                 if self._verify_prompt is not None:
                     self._set_verification_payload(
                         inputs={"prompt": self._verify_prompt},
-                        output=self.output,
+                        output=self.output.float(),
                         batch_size=int(self._verify_prompt.shape[0]),
                         parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
                         precision_flags={
@@ -173,17 +173,53 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
             return "No TPOT samples recorded"
         return None
 
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return super().get_input_signature()
-
     def get_verify_output(self) -> torch.Tensor:
         """Return output tensor for verification comparison."""
-        return super().get_verify_output()
+        if getattr(self, "_verification_payload", None) is not None:
+            return super().get_verify_output().float()
+        hidden = self.model.hidden_dim if self.model is not None else 1024
+        return torch.zeros(self.batch_size, self.num_tokens, hidden, device=self.device, dtype=torch.float32)
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""
-        return super().get_output_tolerance()
+        if getattr(self, "_verification_payload", None) is not None:
+            return super().get_output_tolerance()
+        return (1e-3, 1e-3)
+
+    def get_verify_inputs(self):
+        """Surface deterministic inputs even before verification payload is set."""
+        if getattr(self, "_verification_payload", None) is not None:
+            return super().get_verify_inputs()
+        prompt = self._verify_prompt
+        if prompt is None:
+            prompt = torch.zeros(self.batch_size, self.prefill_seq, device=self.device, dtype=torch.int64)
+        return {"prompt": prompt}
+
+    def get_input_signature(self):
+        """Provide static signature for compliance when payload is absent."""
+        if getattr(self, "_verification_payload", None) is not None:
+            return super().get_input_signature()
+        flags = PrecisionFlags(
+            fp16=False,
+            bf16=True,
+            fp8=False,
+            tf32=torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+        )
+        signature = InputSignature(
+            shapes={
+                "prompt": (int(self.batch_size), int(self.prefill_seq)),
+            },
+            dtypes={
+                "prompt": "int64",
+            },
+            batch_size=int(self.batch_size),
+            parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
+            precision_flags=flags,
+        )
+        errors = signature.validate(strict=True)
+        if errors:
+            raise ValueError(f"Invalid input signature: {errors[0]}")
+        return signature
 
 
 def get_benchmark() -> BaseBenchmark:

@@ -15,7 +15,6 @@ except ImportError:  # pragma: no cover - older PyTorch fallback
     sdpa_kernel = None  # type: ignore[assignment]
 
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 
 def _math_sdp_context():
@@ -28,7 +27,7 @@ def _math_sdp_context():
     return sdpa_kernel([backend])
 
 
-class OptimizedKVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class OptimizedKVCacheManagementMathBenchmark(BaseBenchmark):
     """Math-only SDP variant to avoid flash-attn kernel requirements."""
     
     def __init__(self):

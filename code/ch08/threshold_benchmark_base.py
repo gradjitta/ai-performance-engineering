@@ -12,6 +12,7 @@ repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.utils.extension_loader_template import load_cuda_extension
 
@@ -20,10 +21,11 @@ THRESHOLD_INNER_SCALE = 0.85
 THRESHOLD_OUTER_SCALE = 1.25
 
 
-class ThresholdBenchmarkBase(BaseBenchmark):
+class ThresholdBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
     rows: int = 1 << 24  # 16M elements - larger to show memory transfer impact
     threshold: float = 2.5
     nvtx_label: str = "threshold"
+    output_tolerance = (0.1, 1.0)
 
     def __init__(self) -> None:
         super().__init__()
@@ -61,6 +63,16 @@ class ThresholdBenchmarkBase(BaseBenchmark):
         enable_nvtx = get_nvtx_enabled(config) if config else False
         with nvtx_range(self.nvtx_label, enable=enable_nvtx):
             self._invoke_kernel()
+        if self.inputs is None or self.outputs is None:
+            raise RuntimeError("benchmark_fn() must run after setup() initializes tensors")
+        self._set_verification_payload(
+            inputs={"inputs": self.inputs},
+            output=self.outputs.detach(),
+            batch_size=self.rows,
+            parameter_count=0,
+            precision_flags={"tf32": torch.backends.cuda.matmul.allow_tf32},
+            output_tolerance=self.output_tolerance,
+        )
 
     def teardown(self) -> None:
         self.inputs = None
@@ -114,17 +126,15 @@ class ThresholdBenchmarkBase(BaseBenchmark):
 
     def get_verify_output(self) -> torch.Tensor:
         """Return output tensor for verification comparison."""
-        if self.outputs is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.outputs.detach().clone()
+        return super().get_verify_output()
 
     def get_input_signature(self) -> dict:
         """Return input signature for verification."""
-        return {"rows": self.rows}
+        return super().get_input_signature()
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
+        return super().get_output_tolerance()
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return threshold kernel optimization metrics."""

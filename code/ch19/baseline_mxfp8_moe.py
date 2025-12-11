@@ -125,6 +125,14 @@ class BaselineMXFP8MoEBenchmark(BaseBenchmark):
         with nvtx_range("mxfp8_moe_baseline", enable=enable_nvtx):
             self.output = self._run_naive()
         self._synchronize()
+        self._set_verification_payload(
+            inputs={"inputs": self.inputs},
+            output=self.output,
+            batch_size=self.num_tokens,
+            parameter_count=self.weights.numel() if self.weights is not None else 0,
+            output_tolerance=(0.5, 20.0),
+            precision_flags={"fp16": False, "bf16": True, "fp8": True, "tf32": False},
+        )
 
     def teardown(self) -> None:
         self.inputs = None
@@ -155,27 +163,6 @@ class BaselineMXFP8MoEBenchmark(BaseBenchmark):
             reduced_precision_time_ms=getattr(self, '_reduced_ms', 5.0),
             precision_type="fp8",
         )
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.output.detach().clone()
-    
-    def get_verify_inputs(self) -> torch.Tensor:
-        """Return original token inputs for aliasing checks."""
-        if self.inputs is None:
-            raise RuntimeError("setup() must be called before verification")
-        return self.inputs
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"num_tokens": self.num_tokens, "num_experts": self.num_experts}
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison."""
-        # MXFP8 quantization can drift more than FP16/FP32, allow wider tolerance.
-        return (0.5, 20.0)
 
 
 def get_benchmark() -> BaseBenchmark:

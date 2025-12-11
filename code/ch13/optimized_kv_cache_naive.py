@@ -16,6 +16,7 @@ except ImportError:  # pragma: no cover - older PyTorch fallback
     SDPBackend = None  # type: ignore[assignment]
     sdpa_kernel = None  # type: ignore[assignment]
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.utils.compile_utils import enable_tf32
 from ch13.kv_cache_workload import get_workload
@@ -185,7 +186,7 @@ class FlashAttentionLayer(nn.Module):
         return self.proj(attn_out)
 
 
-class OptimizedKVCachePagedBenchmark(BaseBenchmark):
+class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Paged KV cache optimization - efficient memory reuse."""
     
     def __init__(self):
@@ -208,6 +209,8 @@ class OptimizedKVCachePagedBenchmark(BaseBenchmark):
             tokens_per_iteration=float(total_tokens),
         )
         self.output = None
+        self._verify_input = None
+        self.parameter_count = 0
         self.register_workload_metadata(
             requests_per_iteration=float(len(self.sequence_lengths)),
             tokens_per_iteration=float(total_tokens),
@@ -220,6 +223,8 @@ class OptimizedKVCachePagedBenchmark(BaseBenchmark):
             torch.backends.cudnn.deterministic = False
             enable_tf32()
         torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         self.layers = nn.ModuleList(
             [
@@ -227,6 +232,7 @@ class OptimizedKVCachePagedBenchmark(BaseBenchmark):
                 for _ in range(self.num_layers)
             ]
         ).to(self.device).eval()
+        self.parameter_count = sum(p.numel() for p in self.layers.parameters())
         
         self.kv_cache = PagedKVCache(
             page_size=self.page_size,
@@ -241,6 +247,8 @@ class OptimizedKVCachePagedBenchmark(BaseBenchmark):
         for seq_len in self.sequence_lengths:
             x = torch.randn(self.batch_size, seq_len, self.hidden_dim, device=self.device, dtype=self.workload.dtype)
             self.inputs.append(x)
+        if self.inputs:
+            self._verify_input = self.inputs[0].detach().clone()
         
         self._synchronize()
     
@@ -265,6 +273,21 @@ class OptimizedKVCachePagedBenchmark(BaseBenchmark):
                 self.kv_cache.free(request_id)
             # Store last token output for verification (to match baseline)
             self.output = hidden[:, -1:, :].detach().clone()
+        if self._verify_input is None:
+            raise RuntimeError("Verification input not initialized")
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output,
+            batch_size=self._verify_input.shape[0],
+            parameter_count=self.parameter_count,
+            precision_flags={
+                "fp16": True,
+                "bf16": False,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(1.0, 100.0),
+        )
         self._synchronize()
 
     
@@ -305,21 +328,6 @@ class OptimizedKVCachePagedBenchmark(BaseBenchmark):
         if self.layers is None:
             return "Model layers not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {
-            "num_layers": self.num_layers,
-            "num_heads": self.num_heads,
-            "head_dim": self.head_dim,
-            "batch_size": self.batch_size,
-        }
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""

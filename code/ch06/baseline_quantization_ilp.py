@@ -6,11 +6,12 @@ from typing import Optional
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from ch06.workload_config import WORKLOAD
 
 
-class BaselineQuantizationILPBenchmark(BaseBenchmark):
+class BaselineQuantizationILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Baseline: Full precision ILP (no quantization)."""
     
     def __init__(self):
@@ -38,6 +39,13 @@ class BaselineQuantizationILPBenchmark(BaseBenchmark):
         with self._nvtx_range("baseline_quantization_ilp"):
             self.output = self.input * 2.0 + 1.0
             self._synchronize()
+        self._set_verification_payload(
+            inputs={"input": self.input},
+            output=self.output.detach(),
+            batch_size=self.N,
+            parameter_count=0,
+            output_tolerance=(1e-2, 1e-2),
+        )
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -68,23 +76,6 @@ class BaselineQuantizationILPBenchmark(BaseBenchmark):
         if self.output is None:
             return "Output tensor not initialized"
         return None
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"N": self.N}
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output
-
-    def get_output_tolerance(self) -> tuple:
-        """Return tolerance for numerical comparison.
-        
-        FP16 quantization has precision differences vs FP32.
-        """
-        return (1e-2, 1e-2)
 
 
 

@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 from typing import Optional
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -86,7 +87,7 @@ class FP8PerChannelLinear(nn.Module):
         return output
 
 
-class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
+class OptimizedFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized: Per-channel FP8 quantization for better accuracy."""
 
     def __init__(self):
@@ -100,6 +101,8 @@ class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
         self.dtype = torch.float32
         self._last = 0.0
         self._error_sum = 0.0
+        self._verify_input: Optional[torch.Tensor] = None
+        self.parameter_count: int = 0
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -115,7 +118,8 @@ class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup: Initialize per-channel FP8 model."""
         torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         # Create model with per-channel FP8
         self.model = FP8PerChannelLinear(
@@ -132,11 +136,13 @@ class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
             self.ref_model.weight.copy_(self.model.weight)
             if self.model.bias is not None:
                 self.ref_model.bias.copy_(self.model.bias)
+        self.parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.x = torch.randn(
             self.batch_size, self.seq_len, self.in_features,
             device=self.device, dtype=self.dtype
         )
+        self._verify_input = self.x.detach().clone()
         
         # Warmup
         for _ in range(3):
@@ -156,6 +162,22 @@ class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
             self._last = float(output.sum())
             self.output = output.detach().clone()
             self._synchronize()
+        if self._verify_input is None:
+            raise RuntimeError("Verification input not initialized")
+        dtype = self._verify_input.dtype
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output.detach().clone(),
+            batch_size=self._verify_input.shape[0],
+            parameter_count=self.parameter_count,
+            precision_flags={
+                "fp16": dtype == torch.float16,
+                "bf16": dtype == torch.bfloat16,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=self.get_output_tolerance(),
+        )
 
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -188,16 +210,6 @@ class OptimizedFP8PerChannelBenchmark(BaseBenchmark):
         if self.model is None or self.x is None:
             return "Model not initialized"
         return None
-
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.output is None:
-            raise RuntimeError("Output not available - run benchmark first")
-        return self.output
-
-    def get_input_signature(self) -> dict:
-        """Return workload signature for input verification."""
-        return {"batch_size": self.batch_size, "seq_len": self.seq_len, "in_features": self.in_features}
 
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""

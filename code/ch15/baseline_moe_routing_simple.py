@@ -22,7 +22,6 @@ from core.harness.benchmark_harness import (
     WorkloadMetadata,
 )
 from core.utils.logger import get_logger
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 logger = get_logger(__name__)
 
@@ -143,7 +142,7 @@ def run_benchmark(
     return {"mean_time_ms": result.timing.mean_ms, **metrics}
 
 
-class _MoERoutingSimpleBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class _MoERoutingSimpleBenchmark(BaseBenchmark):
     """Wrapper benchmark for simple MoE routing."""
 
     def __init__(self) -> None:

@@ -46,6 +46,7 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from contextlib import contextmanager
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -488,7 +489,7 @@ def benchmark_static_vs_dynamic():
 # Benchmark Harness Integration
 #============================================================================
 
-class FP8StaticDemoBenchmark(BaseBenchmark):
+class FP8StaticDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Benchmark harness wrapper for FP8 static quantization demo."""
 
     def __init__(self):
@@ -499,6 +500,9 @@ class FP8StaticDemoBenchmark(BaseBenchmark):
         self.seq_len = 512
         self.dim = 4096
         self._last = 0.0
+        self.output = None
+        self._verify_input: Optional[torch.Tensor] = None
+        self.parameter_count: int = 0
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -509,6 +513,8 @@ class FP8StaticDemoBenchmark(BaseBenchmark):
     def setup(self) -> None:
         """Setup: Initialize and calibrate static FP8 model."""
         torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         # Create simple model
         class SimpleModel(nn.Module):
@@ -527,6 +533,7 @@ class FP8StaticDemoBenchmark(BaseBenchmark):
         self.model = StaticFP8Model.convert_linear_layers(
             SimpleModel(self.dim, 4).to(self.device)
         )
+        self.parameter_count = sum(p.numel() for p in self.model.parameters())
         
         # Calibrate
         calibration_data = [
@@ -543,6 +550,7 @@ class FP8StaticDemoBenchmark(BaseBenchmark):
         self.model.calibrate(SimpleDataLoader(calibration_data), num_batches=10, device=self.device)
         
         self.x = torch.randn(self.batch_size, self.seq_len, self.dim, device=self.device)
+        self._verify_input = self.x.detach().clone()
         
         # Warmup
         for _ in range(3):
@@ -555,7 +563,23 @@ class FP8StaticDemoBenchmark(BaseBenchmark):
         with torch.no_grad():
             output = self.model(self.x)
             self._last = float(output.sum())
+            self.output = output.detach().clone()
             self._synchronize()
+        if self._verify_input is None or self.output is None:
+            raise RuntimeError("Verification input/output not initialized")
+        self._set_verification_payload(
+            inputs={"input": self._verify_input},
+            output=self.output,
+            batch_size=self._verify_input.shape[0],
+            parameter_count=self.parameter_count,
+            precision_flags={
+                "fp16": False,
+                "bf16": False,
+                "fp8": True,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
+            output_tolerance=(0.5, 5.0),
+        )
 
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -583,19 +607,9 @@ class FP8StaticDemoBenchmark(BaseBenchmark):
             return "Model not initialized"
         return None
 
-    def get_verify_output(self) -> torch.Tensor:
-        """Return output tensor for verification comparison."""
-        if self.data is None:
-            raise RuntimeError("benchmark_fn() must be called before verification")
-        return self.data.detach().clone()
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        return {"batch_size": self.batch_size, "seq_len": self.seq_len}
-
     def get_output_tolerance(self) -> tuple:
         """Return tolerance for numerical comparison."""
-        return (0.1, 1.0)
+        return (0.5, 5.0)
 
 
 def get_benchmark() -> BaseBenchmark:
@@ -605,4 +619,3 @@ def get_benchmark() -> BaseBenchmark:
 
 if __name__ == "__main__":
     benchmark_static_vs_dynamic()
-

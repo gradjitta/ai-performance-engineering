@@ -14,7 +14,6 @@ import torch.nn as nn
 
 from core.benchmark.gpu_requirements import skip_if_insufficient_gpus, require_peer_access
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from ch15.verification_payload_mixin import VerificationPayloadMixin
 
 
 def _enable_peer_access() -> None:
@@ -27,7 +26,7 @@ def _enable_peer_access() -> None:
         pass
 
 
-class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class OptimizedKVCacheNvlinkPoolBenchmark(BaseBenchmark):
     """Tiered KV cache with NVLink pooling."""
 
     def __init__(self):
