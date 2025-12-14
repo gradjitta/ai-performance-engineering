@@ -1347,6 +1347,37 @@
         "warmup_iterations": 0
       },
       "type": "cuda"
+    },
+    "warp_specialized_pipeline_enhanced_cuda": {
+      "example": "warp_specialized_pipeline_enhanced",
+      "metadata": {
+        "best_optimization": "optimized_warp_specialized_pipeline_enhanced",
+        "best_optimization_file": "optimized_warp_specialized_pipeline_enhanced.cu",
+        "best_optimization_speedup": 2.233700254022015,
+        "best_optimization_technique": "optimized_warp_specialized_pipeline_enhanced",
+        "best_optimization_time_ms": 0.03936666666666667,
+        "optimization_goal": "speed"
+      },
+      "metrics": {
+        "baseline_p75_ms": 0.1018,
+        "baseline_p90_ms": 0.1018,
+        "baseline_time_ms": 0.08793333333333334,
+        "best_optimized_p75_ms": 0.0394,
+        "best_optimized_p90_ms": 0.0394,
+        "best_optimized_speedup": 2.233700254022015,
+        "best_optimized_time_ms": 0.03936666666666667,
+        "best_speedup": 2.233700254022015,
+        "is_regression": false
+      },
+      "provenance": {
+        "git_commit": "dcfb0c3b9ea64245fab68e603217c0f3491c4116",
+        "hardware_key": "b200",
+        "iterations": 20,
+        "profile_name": "none",
+        "timestamp": "2025-12-14T19:36:41.050328",
+        "warmup_iterations": 5
+      },
+      "type": "cuda"
     }
   },
   "hardware_key": "b200",

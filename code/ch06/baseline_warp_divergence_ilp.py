@@ -84,6 +84,7 @@ class BaselineWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmark
         return BenchmarkConfig(
             iterations=self.workload.ilp_iterations,
             warmup=self.workload.ilp_warmup,
+            adaptive_iterations=False,
         )
     
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:

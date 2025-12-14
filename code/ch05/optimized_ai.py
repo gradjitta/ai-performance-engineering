@@ -9,7 +9,6 @@ import torch.nn as nn
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from core.utils.compile_utils import enable_tf32
 
 
 class TinyBlock(nn.Module):
@@ -32,10 +31,12 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.blocks: Optional[nn.ModuleList] = None
         self.static_input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
-        self.batch = 512
-        self.hidden = 1024
+        # Must match baseline workload; tuned to make CPU sync overhead visible.
+        self.batch = 128
+        self.hidden = 256
+        self.num_blocks = 64
         # Inference benchmark - jitter check not applicable
-        tokens = self.batch * self.hidden
+        tokens = self.batch * self.hidden * self.num_blocks
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
@@ -44,11 +45,8 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        enable_tf32()
         # Initialize model weights after seeding for deterministic comparison
-        self.blocks = nn.ModuleList(TinyBlock(1024).to(self.device) for _ in range(4))
-        for block in self.blocks:
-            block.eval()
+        self.blocks = nn.ModuleList(TinyBlock(self.hidden).to(self.device).eval() for _ in range(self.num_blocks))
         # Use same dtype as baseline (float32)
         self.static_input = torch.randn(self.batch, self.hidden, device=self.device, dtype=torch.float32)
         # Warmup
@@ -62,11 +60,14 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.blocks is not None and self.static_input is not None
         with self._nvtx_range("optimized_ai"):
             # The optimization: no CPU sync between blocks
-            out = self.static_input
-            for block in self.blocks:
-                out = block(out)
+            with torch.inference_mode():
+                out = self.static_input
+                for block in self.blocks:
+                    out = block(out)
             self._synchronize()
         self.output = out.detach()
+        if self.output is None:
+            raise RuntimeError("benchmark_fn() must produce output")
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(

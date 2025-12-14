@@ -169,6 +169,7 @@ class BaselineRegionalTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return BenchmarkConfig(
             iterations=8,
             warmup=10,  # Required to exclude JIT/compile overhead from timing
+            adaptive_iterations=False,  # Stateful seq schedule must run fixed counts for verification
             enable_memory_tracking=False,
             enable_profiling=False,
             setup_timeout_seconds=300,

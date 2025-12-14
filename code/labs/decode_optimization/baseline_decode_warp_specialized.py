@@ -1,0 +1,79 @@
+"""Baseline for warp-specialized Triton decode: eager PyTorch math.
+
+This baseline matches `optimized_decode_warp_specialized.py` exactly (same
+prompt/decode lengths, hidden size, and host/stream settings) but uses the
+standard PyTorch decode path. This keeps the Triton warp-specialized comparison
+workload-equivalent.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+import torch
+
+from labs.decode_optimization.decode_common import DecodeBenchmark, DecodeConfig, attach_benchmark_metadata  # noqa: E402
+
+
+class PersistentPrefillBaselineBenchmark(DecodeBenchmark):
+    """Baseline that matches the optimized persistent-prefill execution model."""
+
+    def setup(self) -> None:
+        super().setup()
+        # Match optimized path: do prefill ONCE and benchmark decode-only iterations.
+        self._copy_prompts_to_device()
+        prefill_state = self.prefill_fn(self.gpu_prompt)
+        self._prefilled_state = prefill_state.detach().clone()
+        self._prefilled_tokens = self.gpu_prompt[:, -1].detach().clone()
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.cfg.batch_size),
+            tokens_per_iteration=float(self.cfg.batch_size * self.cfg.decode_tokens),
+        )
+
+    def benchmark_fn(self) -> None:
+        if not hasattr(self, "_prefilled_state") or not hasattr(self, "_prefilled_tokens"):
+            raise RuntimeError("setup() must run before benchmark_fn()")
+
+        # Reset to persistent state; avoid recomputing prefill every iteration.
+        self.state_buffer.copy_(self._prefilled_state)
+        self.current_tokens.copy_(self._prefilled_tokens)
+
+        stream = self.compute_stream or torch.cuda.current_stream()
+        with torch.cuda.stream(stream):
+            for _ in range(self.cfg.decode_tokens):
+                _, next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
+                self.state_buffer.copy_(next_state)
+                self.current_tokens.copy_(next_token)
+        if self.compute_stream is not None:
+            torch.cuda.current_stream().wait_stream(stream)
+        torch.cuda.synchronize()
+        self._finalize_output()
+
+
+def get_benchmark() -> DecodeBenchmark:
+    cfg = DecodeConfig(
+        batch_size=8,
+        prompt_tokens=1024,
+        decode_tokens=256,
+        hidden_size=2048,
+        use_fp8=False,
+        use_pinned_host=True,
+        use_copy_stream=True,
+        use_compute_stream=True,
+        use_cuda_graphs=False,
+        graph_full_iteration=False,
+        use_torch_compile=False,
+        label="baseline_decode_warp_specialized",
+    )
+    return attach_benchmark_metadata(PersistentPrefillBaselineBenchmark(cfg), __file__)
+
+
+if __name__ == "__main__":
+    from core.harness.benchmark_harness import benchmark_main
+
+    benchmark_main(get_benchmark)

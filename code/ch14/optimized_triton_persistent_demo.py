@@ -39,6 +39,7 @@ import triton
 import triton.language as tl
 from typing import Optional
 
+from ch14.triton_persistent_batched import matmul_persistent_batched
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -470,30 +471,34 @@ class TritonPersistentDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._last = 0.0
         self._verification_payload = None
         
-        # FLOP calculation: 2*M*N*K for matmul
         self._workload = WorkloadMetadata(
-            requests_per_iteration=1.0,
-            tokens_per_iteration=float(self.M * self.N),  # Output elements
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(self.batch_size * self.M * self.N),
+        )
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(self.batch_size * self.M * self.N),
         )
 
     def setup(self) -> None:
         """Setup: Initialize matrices and detect SM count."""
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         
         props = torch.cuda.get_device_properties(self.device)
         self.num_sms = props.multi_processor_count
         
-        self.a = torch.randn(self.M, self.K, device=self.device, dtype=torch.float16)
-        self.b = torch.randn(self.K, self.N, device=self.device, dtype=torch.float16)
+        self.a = torch.randn(self.batch_size, self.M, self.K, device=self.device, dtype=torch.float16)
+        self.b = torch.randn(self.batch_size, self.K, self.N, device=self.device, dtype=torch.float16)
         
         # Warmup
         for _ in range(3):
-            _ = matmul_persistent(self.a, self.b, self.num_sms)
+            _ = matmul_persistent_batched(self.a, self.b, self.num_sms)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
         """Benchmark: Persistent GEMM kernel."""
-        self.output = matmul_persistent(self.a, self.b, self.num_sms)
+        self.output = matmul_persistent_batched(self.a, self.b, self.num_sms)
         self._last = float(self.output.sum())
         self._synchronize()
         if self.output is None or self.a is None or self.b is None:
@@ -503,7 +508,7 @@ class TritonPersistentDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._set_verification_payload(
             inputs={"a": self.a, "b": self.b},
             output=self.output,
-            batch_size=1,
+            batch_size=self.batch_size,
             parameter_count=0,
             precision_flags={
                 "fp16": True,

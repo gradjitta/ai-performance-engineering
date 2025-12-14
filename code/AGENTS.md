@@ -325,6 +325,14 @@ def setup(self) -> None:
     torch.manual_seed(101)  # BAD: mismatches harness seed 42
 ```
 
+## Deterministic Algorithms vs Performance (CRITICAL)
+
+- Do NOT enable deterministic algorithms inside *performance* benchmarks; they can slow kernels significantly and can create misleading baseline-vs-optimized speedups if variants differ.
+  - Disallowed in benchmark code by default: `torch.use_deterministic_algorithms(True, ...)`, `torch.backends.cudnn.deterministic = True`, `torch.backends.cudnn.benchmark = False` when used to force determinism.
+- Determinism is handled by the harness in verification/repro modes; benchmark files must not override harness policy.
+- **Exception (rare):** If a benchmark must enable determinism for correctness/debuggability, it MUST include an explicit file-level justification comment so `aisp bench audit` can allowlist it:
+  - `# aisp: allow_determinism <short reason>`
+
 ## Harness Verification Architecture (IMPORTANT)
 
 The harness uses **POST-TIMING VERIFICATION** - verification happens AFTER timing runs complete, using the outputs from the already-run benchmarks. This is efficient:

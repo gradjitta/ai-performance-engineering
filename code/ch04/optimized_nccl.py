@@ -42,6 +42,7 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model: Optional[nn.Module] = None
         self.input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self._reduction_buffer: Optional[torch.Tensor] = None
         
         tokens = self.batch_size * self.hidden_dim
@@ -63,10 +64,8 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ).to(self.device).eval()
         
         self.input = torch.randn(self.batch_size, self.hidden_dim, device=self.device)
-        # Pre-allocate output buffer (reused each iteration)
         shard_size = self.batch_size // self.num_shards
-        self.output = torch.zeros(shard_size, self.hidden_dim, device=self.device)
-        # Pre-allocate reduction buffer
+        self._output_buffer = torch.zeros(shard_size, self.hidden_dim, device=self.device)
         self._reduction_buffer = torch.zeros(shard_size, self.hidden_dim, device=self.device)
         torch.cuda.synchronize(self.device)
 
@@ -76,6 +75,7 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
         assert self.input is not None and self.model is not None
+        assert self._output_buffer is not None and self._reduction_buffer is not None
         
         with nvtx_range("optimized_nccl", enable=enable_nvtx):
             # Forward pass
@@ -91,8 +91,9 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self._reduction_buffer.add_(shard)
             
             # Average
-            self.output.copy_(self._reduction_buffer)
-            self.output.div_(self.num_shards)
+            self._output_buffer.copy_(self._reduction_buffer)
+            self._output_buffer.div_(self.num_shards)
+            self.output = self._output_buffer
         
         self._synchronize()
 
@@ -118,6 +119,7 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.input = None
         self.output = None
+        self._output_buffer = None
         self._reduction_buffer = None
         torch.cuda.empty_cache()
 

@@ -19,7 +19,6 @@ except Exception:
 
 from core.benchmark.triton_compat import ensure_triton_compat
 
-# Configure Triton allocator at import time so kernels can allocate scratch.
 def _install_triton_allocator() -> None:
     if _triton_alloc is None:
         return
@@ -67,27 +66,74 @@ def _install_triton_allocator() -> None:
             ptr = torch.cuda.caching_allocator_alloc(size, device_idx, stream=stream)
             return _TorchCudaBuffer(ptr)
 
-    try:
-        import triton
-        triton.set_allocator(_TorchCudaAllocator())
-    except Exception:
-        pass  # Ignore if triton.set_allocator not available
+    import triton
+    triton.set_allocator(_TorchCudaAllocator())
 
-# Don't set allocator at import time - let setup() handle it after CUDA init
+
+def _triton_allocator_ready() -> bool:
+    if _triton_alloc is None:
+        return False
+    try:
+        current = _triton_alloc._allocator.get()
+        return not isinstance(current, _triton_alloc.NullAllocator)
+    except Exception:
+        return False
+
+
+def _ensure_triton_runtime_ready() -> None:
+    """Ensure Triton is ready in the *current* execution context.
+
+    Triton's allocator is stored in a ``contextvars.ContextVar``. The harness may
+    run warmup and measurement in different threads (timeout enforcement), which
+    means a one-time global guard is insufficient: the allocator must be set for
+    each thread/context that launches Triton kernels.
+    """
+    if not _triton_allocator_ready():
+        # Ensure CUDA is initialized before configuring Triton allocator.
+        torch.cuda.current_stream()
+        _install_triton_allocator()
+        if not _triton_allocator_ready():
+            raise RuntimeError("Triton allocator is not configured (triton.set_allocator() failed)")
+    ensure_triton_compat()
 
 
 @triton.autotune(
     configs=[
         triton.Config(
             {
-                "BLOCK_M": 16,
-                "BLOCK_N": 256,
+                "BLOCK_M": 1,
+                "BLOCK_N": 128,
+                "GROUP_N": 4,
                 "BLOCK_K": 128,
                 "BLOCK_H1": 128,
-                "NUM_STAGES": 2,
+                "NUM_STAGES": 3,
             },
-            num_warps=8,
-            num_stages=2,
+            num_warps=4,
+            num_stages=3,
+        ),
+        triton.Config(
+            {
+                "BLOCK_M": 1,
+                "BLOCK_N": 128,
+                "GROUP_N": 2,
+                "BLOCK_K": 128,
+                "BLOCK_H1": 128,
+                "NUM_STAGES": 3,
+            },
+            num_warps=4,
+            num_stages=3,
+        ),
+        triton.Config(
+            {
+                "BLOCK_M": 1,
+                "BLOCK_N": 128,
+                "GROUP_N": 8,
+                "BLOCK_K": 128,
+                "BLOCK_H1": 128,
+                "NUM_STAGES": 3,
+            },
+            num_warps=4,
+            num_stages=3,
         ),
     ],
     key=["M", "H"],
@@ -100,8 +146,8 @@ def fused_decode_mlp_kernel(
     W2_ptr,
     B2_ptr,
     Out_ptr,
-    M,
-    H,
+    M: tl.constexpr,
+    H: tl.constexpr,
     stride_xm,
     stride_xk,
     stride_w1k,
@@ -112,18 +158,19 @@ def fused_decode_mlp_kernel(
     stride_outn,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    GROUP_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     BLOCK_H1: tl.constexpr,
     NUM_STAGES: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
 
     m0 = pid_m * BLOCK_M
-    n0 = pid_n * BLOCK_N
+    n0 = pid_n * (GROUP_N * BLOCK_N)
 
     offs_m = m0 + tl.arange(0, BLOCK_M)
-    offs_n = n0 + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
 
     # TMA descriptors
@@ -146,14 +193,21 @@ def fused_decode_mlp_kernel(
         block_shape=[BLOCK_H1, BLOCK_N],
     )
 
-    acc_out = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    # Triton does not support list comprehensions in kernels; unroll up to GROUP_N=8.
+    acc0 = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    acc1 = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    acc2 = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    acc3 = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    acc4 = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    acc5 = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    acc6 = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    acc7 = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
     # Loop over hidden (K) chunks for the first matmul, fusing projection 2 inside.
+    # Note: warp_specialize=True causes MLIR PassManager failures on some Blackwell configs.
+    # Use software pipelining (num_stages) instead for stable performance.
     H_tiles = (H + BLOCK_H1 - 1) // BLOCK_H1
     K_tiles = (H + BLOCK_K - 1) // BLOCK_K
-
-    # Note: warp_specialize=True causes MLIR PassManager failures on some Blackwell configs
-    # Using software pipelining (num_stages) instead for stable performance
     for ht in tl.range(0, H_tiles, num_stages=NUM_STAGES):
         h_start = ht * BLOCK_H1
 
@@ -161,54 +215,91 @@ def fused_decode_mlp_kernel(
         hidden_chunk = tl.zeros((BLOCK_M, BLOCK_H1), dtype=tl.float32)
         for kt in tl.range(0, K_tiles):
             k_start = kt * BLOCK_K
-
-            x_block = X_desc.load([m0, k_start])
-            row_offsets = tl.broadcast_to(offs_m[:, None], (BLOCK_M, BLOCK_K))
-            col_offsets = tl.broadcast_to((k_start + offs_k)[None, :], (BLOCK_M, BLOCK_K))
-            x_block = tl.where(
-                (row_offsets < M) & (col_offsets < H),
-                x_block,
-                tl.zeros_like(x_block),
-            )
-
-            w1_block = W1_desc.load([k_start, h_start])
-            k_offsets = tl.broadcast_to((k_start + offs_k)[:, None], (BLOCK_K, BLOCK_H1))
-            h_offsets = tl.broadcast_to((h_start + tl.arange(0, BLOCK_H1))[None, :], (BLOCK_K, BLOCK_H1))
-            w1_block = tl.where(
-                (k_offsets < H) & (h_offsets < H),
-                w1_block,
-                tl.zeros_like(w1_block),
-            )
-
+            x_block = tl.load_tensor_descriptor(X_desc, [m0, k_start])
+            w1_block = tl.load_tensor_descriptor(W1_desc, [k_start, h_start])
             hidden_chunk += tl.dot(x_block, w1_block, out_dtype=tl.float32)
 
         # Add bias1 slice and GELU
         bias1 = tl.load(B1_ptr + h_start + tl.arange(0, BLOCK_H1))
         bias1 = bias1[None, :]
         hidden_chunk += bias1
-        # Fast GELU approximation without tanh (use sigmoid-friendly form)
-        hidden_chunk = hidden_chunk * tl.sigmoid(1.702 * hidden_chunk)
+        # Exact GELU: 0.5 * x * (1 + erf(x / sqrt(2)))
+        hidden_chunk = 0.5 * hidden_chunk * (1.0 + tl.math.erf(hidden_chunk * 0.7071067811865475))
 
         # Projection 2 for this hidden slice
-        w2_block = W2_desc.load([h_start, n0])
-        h_offsets = tl.broadcast_to((h_start + tl.arange(0, BLOCK_H1))[:, None], (BLOCK_H1, BLOCK_N))
-        n_offsets = tl.broadcast_to(offs_n[None, :], (BLOCK_H1, BLOCK_N))
-        w2_block = tl.where(
-            (h_offsets < H) & (n_offsets < H),
-            w2_block,
-            tl.zeros_like(w2_block),
-        )
+        if GROUP_N >= 1:
+            g0_n0 = n0
+            w2_0 = tl.load_tensor_descriptor(W2_desc, [h_start, g0_n0])
+            acc0 += tl.dot(hidden_chunk, w2_0.to(tl.float32), out_dtype=tl.float32)
+        if GROUP_N >= 2:
+            g1_n0 = n0 + 1 * BLOCK_N
+            w2_1 = tl.load_tensor_descriptor(W2_desc, [h_start, g1_n0])
+            acc1 += tl.dot(hidden_chunk, w2_1.to(tl.float32), out_dtype=tl.float32)
+        if GROUP_N >= 3:
+            g2_n0 = n0 + 2 * BLOCK_N
+            w2_2 = tl.load_tensor_descriptor(W2_desc, [h_start, g2_n0])
+            acc2 += tl.dot(hidden_chunk, w2_2.to(tl.float32), out_dtype=tl.float32)
+        if GROUP_N >= 4:
+            g3_n0 = n0 + 3 * BLOCK_N
+            w2_3 = tl.load_tensor_descriptor(W2_desc, [h_start, g3_n0])
+            acc3 += tl.dot(hidden_chunk, w2_3.to(tl.float32), out_dtype=tl.float32)
+        if GROUP_N >= 5:
+            g4_n0 = n0 + 4 * BLOCK_N
+            w2_4 = tl.load_tensor_descriptor(W2_desc, [h_start, g4_n0])
+            acc4 += tl.dot(hidden_chunk, w2_4.to(tl.float32), out_dtype=tl.float32)
+        if GROUP_N >= 6:
+            g5_n0 = n0 + 5 * BLOCK_N
+            w2_5 = tl.load_tensor_descriptor(W2_desc, [h_start, g5_n0])
+            acc5 += tl.dot(hidden_chunk, w2_5.to(tl.float32), out_dtype=tl.float32)
+        if GROUP_N >= 7:
+            g6_n0 = n0 + 6 * BLOCK_N
+            w2_6 = tl.load_tensor_descriptor(W2_desc, [h_start, g6_n0])
+            acc6 += tl.dot(hidden_chunk, w2_6.to(tl.float32), out_dtype=tl.float32)
+        if GROUP_N >= 8:
+            g7_n0 = n0 + 7 * BLOCK_N
+            w2_7 = tl.load_tensor_descriptor(W2_desc, [h_start, g7_n0])
+            acc7 += tl.dot(hidden_chunk, w2_7.to(tl.float32), out_dtype=tl.float32)
 
-        acc_out += tl.dot(hidden_chunk, w2_block.to(tl.float32), out_dtype=tl.float32)
-
-    # Apply bias2 and store
-    bias2 = tl.load(B2_ptr + n0 + tl.arange(0, BLOCK_N))
-    bias2 = bias2[None, :]
-    acc_out += bias2
-
-    out_ptrs = Out_ptr + (offs_m[:, None] * stride_outm + offs_n[None, :] * stride_outn)
-    mask = (offs_m[:, None] < M) & (offs_n[None, :] < H)
-    tl.store(out_ptrs, acc_out.to(tl.float16), mask=mask)
+    if GROUP_N >= 1:
+        offs_n0 = n0 + tl.arange(0, BLOCK_N)
+        bias2_0 = tl.load(B2_ptr + offs_n0)
+        out_ptrs0 = Out_ptr + (offs_m[:, None] * stride_outm + offs_n0[None, :] * stride_outn)
+        tl.store(out_ptrs0, (acc0 + bias2_0[None, :]).to(OUT_DTYPE))
+    if GROUP_N >= 2:
+        offs_n1 = n0 + 1 * BLOCK_N + tl.arange(0, BLOCK_N)
+        bias2_1 = tl.load(B2_ptr + offs_n1)
+        out_ptrs1 = Out_ptr + (offs_m[:, None] * stride_outm + offs_n1[None, :] * stride_outn)
+        tl.store(out_ptrs1, (acc1 + bias2_1[None, :]).to(OUT_DTYPE))
+    if GROUP_N >= 3:
+        offs_n2 = n0 + 2 * BLOCK_N + tl.arange(0, BLOCK_N)
+        bias2_2 = tl.load(B2_ptr + offs_n2)
+        out_ptrs2 = Out_ptr + (offs_m[:, None] * stride_outm + offs_n2[None, :] * stride_outn)
+        tl.store(out_ptrs2, (acc2 + bias2_2[None, :]).to(OUT_DTYPE))
+    if GROUP_N >= 4:
+        offs_n3 = n0 + 3 * BLOCK_N + tl.arange(0, BLOCK_N)
+        bias2_3 = tl.load(B2_ptr + offs_n3)
+        out_ptrs3 = Out_ptr + (offs_m[:, None] * stride_outm + offs_n3[None, :] * stride_outn)
+        tl.store(out_ptrs3, (acc3 + bias2_3[None, :]).to(OUT_DTYPE))
+    if GROUP_N >= 5:
+        offs_n4 = n0 + 4 * BLOCK_N + tl.arange(0, BLOCK_N)
+        bias2_4 = tl.load(B2_ptr + offs_n4)
+        out_ptrs4 = Out_ptr + (offs_m[:, None] * stride_outm + offs_n4[None, :] * stride_outn)
+        tl.store(out_ptrs4, (acc4 + bias2_4[None, :]).to(OUT_DTYPE))
+    if GROUP_N >= 6:
+        offs_n5 = n0 + 5 * BLOCK_N + tl.arange(0, BLOCK_N)
+        bias2_5 = tl.load(B2_ptr + offs_n5)
+        out_ptrs5 = Out_ptr + (offs_m[:, None] * stride_outm + offs_n5[None, :] * stride_outn)
+        tl.store(out_ptrs5, (acc5 + bias2_5[None, :]).to(OUT_DTYPE))
+    if GROUP_N >= 7:
+        offs_n6 = n0 + 6 * BLOCK_N + tl.arange(0, BLOCK_N)
+        bias2_6 = tl.load(B2_ptr + offs_n6)
+        out_ptrs6 = Out_ptr + (offs_m[:, None] * stride_outm + offs_n6[None, :] * stride_outn)
+        tl.store(out_ptrs6, (acc6 + bias2_6[None, :]).to(OUT_DTYPE))
+    if GROUP_N >= 8:
+        offs_n7 = n0 + 7 * BLOCK_N + tl.arange(0, BLOCK_N)
+        bias2_7 = tl.load(B2_ptr + offs_n7)
+        out_ptrs7 = Out_ptr + (offs_m[:, None] * stride_outm + offs_n7[None, :] * stride_outn)
+        tl.store(out_ptrs7, (acc7 + bias2_7[None, :]).to(OUT_DTYPE))
 
 
 def fused_decode_mlp(
@@ -218,32 +309,34 @@ def fused_decode_mlp(
     w2: torch.Tensor,
     b2: torch.Tensor,
 ) -> torch.Tensor:
-    """Fused decode MLP: y = GELU(x @ w1 + b1) @ w2 + b2.
+    """Fused decode MLP: ``y = GELU(x @ w1 + b1) @ w2 + b2``.
 
     Args:
         x: [batch, hidden] input
-        w1: [hidden, hidden] weight
+        w1: [hidden, hidden] weight in *[in_features, out_features]* layout (i.e. ``nn.Linear.weight.T``)
         b1: [hidden] bias
-        w2: [hidden, hidden] weight
+        w2: [hidden, hidden] weight in *[in_features, out_features]* layout (i.e. ``nn.Linear.weight.T``)
         b2: [hidden] bias
     
     Uses Triton TMA-backed kernel for optimal performance on Blackwell GPUs.
     """
-    # Ensure CUDA is initialized and allocator is set before kernel launch
-    torch.cuda.current_stream()  # Force stream init
-    _install_triton_allocator()
-    ensure_triton_compat()
+    _ensure_triton_runtime_ready()
     
     assert x.is_cuda and w1.is_cuda and w2.is_cuda
     assert x.dtype in (torch.float16, torch.bfloat16)
     assert w1.dtype == x.dtype and w2.dtype == x.dtype
 
     B, H = x.shape
+    # This kernel is specialized for TMA-friendly, fully-tiled shapes and does not
+    # mask out-of-bounds accesses. Keep it fail-fast.
+    if H % 1024 != 0:
+        raise ValueError(f"fused_decode_mlp requires hidden_size divisible by 1024, got {H}")
     out = torch.empty_like(x)
 
-    # Grid based on BLOCK_M=16 (from autotune config) and BLOCK_N=256
-    grid = (triton.cdiv(B, 16), triton.cdiv(H, 256))
+    def grid(meta):
+        return (triton.cdiv(B, meta["BLOCK_M"]), triton.cdiv(H, meta["BLOCK_N"] * meta["GROUP_N"]))
     
+    out_dtype = tl.bfloat16 if x.dtype == torch.bfloat16 else tl.float16
     fused_decode_mlp_kernel[grid](
         x,
         w1,
@@ -261,5 +354,6 @@ def fused_decode_mlp(
         w2.stride(1),
         out.stride(0),
         out.stride(1),
+        OUT_DTYPE=out_dtype,
     )
     return out

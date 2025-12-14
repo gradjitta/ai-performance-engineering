@@ -36,6 +36,13 @@ class TilingBenchmarkBaseTCGen05(TilingBenchmarkBase):
 
     nvtx_label = "tiling_tcgen05"
     tensor_dtype = torch.float16
+    # The tcgen05 kernel is extremely fast on Blackwell; use a shape that makes
+    # the redundant baseline output copy a measurable fraction of runtime.
+    # Keep the compute workload substantial while increasing the output tensor
+    # footprint (M x N) so the avoided copy is not lost in noise.
+    matrix_rows: int = 4096
+    matrix_cols: int = 4096
+    shared_dim: int = 256
 
     def __init__(self) -> None:
         # Check availability first and raise SKIPPED if needed

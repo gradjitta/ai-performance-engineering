@@ -53,7 +53,7 @@ class OptimizedKubernetesBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _prefetch_slot(self, slot: int) -> None:
         """Async copy to device buffer on copy stream."""
-        batch_idx = (self.batch_idx + slot) % len(self.host_batches)
+        batch_idx = (self.batch_idx + 1) % len(self.host_batches)
         with torch.cuda.stream(self.copy_stream):
             self.device_batches[slot].copy_(self.host_batches[batch_idx], non_blocking=True)
             self.device_targets[slot].copy_(self.target_batches[batch_idx], non_blocking=True)
@@ -88,11 +88,13 @@ class OptimizedKubernetesBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.cur_slot = 0
         self.next_slot = 1
         
-        # Prefetch first batch
-        self._prefetch_slot(self.cur_slot)
+        # Prefetch first (current) batch into slot 0.
+        with torch.cuda.stream(self.copy_stream):
+            self.device_batches[self.cur_slot].copy_(self.host_batches[0], non_blocking=True)
+            self.device_targets[self.cur_slot].copy_(self.target_batches[0], non_blocking=True)
         torch.cuda.current_stream().wait_stream(self.copy_stream)
-        # Start prefetching second batch
-        self.batch_idx += 1
+
+        # Start prefetching the *next* batch into slot 1 (batch 1).
         self._prefetch_slot(self.next_slot)
         self._synchronize()
 
@@ -152,7 +154,10 @@ class OptimizedKubernetesBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=30, warmup=5)
+        # Disable adaptive iterations: this benchmark cycles through batches,
+        # so baseline/optimized must execute the same iteration count for
+        # post-timing output verification.
+        return BenchmarkConfig(iterations=30, warmup=5, adaptive_iterations=False)
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""

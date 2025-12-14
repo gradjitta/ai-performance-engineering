@@ -117,7 +117,10 @@ class BaselineKubernetesBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=30, warmup=5)
+        # Disable adaptive iterations: this benchmark cycles through batches,
+        # so baseline/optimized must execute the same iteration count for
+        # post-timing output verification.
+        return BenchmarkConfig(iterations=30, warmup=5, adaptive_iterations=False)
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""

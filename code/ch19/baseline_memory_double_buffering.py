@@ -54,6 +54,7 @@ class MemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.deterministic = False
         torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         self.model = nn.Sequential(
             nn.Linear(self.hidden_dim, self.hidden_dim * 4),
             nn.ReLU(),
@@ -66,7 +67,6 @@ class MemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float16,
         )
-        self.output = torch.empty_like(self.buffer)
         self.host_batches = [
             torch.randn(
                 self.batch_size,

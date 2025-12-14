@@ -59,8 +59,6 @@ class BaselineNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ).to(self.device).eval()
         
         self.input = torch.randn(self.batch_size, self.hidden_dim, device=self.device)
-        shard_size = self.batch_size // self.num_shards
-        self.output = torch.zeros(shard_size, self.hidden_dim, device=self.device)
         torch.cuda.synchronize(self.device)
     
     def benchmark_fn(self) -> None:

@@ -11,7 +11,50 @@ DEFAULT_CAPTURE_BATCH_SIZES: List[int] = [1, 2, 4, 8, 16, 32]
 DEFAULT_BATCH_BUCKETS: List[int] = [1, 2, 4, 8, 16, 32]
 DEFAULT_SEQLEN_BUCKETS: List[int] = [64, 128, 256, 512, 1024]
 
-# A small, skewed decode traffic pattern: mixed batches and lengths with repeats.
+_DRIFT_BATCH_SCHEDULE: List[int] = [
+    1,
+    1,
+    2,
+    1,
+    4,
+    1,
+    2,
+    1,
+    8,
+    1,
+    2,
+    1,
+    4,
+    1,
+    2,
+    1,
+    16,
+    1,
+    2,
+    1,
+    4,
+    1,
+    2,
+    1,
+    8,
+    1,
+    2,
+    1,
+    4,
+    1,
+    2,
+    1,
+]
+
+# A skewed decode traffic pattern:
+# - Starts with a short "warm" burst (repeats included).
+# - Then adds a deterministic "shape drift" segment where sequence length
+#   increments by 1 to mimic token-by-token decode growth.
+#
+# The drift segment is the key motivator for bucketing: without seqlen bucketing,
+# every new sequence length would require a fresh CUDA graph capture; with
+# bucketing, most requests map to a small set of (batch_bucket, seqlen_bucket)
+# keys that can be pre-captured and replayed.
 DEFAULT_DECODE_TRAFFIC: List[Tuple[int, int]] = [
     (1, 72),
     (2, 96),
@@ -27,6 +70,12 @@ DEFAULT_DECODE_TRAFFIC: List[Tuple[int, int]] = [
     (8, 192),
     (2, 140),
     (1, 88),
+] + [
+    (
+        _DRIFT_BATCH_SCHEDULE[step % len(_DRIFT_BATCH_SCHEDULE)],
+        64 + step,
+    )
+    for step in range(256)
 ]
 
 

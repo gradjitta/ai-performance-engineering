@@ -6,6 +6,8 @@
 #include <vector>
 #include <numeric>
 
+#include "../core/common/headers/cuda_verify.cuh"
+
 namespace cg = cooperative_groups;
 
 namespace {
@@ -41,45 +43,63 @@ __global__ void optimized_warp_specialized_kernel(const float* __restrict__ A_gl
     float* B_tile = A_tile + TILE_ELEMS;
     float* C_tile = B_tile + TILE_ELEMS;
 
-    using pipeline_state_t = cuda::pipeline_shared_state<cuda::thread_scope_block, 1>;
-    __shared__ alignas(pipeline_state_t) unsigned char pipe_state_bytes[sizeof(pipeline_state_t)];
-    auto* pipe_state = reinterpret_cast<pipeline_state_t*>(pipe_state_bytes);
+    using ab_state_t = cuda::pipeline_shared_state<cuda::thread_scope_block, 1>;
+    using c_state_t = cuda::pipeline_shared_state<cuda::thread_scope_block, 1>;
+    __shared__ alignas(ab_state_t) unsigned char ab_state_bytes[sizeof(ab_state_t)];
+    __shared__ alignas(c_state_t) unsigned char c_state_bytes[sizeof(c_state_t)];
+    auto* ab_state = reinterpret_cast<ab_state_t*>(ab_state_bytes);
+    auto* c_state = reinterpret_cast<c_state_t*>(c_state_bytes);
     if (threadIdx.x == 0) {
-        new (pipe_state) pipeline_state_t();
+        new (ab_state) ab_state_t();
+        new (c_state) c_state_t();
     }
     __syncthreads();
-    auto pipe = cuda::make_pipeline(cta, pipe_state);
+    auto pipe_ab = cuda::make_pipeline(cta, ab_state);
+    auto pipe_c = cuda::make_pipeline(cta, c_state);
 
     const int warp_id = threadIdx.x / warpSize;
     const int lane_id = threadIdx.x % warpSize;
+    auto warp = cg::tiled_partition<32>(cta);
 
-    const int warps_per_grid = (gridDim.x * blockDim.x) / warpSize;
-    const int global_warp = warp_id + (blockIdx.x * blockDim.x) / warpSize;
-
-    for (int tile = global_warp; tile < num_tiles; tile += warps_per_grid) {
+    // Block-strided tiling so warps cooperate on the same tile.
+    for (int tile = blockIdx.x; tile < num_tiles; tile += gridDim.x) {
         const size_t offset = static_cast<size_t>(tile) * TILE_ELEMS;
 
         if (warp_id == 0) {
-            pipe.producer_acquire();
-            for (int idx = lane_id; idx < TILE_ELEMS; idx += warpSize) {
-                A_tile[idx] = A_global[offset + idx];
-                B_tile[idx] = B_global[offset + idx];
-            }
-            pipe.producer_commit();
+            pipe_ab.producer_acquire();
+            cuda::memcpy_async(
+                warp,
+                A_tile,
+                A_global + offset,
+                cuda::aligned_size_t<16>(static_cast<size_t>(TILE_ELEMS) * sizeof(float)),
+                pipe_ab);
+            cuda::memcpy_async(
+                warp,
+                B_tile,
+                B_global + offset,
+                cuda::aligned_size_t<16>(static_cast<size_t>(TILE_ELEMS) * sizeof(float)),
+                pipe_ab);
+            pipe_ab.producer_commit();
         }
 
         if (warp_id == 1) {
-            pipe.consumer_wait();
+            // Ensure the shared C tile is free (store finished previous tile).
+            pipe_c.producer_acquire();
+
+            pipe_ab.consumer_wait();
             compute_full_tile(A_tile, B_tile, C_tile, lane_id);
-            pipe.consumer_release();
+
+            pipe_ab.consumer_release();
+            // Publish computed C tile for the storer warp.
+            pipe_c.producer_commit();
         }
 
         if (warp_id == 2) {
-            pipe.consumer_wait();
+            pipe_c.consumer_wait();
             for (int idx = lane_id; idx < TILE_ELEMS; idx += warpSize) {
                 C_global[offset + idx] = C_tile[idx];
             }
-            pipe.consumer_release();
+            pipe_c.consumer_release();
         }
     }
 }
@@ -123,6 +143,10 @@ void run_optimized(int tiles) {
 
     printf("optimized_warp_specialized_pipeline: %d tiles, %.3f ms, checksum %.3f\n",
            tiles, ms, checksum / h_C.size());
+
+#ifdef VERIFY
+    VERIFY_PRINT_CHECKSUM(static_cast<float>(checksum));
+#endif
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);

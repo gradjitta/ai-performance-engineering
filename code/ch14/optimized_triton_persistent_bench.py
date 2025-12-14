@@ -1,160 +1,76 @@
-"""Optimized Triton GEMM - Persistent kernel with swizzled tile ordering.
+"""optimized_triton_persistent_bench.py - Batched persistent GEMM in Triton.
 
-Persistent kernels keep thread blocks alive for multiple tiles,
-reducing kernel launch overhead and improving L2 cache reuse.
+Optimized benchmark for the Chapter 14 "persistent kernel" example.
+
+Baseline launches one GEMM kernel per batch element (many small launches).
+This variant uses a single persistent kernel launch that covers the entire
+batch by iterating over (batch, m_tile, n_tile) tiles inside the kernel.
 """
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Optional
 
 repo_root = Path(__file__).parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 import torch
-import triton
-import triton.language as tl
-from typing import Optional
 
+from ch14.triton_persistent_batched import matmul_persistent_batched
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
-    BenchmarkHarness,
-    BenchmarkMode,
     WorkloadMetadata,
 )
 
 
-@triton.jit
-def gemm_persistent_kernel(
-    a_ptr, b_ptr, c_ptr,
-    M, N, K,
-    stride_am, stride_ak,
-    stride_bk, stride_bn,
-    stride_cm, stride_cn,
-    num_tiles_m, num_tiles_n,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    NUM_SMS: tl.constexpr,
-):
-    """Persistent GEMM with swizzled tile ordering for L2 cache reuse."""
-    pid = tl.program_id(0)
-    num_tiles = num_tiles_m * num_tiles_n
-    
-    # Process tiles in strided pattern with swizzle for cache locality
-    for tile_id in range(pid, num_tiles, NUM_SMS):
-        # Swizzled tile indexing for better L2 cache reuse
-        GROUP_M: tl.constexpr = 8
-        
-        group_id = tile_id // (GROUP_M * num_tiles_n)
-        first_tile_m = group_id * GROUP_M
-        group_size_m = min(num_tiles_m - first_tile_m, GROUP_M)
-        
-        tile_in_group = tile_id % (GROUP_M * num_tiles_n)
-        pid_m = first_tile_m + (tile_in_group % group_size_m)
-        pid_n = tile_in_group // group_size_m
-        
-        offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-        offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-        offs_k = tl.arange(0, BLOCK_K)
-        
-        a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
-        b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
-        
-        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-        
-        for k in range(0, K, BLOCK_K):
-            mask_a = (offs_m[:, None] < M) & (offs_k[None, :] + k < K)
-            mask_b = (offs_k[:, None] + k < K) & (offs_n[None, :] < N)
-            
-            a = tl.load(a_ptrs, mask=mask_a, other=0.0)
-            b = tl.load(b_ptrs, mask=mask_b, other=0.0)
-            
-            acc += tl.dot(a, b)
-            
-            a_ptrs += BLOCK_K * stride_ak
-            b_ptrs += BLOCK_K * stride_bk
-        
-        c_ptrs = c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
-        mask_c = (offs_m[:, None] < M) & (offs_n[None, :] < N)
-        tl.store(c_ptrs, acc, mask=mask_c)
-
-
-def matmul_persistent(a: torch.Tensor, b: torch.Tensor, num_sms: int = 108) -> torch.Tensor:
-    """Persistent GEMM launch."""
-    M, K = a.shape
-    K, N = b.shape
-    c = torch.empty((M, N), device=a.device, dtype=a.dtype)
-    
-    BLOCK_M, BLOCK_N, BLOCK_K = 64, 64, 32
-    num_tiles_m = triton.cdiv(M, BLOCK_M)
-    num_tiles_n = triton.cdiv(N, BLOCK_N)
-    
-    # Launch only NUM_SMS blocks - they will process all tiles
-    grid = (num_sms,)
-    
-    gemm_persistent_kernel[grid](
-        a, b, c,
-        M, N, K,
-        a.stride(0), a.stride(1),
-        b.stride(0), b.stride(1),
-        c.stride(0), c.stride(1),
-        num_tiles_m, num_tiles_n,
-        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K,
-        NUM_SMS=num_sms,
-    )
-    
-    return c
-
-
-class OptimizedTritonPersistentBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Optimized: Persistent Triton GEMM with swizzled tile ordering."""
+class OptimizedTritonPersistentBenchBenchmark(VerificationPayloadMixin, BaseBenchmark):
+    """Optimized: single-launch batched persistent GEMM."""
 
     def __init__(self):
         super().__init__()
         self.output = None
         self.a = None
         self.b = None
-        # Match baseline dimensions for fair comparison (baseline uses batch_size=32, M=N=K=256)
+
         self.batch_size = 32
         self.M = 256
         self.N = 256
         self.K = 256
         self.dtype = torch.float16
+        self.num_sms = 0
         self._last = 0.0
-        self.num_sms = 108  # Will be updated in setup
-        
-        flops = 2 * self.M * self.N * self.K
+
         self._workload = WorkloadMetadata(
-            requests_per_iteration=1.0,
-            tokens_per_iteration=float(self.M * self.N),
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(self.batch_size * self.M * self.N),
         )
         self._verification_payload = None
+        self.register_workload_metadata(
+            requests_per_iteration=float(self.batch_size),
+            tokens_per_iteration=float(self.batch_size * self.M * self.N),
+        )
 
     def setup(self) -> None:
-        """Setup: Initialize matrices."""
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        
-        # Get actual SM count
+
         props = torch.cuda.get_device_properties(self.device)
         self.num_sms = props.multi_processor_count
-        
-        self.a = torch.randn(self.M, self.K, device=self.device, dtype=self.dtype)
-        self.b = torch.randn(self.K, self.N, device=self.device, dtype=self.dtype)
-        
-        # Warmup
+
+        self.a = torch.randn(self.batch_size, self.M, self.K, device=self.device, dtype=self.dtype)
+        self.b = torch.randn(self.batch_size, self.K, self.N, device=self.device, dtype=self.dtype)
+
         for _ in range(3):
-            _ = matmul_persistent(self.a, self.b, self.num_sms)
+            _ = matmul_persistent_batched(self.a, self.b, self.num_sms)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
-        """Benchmark: Persistent GEMM."""
-        self.output = matmul_persistent(self.a, self.b, self.num_sms)
+        self.output = matmul_persistent_batched(self.a, self.b, self.num_sms)
         self._last = float(self.output.sum())
         self._synchronize()
         if self.output is None or self.a is None or self.b is None:
@@ -164,7 +80,7 @@ class OptimizedTritonPersistentBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._set_verification_payload(
             inputs={"a": self.a, "b": self.b},
             output=self.output,
-            batch_size=1,
+            batch_size=self.batch_size,
             parameter_count=0,
             precision_flags={
                 "fp16": self.dtype == torch.float16,
@@ -176,43 +92,41 @@ class OptimizedTritonPersistentBenchmark(VerificationPayloadMixin, BaseBenchmark
         )
 
     def teardown(self) -> None:
-        """Teardown: Clean up resources."""
         self.a = None
         self.b = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
-        """Return benchmark configuration."""
         return BenchmarkConfig(
-            iterations=100,
-            warmup=20,
+            iterations=50,
+            warmup=10,
         )
-    
+
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return domain-specific metrics using standardized helper."""
         from core.benchmark.metrics import compute_triton_metrics
+
         return compute_triton_metrics(
-            num_elements=getattr(self, 'N', getattr(self, 'num_elements', 1024)),
-            elapsed_ms=getattr(self, '_last_elapsed_ms', 1.0),
-            block_size=getattr(self, 'BLOCK_SIZE', 1024),
-            num_warps=getattr(self, 'num_warps', 4),
+            num_elements=getattr(self, "N", getattr(self, "num_elements", 1024)),
+            elapsed_ms=getattr(self, "_last_elapsed_ms", 1.0),
+            block_size=getattr(self, "BLOCK_SIZE", 1024),
+            num_warps=getattr(self, "num_warps", 4),
         )
 
     def validate_result(self) -> Optional[str]:
-        """Validate benchmark result."""
         if self.a is None or self.b is None:
             return "Matrices not initialized"
         return None
 
 
 def get_benchmark() -> BaseBenchmark:
-    """Factory function for benchmark discovery."""
-    return OptimizedTritonPersistentBenchmark()
+    return OptimizedTritonPersistentBenchBenchmark()
 
 
 if __name__ == "__main__":
     from core.harness.benchmark_harness import benchmark_main
+
     benchmark_main(get_benchmark)
+

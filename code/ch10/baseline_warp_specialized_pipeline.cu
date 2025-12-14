@@ -4,6 +4,8 @@
 #include <vector>
 #include <numeric>
 
+#include "../core/common/headers/cuda_verify.cuh"
+
 namespace {
 constexpr int TILE_SIZE = 64;
 constexpr int TILE_ELEMS = TILE_SIZE * TILE_SIZE;
@@ -38,10 +40,9 @@ __global__ void baseline_warp_specialized_kernel(const float* __restrict__ A_glo
     const int warp_id = threadIdx.x / warpSize;
     const int lane_id = threadIdx.x % warpSize;
 
-    const int total_warps = (gridDim.x * blockDim.x) / warpSize;
-    const int global_warp = warp_id + (blockIdx.x * blockDim.x) / warpSize;
-
-    for (int tile = global_warp; tile < num_tiles; tile += total_warps) {
+    // Use block-strided tiling so the loader/compute/store warps cooperate on
+    // the same tile (warp specialization within the block).
+    for (int tile = blockIdx.x; tile < num_tiles; tile += gridDim.x) {
         const size_t offset = static_cast<size_t>(tile) * TILE_ELEMS;
 
         if (warp_id == 0) {
@@ -112,6 +113,10 @@ void run_baseline(int tiles) {
 
     printf("baseline_warp_specialized_pipeline: %d tiles, %.3f ms, checksum %.3f\n",
            tiles, ms, checksum / h_C.size());
+
+#ifdef VERIFY
+    VERIFY_PRINT_CHECKSUM(static_cast<float>(checksum));
+#endif
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);

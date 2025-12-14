@@ -157,6 +157,7 @@ class AsyncInputPipelineBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return BenchmarkConfig(
             iterations=1,
             warmup=5,
+            adaptive_iterations=False,  # Stateful DataLoader iterator must run fixed counts for verification
             timeout_seconds=120,
             measurement_timeout_seconds=120,
             use_subprocess=False,

@@ -130,7 +130,12 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     self._fp4_enabled = False
             elif self.cfg.use_fp8:
                 try:
-                    self.fp8_recipe = DelayedScaling()
+                    # Prefer an inference-friendly FP8 recipe for perf stability.
+                    # Float8CurrentScaling avoids delayed amax reductions that can introduce
+                    # iteration-to-iteration jitter in short microbench loops.
+                    from transformer_engine.common.recipe import Float8CurrentScaling
+
+                    self.fp8_recipe = Float8CurrentScaling()
                     self._fp8_enabled = True
                 except Exception:
                     self.fp8_recipe = None
@@ -173,13 +178,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         except Exception:
             pass
         
-        # Ensure deterministic behavior for verification
+        # Ensure deterministic RNG state for verification (harness seed is 42).
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        # Enable deterministic algorithms where possible
-        torch.use_deterministic_algorithms(True, warn_only=True)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
         if enable_tf32 is not None:
             enable_tf32(set_global_precision=True)
         else:
@@ -212,18 +213,34 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # then move to device. This ensures parameter init uses CPU RNG.
         self.embedding = nn.Embedding(vs, hs, dtype=self.dtype).to(self.device)
 
+        use_te_linear = bool(TE_AVAILABLE and (self.cfg.use_fp8 or self.cfg.use_fp4))
+
         def _linear(in_features: int, out_features: int, *, bias: bool = True) -> nn.Module:
-            if (self.cfg.use_fp8 or self.cfg.use_fp4) and TE_AVAILABLE:
-                # TE Linear must be created on device
-                return TELinear(
-                    in_features,
-                    out_features,
-                    bias=bias,
-                    params_dtype=self.dtype,
-                    device=self.device,
-                )
-            # Create on CPU first, then move to device to avoid CUDA RNG issues
-            return nn.Linear(in_features, out_features, bias=bias, dtype=self.dtype).to(self.device)
+            """Create a Linear layer with deterministic CPU initialization.
+
+            For Transformer Engine FP8/FP4 variants we still initialize weights on CPU
+            (torch.nn.Linear) and then copy them into the TE module. This keeps
+            baseline/optimized weights identical and ensures output verification is
+            meaningful (differences reflect precision, not random init drift).
+            """
+            # Always create a CPU reference for deterministic initialization
+            ref = nn.Linear(in_features, out_features, bias=bias, dtype=self.dtype)
+            if not use_te_linear:
+                return ref.to(self.device)
+
+            # TE Linear must be created on device; copy weights/bias from ref.
+            te_linear = TELinear(
+                in_features,
+                out_features,
+                bias=bias,
+                params_dtype=self.dtype,
+                device=self.device,
+            )
+            with torch.no_grad():
+                te_linear.weight.copy_(ref.weight.to(self.device))
+                if bias and te_linear.bias is not None and ref.bias is not None:
+                    te_linear.bias.copy_(ref.bias.to(self.device))
+            return te_linear
 
         # Create modules on CPU first, then move to device
         self.prefill_mlp = nn.Sequential(

@@ -1,9 +1,7 @@
-"""Optimized: Transformer Engine FP4 (Blackwell NVFP4) for prefill/TTFT.
+"""Baseline for FP4 decode optimization: BF16 prefill-only workload.
 
-FP4 benefits show up most clearly in the prefill (TTFT) phase where GEMMs are
-large (batch * prompt_tokens rows). Small-batch decode tends to be overhead-bound
-for FP4, so this benchmark uses a prefill-only workload and compares against
-`baseline_decode_fp4.py` to keep the workload equivalent.
+This baseline matches `optimized_decode_fp4.py` exactly, but runs in BF16.
+Keeping a dedicated baseline ensures the FP4 comparison is workload-equivalent.
 """
 
 from __future__ import annotations
@@ -19,22 +17,18 @@ from labs.decode_optimization.decode_common import DecodeBenchmark, DecodeConfig
 
 
 def get_benchmark() -> DecodeBenchmark:
-    """FP4 decode path using Transformer Engine.
-
-    Workload matches `baseline_decode_fp4.py` exactly; only precision changes.
-    """
+    # Prefill-dominant regime where FP4 benefits are visible.
     cfg = DecodeConfig(
         batch_size=64,
         prompt_tokens=256,
         decode_tokens=0,
         hidden_size=8192,
-        use_fp4=True,
         use_pinned_host=False,
         use_copy_stream=False,
         use_compute_stream=False,
-        use_torch_compile=False,  # TE FP4 not compatible with torch.compile
         use_cuda_graphs=False,
-        label="optimized_decode_fp4",
+        use_torch_compile=False,
+        label="baseline_decode_fp4",
         iterations=12,
         warmup=15,
     )
@@ -43,4 +37,5 @@ def get_benchmark() -> DecodeBenchmark:
 
 if __name__ == "__main__":
     from core.harness.benchmark_harness import benchmark_main
+
     benchmark_main(get_benchmark)
