@@ -99,6 +99,11 @@ TOOLS: Dict[str, ToolSpec] = {
         script_path=REPO_ROOT / "ch18" / "speculative_decode" / "spec_config_sweep.py",
         description="Sweep speculative-decoding config files and write summary JSON.",
     ),
+    "v1-engine-loop": ToolSpec(
+        name="v1-engine-loop",
+        script_path=REPO_ROOT / "ch18" / "v1_engine_loop.py",
+        description="Run the V1 EngineCore polling-loop demo (tool; correctness, not speed).",
+    ),
     "moe-validation": ToolSpec(
         name="moe-validation",
         script_path=REPO_ROOT / "ch15" / "moe_validation" / "moe_validation.py",

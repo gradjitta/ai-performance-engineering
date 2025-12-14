@@ -66,18 +66,6 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
             _ = self.model.decode(self.decode_token, self.base_position)
         torch.cuda.synchronize(self.device)
 
-    def _restore_compile_hooks(self) -> None:
-        if self._orig_compile_callable is not None:
-            from core.utils import compile_utils
-
-            compile_utils.compile_callable = self._orig_compile_callable  # type: ignore[assignment]
-            self._orig_compile_callable = None
-        if self._orig_flex_compile_callable is not None:
-            from ch18 import flexdecoding as flexdemo
-
-            flexdemo.compile_callable = self._orig_flex_compile_callable  # type: ignore[assignment]
-            self._orig_flex_compile_callable = None
-
     def setup(self) -> None:
         try:
             self._initialize_and_capture()
@@ -118,6 +106,7 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
             or self.graph is None
             or self.capture_stream is None
             or self.static_decode_in is None
+            or self.static_decode_out is None
         ):
             raise RuntimeError("Graph path not initialized")
 
@@ -142,6 +131,8 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
                     torch.cuda.synchronize(self.device)
                     decode_times.append((time.perf_counter() - start) * 1000.0)
 
+        # Store last output for verification (graph replay writes into static_decode_out)
+        self._last_output = self.static_decode_out
         self._history["prefill_ms"].extend(prefill_times)
         self._history["decode_ms"].extend(decode_times)
         return {"prefill_ms": prefill_times, "decode_ms": decode_times}
@@ -156,24 +147,6 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
         self.static_decode_in = None
         self.static_decode_out = None
         self.base_position = 0
-
-
-    def get_custom_metrics(self) -> Optional[dict]:
-        """Return speculative decoding metrics for flexdecoding_graphs."""
-        from core.benchmark.metrics import compute_speculative_decoding_metrics
-        return compute_speculative_decoding_metrics(
-            draft_tokens=getattr(self, '_draft_tokens', 10),
-            accepted_tokens=getattr(self, '_accepted_tokens', 8),
-            draft_time_ms=getattr(self, '_draft_ms', 1.0),
-            verify_time_ms=getattr(self, '_verify_ms', 1.0),
-            num_rounds=getattr(self, '_num_rounds', 1),
-        )
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        sig = super().get_input_signature()
-        sig["cuda_graphs"] = True
-        return sig
 
 def get_benchmark():
     return OptimizedFlexDecodingGraphsBenchmark()

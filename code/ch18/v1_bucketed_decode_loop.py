@@ -21,7 +21,7 @@ from ch18.baseline_vllm_decode_graphs import (  # noqa: E402
 )
 from ch18.decode_kernels import DEVICE, build_decode_kernel  # noqa: E402
 from ch18.optimized_vllm_decode_graphs import BUCKETS, pick_bucket, pad_to_bucket  # noqa: E402
-from ch18.optimized_v1_engine_loop import run_engine_loop  # noqa: E402
+from ch18.v1_engine_loop import run_engine_loop  # noqa: E402
 from ch18.v1_engine_loop_common import MockRequestOutput, build_demo_stack  # noqa: E402
 
 

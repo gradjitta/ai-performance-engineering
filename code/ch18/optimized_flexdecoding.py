@@ -31,24 +31,6 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
                 raise RuntimeError(f"SKIPPED: FlexAttention failed to compile on this GPU/build: {exc}")
             raise
 
-
-    def get_custom_metrics(self) -> Optional[dict]:
-        """Return speculative decoding metrics for flexdecoding."""
-        from core.benchmark.metrics import compute_speculative_decoding_metrics
-        return compute_speculative_decoding_metrics(
-            draft_tokens=getattr(self, '_draft_tokens', 10),
-            accepted_tokens=getattr(self, '_accepted_tokens', 8),
-            draft_time_ms=getattr(self, '_draft_ms', 1.0),
-            verify_time_ms=getattr(self, '_verify_ms', 1.0),
-            num_rounds=getattr(self, '_num_rounds', 1),
-        )
-
-    def get_input_signature(self) -> dict:
-        """Return input signature for verification."""
-        sig = super().get_input_signature()
-        sig["optimized"] = True
-        return sig
-
 def get_benchmark():
     return OptimizedFlexDecodingBenchmark()
 
